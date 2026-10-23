@@ -1,12 +1,26 @@
 <script setup lang="ts">
+import { computed } from "vue";
 import { RouterView } from "vue-router";
+import { darkTheme } from "naive-ui";
 import { useTheme } from "./composables/useTheme";
+import { darkThemeOverrides, lightThemeOverrides } from "./theme/naive";
 
-useTheme();
+const { isDark } = useTheme();
+
+// Naive UI needs its own theme object; `useTheme` stays the single source of
+// truth for the light/dark preference.
+const naiveTheme = computed(() => (isDark.value ? darkTheme : null));
+const naiveThemeOverrides = computed(() =>
+  isDark.value ? darkThemeOverrides : lightThemeOverrides,
+);
 </script>
 
 <template>
-  <RouterView />
+  <NConfigProvider :theme="naiveTheme" :theme-overrides="naiveThemeOverrides">
+    <NMessageProvider>
+      <RouterView />
+    </NMessageProvider>
+  </NConfigProvider>
 </template>
 
 <style>
@@ -82,39 +96,5 @@ a:hover {
 
 h1 {
   text-align: center;
-}
-
-input,
-button,
-select {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  color: var(--color-text);
-  background-color: var(--color-surface);
-  transition: border-color 0.25s;
-  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
-}
-
-button,
-select {
-  cursor: pointer;
-}
-
-button:hover {
-  border-color: var(--color-accent);
-}
-button:active {
-  border-color: var(--color-accent);
-  background-color: var(--color-surface-active);
-}
-
-input,
-button,
-select {
-  outline: none;
 }
 </style>

@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
+import { useMessage } from "naive-ui";
 import { useSettingsStore } from "../stores/settings";
 import type { ThemeMode } from "../stores/settings";
 
+const message = useMessage();
+const settings = useSettingsStore();
+
 const greetMsg = ref("");
 const name = ref("");
-
-const settings = useSettingsStore();
 
 const themeOptions: { label: string; value: ThemeMode }[] = [
   { label: "System", value: "system" },
@@ -15,13 +17,13 @@ const themeOptions: { label: string; value: ThemeMode }[] = [
   { label: "Dark", value: "dark" },
 ];
 
-function setTheme(event: Event) {
-  settings.theme = (event.target as HTMLSelectElement).value as ThemeMode;
-}
-
 async function greet() {
-  // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-  greetMsg.value = await invoke("greet", { name: name.value });
+  try {
+    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
+    greetMsg.value = await invoke<string>("greet", { name: name.value });
+  } catch (error) {
+    message.error(`Greet failed: ${String(error)}`);
+  }
 }
 </script>
 
@@ -42,28 +44,27 @@ async function greet() {
     </div>
     <p>Click on the Tauri, Vite, and Vue logos to learn more.</p>
 
-    <form class="row" @submit.prevent="greet">
-      <input id="greet-input" v-model="name" placeholder="Enter a name..." />
-      <button type="submit">Greet</button>
+    <form class="greet" @submit.prevent="greet">
+      <NInput
+        v-model:value="name"
+        class="greet-input"
+        placeholder="Enter a name..."
+      />
+      <NButton attr-type="submit" type="primary">Greet</NButton>
     </form>
     <p>{{ greetMsg }}</p>
 
-    <section class="settings">
-      <h2>Settings</h2>
-      <label class="setting">
+    <NCard class="settings" title="Settings" size="small">
+      <div class="setting">
         <span>Theme</span>
-        <select :value="settings.theme" @change="setTheme">
-          <option
-            v-for="option in themeOptions"
-            :key="option.value"
-            :value="option.value"
-          >
-            {{ option.label }}
-          </option>
-        </select>
-      </label>
+        <NSelect
+          v-model:value="settings.theme"
+          class="theme-select"
+          :options="themeOptions"
+        />
+      </div>
       <p class="hint">Saved to this device and restored on the next launch.</p>
-    </section>
+    </NCard>
   </main>
 </template>
 
@@ -76,22 +77,20 @@ async function greet() {
   filter: drop-shadow(0 0 2em #249b73);
 }
 
-#greet-input {
-  margin-right: 5px;
+.greet {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.greet-input {
+  width: 14rem;
 }
 
 .settings {
   margin: 2rem auto 0;
   max-width: 20rem;
-  padding: 1rem 1.25rem;
-  border: 1px solid rgba(127, 127, 127, 0.3);
-  border-radius: 12px;
   text-align: left;
-}
-
-.settings h2 {
-  margin: 0 0 0.75rem;
-  font-size: 1rem;
 }
 
 .setting {
@@ -99,6 +98,10 @@ async function greet() {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
+}
+
+.theme-select {
+  width: 8.5rem;
 }
 
 .hint {

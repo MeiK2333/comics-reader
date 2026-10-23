@@ -1,12 +1,23 @@
 import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
+import Components from "unplugin-vue-components/vite";
+import { NaiveUiResolver } from "unplugin-vue-components/resolvers";
 // @ts-expect-error type error without @types/node package
 import process from "node:process";
 const host = process.env.TAURI_DEV_HOST;
 
 // https://vite.dev/config/
 export default defineConfig(() => ({
-  plugins: [vue()],
+  plugins: [
+    vue(),
+    // Resolve Naive UI components used in templates on demand, so only the
+    // components an SFC actually references end up in the bundle. The
+    // generated declarations also give the templates full prop typing.
+    Components({
+      dts: "src/components.d.ts",
+      resolvers: [NaiveUiResolver()],
+    }),
+  ],
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
