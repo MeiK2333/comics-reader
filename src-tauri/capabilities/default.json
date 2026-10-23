@@ -6,6 +6,13 @@
   "permissions": [
     "core:default",
     "core:window:allow-set-title",
-    "opener:default"
+    "opener:default",
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "https://*:*" },
+        { "url": "http://*:*" }
+      ]
+    }
   ]
 }
