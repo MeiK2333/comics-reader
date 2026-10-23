@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { RouterView } from "vue-router";
+import { useTheme } from "./composables/useTheme";
+
+useTheme();
 </script>
 
 <template>
@@ -8,19 +11,38 @@ import { RouterView } from "vue-router";
 
 <style>
 :root {
+  color-scheme: light;
+
+  --color-text: #0f0f0f;
+  --color-bg: #f6f6f6;
+  --color-surface: #ffffff;
+  --color-surface-active: #e8e8e8;
+  --color-accent: #396cd8;
+  --color-link-hover: #535bf2;
+
   font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
   font-size: 16px;
   line-height: 24px;
   font-weight: 400;
 
-  color: #0f0f0f;
-  background-color: #f6f6f6;
+  color: var(--color-text);
+  background-color: var(--color-bg);
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   -webkit-text-size-adjust: 100%;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --color-text: #f6f6f6;
+  --color-bg: #2f2f2f;
+  --color-surface: #0f0f0f98;
+  --color-surface-active: #0f0f0f69;
+  --color-link-hover: #24c8db;
 }
 
 .container {
@@ -55,7 +77,7 @@ a {
 }
 
 a:hover {
-  color: #535bf2;
+  color: var(--color-link-hover);
 }
 
 h1 {
@@ -63,53 +85,36 @@ h1 {
 }
 
 input,
-button {
+button,
+select {
   border-radius: 8px;
   border: 1px solid transparent;
   padding: 0.6em 1.2em;
   font-size: 1em;
   font-weight: 500;
   font-family: inherit;
-  color: #0f0f0f;
-  background-color: #ffffff;
+  color: var(--color-text);
+  background-color: var(--color-surface);
   transition: border-color 0.25s;
   box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
 }
 
-button {
+button,
+select {
   cursor: pointer;
 }
 
 button:hover {
-  border-color: #396cd8;
+  border-color: var(--color-accent);
 }
 button:active {
-  border-color: #396cd8;
-  background-color: #e8e8e8;
+  border-color: var(--color-accent);
+  background-color: var(--color-surface-active);
 }
 
 input,
-button {
+button,
+select {
   outline: none;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    color: #f6f6f6;
-    background-color: #2f2f2f;
-  }
-
-  a:hover {
-    color: #24c8db;
-  }
-
-  input,
-  button {
-    color: #ffffff;
-    background-color: #0f0f0f98;
-  }
-  button:active {
-    background-color: #0f0f0f69;
-  }
 }
 </style>
