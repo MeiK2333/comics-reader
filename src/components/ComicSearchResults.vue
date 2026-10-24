@@ -37,6 +37,9 @@ const pageCount = computed(() => {
 
 function changePage(next: number) {
   if (next !== props.page) {
+    // Pagination sits below a long result grid, so start the next page from
+    // the top instead of leaving the viewport at the previous page's footer.
+    window.scrollTo({ top: 0, behavior: "smooth" });
     emit("update:page", next);
   }
 }
