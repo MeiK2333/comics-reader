@@ -7,7 +7,7 @@
   },
   "errors": {
     "invalidInput": "Invalid input: {message}",
-    "network": "Request failed: {message}",
+    "network": "Network error. Please check your internet connection and try again.",
     "httpStatus": "The server responded with HTTP {status}.",
     "emptyResponse": "The server returned an empty response.",
     "notImage": "The server returned {contentType} instead of an image.",

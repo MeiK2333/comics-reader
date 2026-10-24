@@ -17,7 +17,6 @@ declare module 'vue' {
     ComicThumb: typeof import('./components/ComicThumb.vue')['default']
     JmResultCard: typeof import('./components/result-cards/JmResultCard.vue')['default']
     ManhuaguiResultCard: typeof import('./components/result-cards/ManhuaguiResultCard.vue')['default']
-    NAlert: typeof import('naive-ui')['NAlert']
     NButton: typeof import('naive-ui')['NButton']
     NCard: typeof import('naive-ui')['NCard']
     NConfigProvider: typeof import('naive-ui')['NConfigProvider']

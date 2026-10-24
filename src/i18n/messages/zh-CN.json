@@ -7,7 +7,7 @@
   },
   "errors": {
     "invalidInput": "输入不合法：{message}",
-    "network": "请求失败：{message}",
+    "network": "网络错误，请检查网络连通性后重试。",
     "httpStatus": "服务器返回了 HTTP {status}。",
     "emptyResponse": "服务器返回了空响应。",
     "notImage": "服务器返回的是 {contentType}，而不是图片。",

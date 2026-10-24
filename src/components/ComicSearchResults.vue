@@ -44,9 +44,12 @@ function changePage(next: number) {
 
 <template>
   <section class="results">
-    <NAlert v-if="errorMessage" type="error" :bordered="false" class="status">
-      {{ errorMessage }}
-    </NAlert>
+    <NEmpty
+      v-if="errorMessage"
+      class="status"
+      :description="errorMessage"
+      role="alert"
+    />
 
     <NSpin v-else-if="response" :show="loading">
       <div class="results-content">
