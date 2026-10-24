@@ -2,10 +2,12 @@
 import { computed } from "vue";
 import { RouterView } from "vue-router";
 import { darkTheme } from "naive-ui";
+import { useLocale } from "./composables/useLocale";
 import { useTheme } from "./composables/useTheme";
 import { darkThemeOverrides, lightThemeOverrides } from "./theme/naive";
 
 const { isDark } = useTheme();
+const { naiveLocale, naiveDateLocale } = useLocale();
 
 // Naive UI needs its own theme object; `useTheme` stays the single source of
 // truth for the light/dark preference.
@@ -16,7 +18,12 @@ const naiveThemeOverrides = computed(() =>
 </script>
 
 <template>
-  <NConfigProvider :theme="naiveTheme" :theme-overrides="naiveThemeOverrides">
+  <NConfigProvider
+    :theme="naiveTheme"
+    :theme-overrides="naiveThemeOverrides"
+    :locale="naiveLocale"
+    :date-locale="naiveDateLocale"
+  >
     <NMessageProvider>
       <RouterView />
     </NMessageProvider>
@@ -34,7 +41,9 @@ const naiveThemeOverrides = computed(() =>
   --color-accent: #396cd8;
   --color-link-hover: #535bf2;
 
-  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
+  font-family:
+    Inter, Avenir, "Microsoft YaHei", "PingFang SC", "Noto Sans SC", Helvetica,
+    Arial, sans-serif;
   font-size: 16px;
   line-height: 24px;
   font-weight: 400;

@@ -1,35 +1,82 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref } from "vue";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { fetch as httpFetch } from "@tauri-apps/plugin-http";
 import { useMessage } from "naive-ui";
+import { useAppI18n } from "../i18n";
+import type { LocalePreference } from "../i18n";
 import { useSettingsStore } from "../stores/settings";
 import type { ThemeMode } from "../stores/settings";
 
+const { t } = useAppI18n();
 const message = useMessage();
 const settings = useSettingsStore();
 
-const greetMsg = ref("");
+const greetName = ref("");
 const name = ref("");
 
 const imageUrl = ref("");
 const imageLoading = ref(false);
-const imageError = ref("");
 const imageSrc = ref("");
 let imageObjectUrl = "";
 
-const themeOptions: { label: string; value: ThemeMode }[] = [
-  { label: "System", value: "system" },
-  { label: "Light", value: "light" },
-  { label: "Dark", value: "dark" },
-];
+type ImageErrorDetail =
+  | { code: "http"; status: number }
+  | { code: "empty" }
+  | { code: "notImage"; contentType: string }
+  | { code: "display" }
+  | { code: "unknown"; message: string };
+
+class ImageLoadError extends Error {
+  constructor(readonly detail: ImageErrorDetail) {
+    super(detail.code);
+  }
+}
+
+// Store the failure reason instead of a rendered string so the alert follows
+// language changes.
+const imageError = ref<ImageErrorDetail | null>(null);
+
+const themeOptions = computed<{ label: string; value: ThemeMode }[]>(() => [
+  { label: t("home.settings.theme.options.system"), value: "system" },
+  { label: t("home.settings.theme.options.light"), value: "light" },
+  { label: t("home.settings.theme.options.dark"), value: "dark" },
+]);
+
+const localeOptions = computed<{ label: string; value: LocalePreference }[]>(
+  () => [
+    { label: t("home.settings.language.options.system"), value: "system" },
+    { label: t("home.settings.language.options.en"), value: "en" },
+    { label: t("home.settings.language.options.zh-CN"), value: "zh-CN" },
+  ],
+);
+
+const imageErrorMessage = computed(() => {
+  const detail = imageError.value;
+  if (!detail) {
+    return "";
+  }
+
+  switch (detail.code) {
+    case "http":
+      return t("home.image.errors.http", { status: detail.status });
+    case "empty":
+      return t("home.image.errors.empty");
+    case "notImage":
+      return t("home.image.errors.notImage", { type: detail.contentType });
+    case "display":
+      return t("home.image.errors.display");
+    case "unknown":
+      return t("home.image.errors.unknown", { message: detail.message });
+  }
+});
 
 async function greet() {
   try {
     // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    greetMsg.value = await invoke<string>("greet", { name: name.value });
+    greetName.value = await invoke<string>("greet", { name: name.value });
   } catch (error) {
-    message.error(`Greet failed: ${String(error)}`);
+    message.error(t("home.greet.failed", { error: errorMessage(error) }));
   }
 }
 
@@ -76,31 +123,34 @@ async function loadImage() {
   }
 
   imageLoading.value = true;
-  imageError.value = "";
+  imageError.value = null;
   try {
     const response = await fetchImage(url);
     if (!response.ok) {
-      throw new Error(`Request failed with HTTP ${response.status}`);
+      throw new ImageLoadError({ code: "http", status: response.status });
     }
 
     const blob = await response.blob();
     if (blob.size === 0) {
-      throw new Error("The server returned an empty response.");
+      throw new ImageLoadError({ code: "empty" });
     }
     if (blob.type && !blob.type.startsWith("image/")) {
-      throw new Error(`The server returned ${blob.type} instead of an image.`);
+      throw new ImageLoadError({ code: "notImage", contentType: blob.type });
     }
 
     await showImage(blob);
   } catch (error) {
-    imageError.value = errorMessage(error);
+    imageError.value =
+      error instanceof ImageLoadError
+        ? error.detail
+        : { code: "unknown", message: errorMessage(error) };
   } finally {
     imageLoading.value = false;
   }
 }
 
 function onImageError() {
-  imageError.value = "The fetched data could not be displayed as an image.";
+  imageError.value = { code: "display" };
   revokeImage();
   imageSrc.value = "";
 }
@@ -110,51 +160,88 @@ onBeforeUnmount(revokeImage);
 
 <template>
   <main class="container">
-    <h1>Welcome to Tauri + Vue</h1>
+    <h1>{{ t("home.title") }}</h1>
 
     <div class="row">
       <a href="https://vite.dev" target="_blank">
-        <img src="/vite.svg" class="logo vite" alt="Vite logo" />
+        <img src="/vite.svg" class="logo vite" :alt="t('home.logos.vite')" />
       </a>
       <a href="https://tauri.app" target="_blank">
-        <img src="/icon.svg" class="logo tauri" alt="Tauri logo" />
+        <img src="/icon.svg" class="logo tauri" :alt="t('home.logos.tauri')" />
       </a>
       <a href="https://vuejs.org/" target="_blank">
-        <img src="../assets/vue.svg" class="logo vue" alt="Vue logo" />
+        <img
+          src="../assets/vue.svg"
+          class="logo vue"
+          :alt="t('home.logos.vue')"
+        />
       </a>
     </div>
-    <p>Click on the Tauri, Vite, and Vue logos to learn more.</p>
+    <p>{{ t("home.intro") }}</p>
 
     <form class="greet" @submit.prevent="greet">
-      <NInput v-model:value="name" class="greet-input" placeholder="Enter a name..." />
-      <NButton attr-type="submit" type="primary">Greet</NButton>
+      <NInput
+        v-model:value="name"
+        class="greet-input"
+        :placeholder="t('home.greet.placeholder')"
+      />
+      <NButton attr-type="submit" type="primary">
+        {{ t("home.greet.submit") }}
+      </NButton>
     </form>
-    <p>{{ greetMsg }}</p>
+    <p>{{ greetName ? t("home.greet.result", { name: greetName }) : "" }}</p>
 
-    <NCard class="image-tester" title="Image tester" size="small">
+    <NCard class="image-tester" :title="t('home.image.title')" size="small">
       <form class="image-form" @submit.prevent="loadImage">
-        <NInput v-model:value="imageUrl" class="image-url" placeholder="Paste an image URL..." />
+        <NInput
+          v-model:value="imageUrl"
+          class="image-url"
+          :placeholder="t('home.image.placeholder')"
+        />
         <NButton attr-type="submit" type="primary" :loading="imageLoading">
-          Load
+          {{ t("home.image.load") }}
         </NButton>
       </form>
       <p class="hint">
-        Fetches the image through the Tauri HTTP plugin in the desktop app.
+        {{ t("home.image.hint") }}
       </p>
-      <NAlert v-if="imageError" class="image-error" type="error" :bordered="false">
-        {{ imageError }}
+      <NAlert
+        v-if="imageErrorMessage"
+        class="image-error"
+        type="error"
+        :bordered="false"
+      >
+        {{ imageErrorMessage }}
       </NAlert>
       <div v-if="imageSrc" class="image-preview">
-        <img :src="imageSrc" alt="Fetched preview" @error="onImageError" />
+        <img
+          :src="imageSrc"
+          :alt="t('home.image.alt')"
+          @error="onImageError"
+        />
       </div>
     </NCard>
 
-    <NCard class="settings" title="Settings" size="small">
+    <NCard class="settings" :title="t('home.settings.title')" size="small">
       <div class="setting">
-        <span>Theme</span>
-        <NSelect v-model:value="settings.theme" class="theme-select" :options="themeOptions" />
+        <span>{{ t("home.settings.theme.label") }}</span>
+        <NSelect
+          v-model:value="settings.theme"
+          class="theme-select"
+          :options="themeOptions"
+        />
       </div>
-      <p class="hint">Saved to this device and restored on the next launch.</p>
+      <div class="setting">
+        <span>{{ t("home.settings.language.label") }}</span>
+        <NSelect
+          v-model:value="settings.locale"
+          class="theme-select"
+          :options="localeOptions"
+        />
+      </div>
+      <p class="hint">
+        {{ t("home.settings.hint") }}
+      </p>
     </NCard>
   </main>
 </template>
@@ -225,6 +312,10 @@ onBeforeUnmount(revokeImage);
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
+}
+
+.setting + .setting {
+  margin-top: 0.75rem;
 }
 
 .theme-select {

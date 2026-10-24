@@ -1,15 +1,17 @@
 import { createRouter, createWebHashHistory } from "vue-router";
+import type { RouteMeta } from "vue-router";
 import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { translate } from "../i18n";
 import HomeView from "../views/HomeView.vue";
+
+type RouteTitleKey = "app.name" | "meta.notFound";
 
 declare module "vue-router" {
   interface RouteMeta {
-    title?: string;
+    titleKey?: RouteTitleKey;
   }
 }
-
-const DEFAULT_TITLE = "Comics Reader";
 
 const router = createRouter({
   // Hash history does not rely on the webview re-serving index.html for a
@@ -20,19 +22,34 @@ const router = createRouter({
       path: "/",
       name: "home",
       component: HomeView,
-      meta: { title: DEFAULT_TITLE },
+      meta: { titleKey: "app.name" },
     },
     {
       path: "/:pathMatch(.*)*",
       name: "not-found",
       component: () => import("../views/NotFoundView.vue"),
-      meta: { title: `Page Not Found · ${DEFAULT_TITLE}` },
+      meta: { titleKey: "meta.notFound" },
     },
   ],
 });
 
-router.afterEach((to) => {
-  const title = to.meta.title ?? DEFAULT_TITLE;
+function translateTitleKey(key: RouteTitleKey) {
+  switch (key) {
+    case "meta.notFound":
+      return translate("meta.notFound", { app: translate("app.name") });
+    case "app.name":
+      return translate("app.name");
+  }
+}
+
+/**
+ * Set the document and native window title for a route. Called on every
+ * navigation and again when the locale changes.
+ */
+export function updateWindowTitle(
+  meta: RouteMeta = router.currentRoute.value.meta,
+) {
+  const title = translateTitleKey(meta.titleKey ?? "app.name");
   document.title = title;
 
   // The document title is not mirrored to the native window, so set it
@@ -43,6 +60,8 @@ router.afterEach((to) => {
       .setTitle(title)
       .catch(() => undefined);
   }
-});
+}
+
+router.afterEach((to) => updateWindowTitle(to.meta));
 
 export default router;

@@ -3,7 +3,8 @@ import type { GlobalThemeOverrides } from "naive-ui";
 // Keep Naive UI's primary color aligned with the app accent. The dark palette
 // uses a slightly lighter accent so it stays readable on dark surfaces.
 const common: GlobalThemeOverrides["common"] = {
-  fontFamily: "Inter, Avenir, Helvetica, Arial, sans-serif",
+  fontFamily:
+    'Inter, Avenir, "Microsoft YaHei", "PingFang SC", "Noto Sans SC", Helvetica, Arial, sans-serif',
   borderRadius: "8px",
 };
 

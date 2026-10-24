@@ -1,7 +1,8 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
 fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
+    // Return data only; user-facing copy lives in the frontend i18n catalogs.
+    name.trim().to_string()
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

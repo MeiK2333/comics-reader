@@ -1,0 +1,62 @@
+{
+  "app": {
+    "name": "Comics Reader"
+  },
+  "meta": {
+    "notFound": "Page Not Found · {app}"
+  },
+  "home": {
+    "title": "Welcome to Tauri + Vue",
+    "intro": "Click on the Tauri, Vite, and Vue logos to learn more.",
+    "logos": {
+      "vite": "Vite logo",
+      "tauri": "Tauri logo",
+      "vue": "Vue logo"
+    },
+    "greet": {
+      "placeholder": "Enter a name...",
+      "submit": "Greet",
+      "result": "Hello, {name}! You've been greeted from Rust!",
+      "failed": "Greet failed: {error}"
+    },
+    "image": {
+      "title": "Image tester",
+      "placeholder": "Paste an image URL...",
+      "load": "Load",
+      "hint": "Fetches the image through the Tauri HTTP plugin in the desktop app.",
+      "alt": "Fetched preview",
+      "errors": {
+        "http": "Request failed with HTTP {status}.",
+        "empty": "The server returned an empty response.",
+        "notImage": "The server returned {type} instead of an image.",
+        "display": "The fetched data could not be displayed as an image.",
+        "unknown": "Unexpected error: {message}"
+      }
+    },
+    "settings": {
+      "title": "Settings",
+      "theme": {
+        "label": "Theme",
+        "options": {
+          "system": "System",
+          "light": "Light",
+          "dark": "Dark"
+        }
+      },
+      "language": {
+        "label": "Language",
+        "options": {
+          "system": "System",
+          "en": "English",
+          "zh-CN": "简体中文"
+        }
+      },
+      "hint": "Saved to this device and restored on the next launch."
+    }
+  },
+  "notFound": {
+    "title": "Page not found",
+    "description": "The page you are looking for does not exist.",
+    "back": "Back to home"
+  }
+}
