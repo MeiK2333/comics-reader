@@ -1,0 +1,4 @@
+# `sass` pulls in @parcel/watcher as an optional native watcher, but Vite does
+# its own file watching, so its install script is not needed.
+allowBuilds:
+  '@parcel/watcher': false
