@@ -61,6 +61,9 @@ const {
 
 .home.has-results {
   padding-top: 1rem;
+  /* Keep the pagination close to the window edge instead of leaving a large
+     empty band under the last result row. */
+  padding-bottom: 1.5rem;
 }
 
 .home.has-results .hero {
