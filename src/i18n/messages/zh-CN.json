@@ -31,7 +31,16 @@
       "total": "共 {total} 个结果",
       "empty": "没有找到漫画，换个关键词试试。",
       "pages": "页数：{count}",
-      "favorites": "收藏：{count}"
+      "favorites": "收藏：{count}",
+      "authors": "作者：{names}",
+      "latestChapter": "更新至 {chapter}",
+      "updatedAt": "更新于 {date}",
+      "statusOngoing": "连载中",
+      "statusCompleted": "已完结",
+      "score": "★ {score}",
+      "ratings": "{count} 人评分",
+      "noTags": "暂无标签",
+      "moreTags": "+{count}"
     }
   },
   "notFound": {

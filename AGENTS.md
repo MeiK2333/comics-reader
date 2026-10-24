@@ -67,7 +67,12 @@
 │  │  ├─ ComicSearchBar.vue      搜索表单：平台选择、关键词输入、提交
 │  │  ├─ PlatformPicker.vue      平台下拉菜单与图标
 │  │  ├─ ComicSearchResults.vue  结果区：错误/加载/空态、网格、分页
-│  │  └─ ComicResultCard.vue     单条结果卡片与平台元信息
+│  │  ├─ ComicResultCard.vue     结果卡片分发器：按 item.platform 选择平台卡片
+│  │  └─ result-cards/
+│  │     ├─ ResultCardShell.vue  平台卡片共用外壳：封面、标题、内容插槽
+│  │     ├─ ManhuaguiResultCard.vue
+│  │     ├─ JmResultCard.vue
+│  │     └─ NhentaiResultCard.vue
 │  ├─ assets/platforms/          平台真实图标（favicon/logo；PNG 或按像素重绘的 SVG）
 │  ├─ views/
 │  │  ├─ HomeView.vue            搜索页布局：组合搜索栏与结果区
@@ -176,7 +181,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 ### 远程 HTTP、图片缓存与平台检索
 
 - 图片抓取全部在 Rust 中完成：`ComicThumb.vue` 对可见缩略图调用 `fetch_image` 命令（`src-tauri/src/image/`），由 `reqwest` 请求并缓存，webview 通过资产协议读取文件；首页本身不再直接请求图片站点。
-- 首页由 `useComicSearch.ts` 管理平台、关键词、分页与请求竞态；`ComicSearchBar.vue`（含 `PlatformPicker.vue`）负责输入，`ComicSearchResults.vue` 负责错误/加载/空态与分页，`ComicResultCard.vue` 渲染单条结果；`ComicThumb.vue` 用 `IntersectionObserver` 懒加载缩略图，避免一次性请求整页图片。
+- 首页由 `useComicSearch.ts` 管理平台、关键词、分页与请求竞态；`ComicSearchBar.vue`（含 `PlatformPicker.vue`）负责输入，`ComicSearchResults.vue` 负责错误/加载/空态与分页，`ComicResultCard.vue` 只按 `item.platform` 分发到 `result-cards/` 下对应平台的卡片，字段解释与排版留在各平台卡片内；`ComicThumb.vue` 用 `IntersectionObserver` 懒加载缩略图，避免一次性请求整页图片。
 - 平台差异集中在 `src-tauri/src/image/platform/`：每个平台实现 `Platform`（`id`、`matches`、`configure`），主流程只负责下载、校验与缓存。当前支持 `generic`、`manhuagui`、`jm`、`nhentai`。
 - 命令的 `platform` 参数可省略：省略时按 URL host 自动识别，未知 host 回退 `generic`；调用方已知平台时应显式传入，JM 等域名轮换的站点尤其应显式指定。
 - 命令校验响应（非 2xx、空响应、超过 32 MiB、非图片格式）后，用“平台 + 平台缓存版本 + 缓存用 URL”的 SHA-256 作为文件名；manhuagui 和 jm 会在计算 key 前去掉图片 URL 的 query（签名/过期参数不影响命中），但下载仍使用完整 URL，写入 `app_cache_dir()/images/<platform>/<hash>.<ext>`；同一 URL 在同一平台下再次请求会直接命中缓存。
@@ -186,7 +191,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 - 图片格式优先按魔数判断，文件扩展名决定资产协议返回的 MIME；新增格式时要同时更新 `ImageFormat` 的魔数、扩展名与 MIME 映射。
 - `CACHE_VERSION` 变化会让旧缓存自然失效；当前没有自动清理或容量上限，缓存会随浏览增长。
 - 检索与详情命令为 `search_comics(platform, query, page)` 与 `get_comic(platform, id)`。平台通过 `search_request`/`parse_search`/`detail_request`/`parse_detail` 构建 URL 并解析响应，共享的 `fetch_document` 负责请求、状态码与大小限制。
-- 搜索返回 `{ total, page_size, result: [{ id, title, thumb, extra }] }`，详情返回 `{ title, thumb, extra }`；`extra` 是平台扩展字段对象（camelCase），不要把公共字段塞进去。
+- 搜索返回 `{ total, page_size, result: [{ id, title, thumb, platform, extra }] }`，详情返回 `{ title, thumb, extra }`；`platform` 是判别字段，`extra` 是各平台强类型扩展字段对象（camelCase），不要把公共字段塞进去。搜索的 `extra` 在 Rust 侧是 `SearchExtra` 枚举，前端在 `src/api/comics.ts` 是判别联合；卡片不要退回 `Record<string, unknown>` 或 JSON 兜底。
 - 当前 `page_size`：manhuagui 10、jm 80、nhentai 取 API 的 `per_page`（通常 25）。前端类型与调用封装在 `src/api/comics.ts`，首页已接入。
 - JM 搜索可用，但 album 详情在部分网络环境会被 Cloudflare 返回 403；这不是解析错误，后续需要 Cookie/TLS 指纹/代理支持。
 
@@ -238,7 +243,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 | 修改远程抓取的站点、请求头或缓存策略 | `src-tauri/src/image/`、`src-tauri/tauri.conf.json`（资产协议 scope） |
 | 新增图片平台 | `src-tauri/src/image/platform/`（实现 trait、注册、host/header 与测试） |
 | 新增/修改平台搜索或详情 | `src-tauri/src/image/platform/`、`src-tauri/src/image/model.rs`、`src/api/comics.ts` |
-| 修改首页搜索/结果 UI | `src/views/HomeView.vue`、`src/components/ComicSearchBar.vue`、`src/components/ComicSearchResults.vue`、`src/components/ComicResultCard.vue`、`src/components/PlatformPicker.vue`、`src/composables/useComicSearch.ts`、`src/components/ComicThumb.vue`、`src/assets/platforms/`、`src/api/comics.ts` |
+| 修改首页搜索/结果 UI | `src/views/HomeView.vue`、`src/components/ComicSearchBar.vue`、`src/components/ComicSearchResults.vue`、`src/components/ComicResultCard.vue`、`src/components/result-cards/`、`src/components/PlatformPicker.vue`、`src/composables/useComicSearch.ts`、`src/components/ComicThumb.vue`、`src/assets/platforms/`、`src/api/comics.ts` |
 | 修改全局样式 | `src/styles/base.scss`；组件样式保持在组件内 |
 | 修改 Android 原生配置 | `src-tauri/gen/android/`（已跟踪，但大部分是生成内容，修改前要确认） |
 | 重新生成应用图标 | `src-tauri/icons/`，通过 `pnpm tauri icon <source>` 生成；不要手改 |
@@ -265,10 +270,10 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 
 1. 在 `src-tauri/src/image/platform/` 下新增模块，定义 `id()`、`matches()` 与 `configure()`（Referer、Accept-Language 等）。
 2. 需要检索/详情时再实现 `search_request`/`parse_search`/`detail_request`/`parse_detail`；HTML 用 `scraper`，JSON 用 `serde` 结构体。
-3. 在 `platform/mod.rs` 的 `PLATFORMS` 中注册；把 host 后缀、base URL 和 headers 放在该平台模块内。
+3. 在 `platform/mod.rs` 的 `PLATFORMS` 中注册；在 `model.rs` 的 `SearchPlatform`/`SearchExtra` 中注册平台判别与 extra 类型；把 host 后缀、base URL 和 headers 放在该平台模块内。
 4. 平台请求头或缓存语义变化时递增该平台的 `cache_version()`；id、公共字段名和 `extra` 结构保持稳定。若 URL query 只是签名/过期参数，实现 `cache_key_url` 在缓存键中去掉 query。
 5. 补 parser fixture 测试：真实 HTML/JSON 片段、URL 编码、total/page_size、thumb 绝对化、`extra` 字段。
-6. 前端同步更新 `src/api/comics.ts` 的 `ComicPlatform`，并在 `PlatformPicker.vue` 的平台列表中注册新平台、在 `ComicResultCard.vue` 中补充该平台的元信息；图标放到 `src/assets/platforms/`，优先使用平台站点资源；可按官方 favicon 的像素网格重绘 SVG，但不要凭空绘制。
+6. 前端同步更新 `src/api/comics.ts` 的 `ComicPlatform` 与各平台 `Extra`/`SearchItem` 类型，在 `PlatformPicker.vue` 的平台列表中注册新平台，在 `ComicResultCard.vue` 中增加分发分支，并在 `src/components/result-cards/` 新增该平台卡片；图标放到 `src/assets/platforms/`，优先使用平台站点资源；可按官方 favicon 的像素网格重绘 SVG，但不要凭空绘制。
 
 ### 新增路由
 
@@ -297,7 +302,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 
 ### 测试现状
 
-- Rust 测试覆盖错误契约（`src-tauri/src/error.rs`）以及图片缓存、HTTP 基础头、平台识别/请求头与三平台搜索/详情 parser fixture（`src-tauri/src/image/`），共 30 个测试。
+- Rust 测试覆盖错误契约（`src-tauri/src/error.rs`）以及图片缓存、HTTP 基础头、平台识别/请求头与三平台搜索/详情 parser fixture（`src-tauri/src/image/`），共 31 个测试。
 - 前端没有单元/E2E 测试框架（没有 Vitest、Playwright，也没有 `pnpm test`），仓库也没有 CI。不要声称存在并未运行的测试覆盖。如果新增测试体系，请在 `package.json` 中加脚本并同步更新本文件。
 
 ## 陷阱与刻意保留的现状

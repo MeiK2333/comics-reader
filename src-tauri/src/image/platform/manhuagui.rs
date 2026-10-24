@@ -4,11 +4,10 @@ use regex::Regex;
 use reqwest::RequestBuilder;
 use reqwest::header::{ACCEPT_LANGUAGE, REFERER};
 use scraper::{ElementRef, Html, Selector};
-use serde::Serialize;
 use url::Url;
 
 use crate::error::{AppError, Result};
-use crate::image::model::{ComicDetail, SearchItem, SearchResponse};
+use crate::image::model::{ComicDetail, ManhuaguiExtra, SearchExtra, SearchItem, SearchResponse};
 
 use super::{Platform, RequestSpec, absolute_url, collapse_whitespace, host_matches, numeric_id};
 
@@ -160,23 +159,6 @@ impl Platform for Manhuagui {
     }
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ManhuaguiExtra {
-    original_title: Option<String>,
-    authors: Vec<String>,
-    status: Option<String>,
-    latest_chapter: Option<String>,
-    updated_at: Option<String>,
-    year: Option<String>,
-    region: Option<String>,
-    categories: Vec<String>,
-    aliases: Vec<String>,
-    description: Option<String>,
-    score: Option<f32>,
-    rating_count: Option<u64>,
-}
-
 fn parse_search_item(item: ElementRef<'_>) -> Option<SearchItem> {
     let href = attr_of(item, "a.bcover", "href")?;
     let id = numeric_id(
@@ -208,12 +190,12 @@ fn parse_search_item(item: ElementRef<'_>) -> Option<SearchItem> {
             .and_then(|text| text.replace(',', "").parse().ok()),
     };
 
-    Some(SearchItem {
+    Some(SearchItem::new(
         id,
         title,
         thumb,
-        extra: serde_json::to_value(extra).ok()?,
-    })
+        SearchExtra::Manhuagui(extra),
+    ))
 }
 
 fn parse_status(
@@ -290,6 +272,7 @@ fn labeled_links(scope: ElementRef<'_>, label: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::image::model::SearchPlatform;
 
     const SEARCH_HTML: &str = r#"
 <div class="result-count">搜索“<strong>火影</strong>”共查找到 <strong>2</strong> 部漫画</div>
@@ -354,20 +337,22 @@ mod tests {
         assert_eq!(response.result.len(), 2);
 
         let first = &response.result[0];
+        assert_eq!(first.platform, SearchPlatform::Manhuagui);
         assert_eq!(first.id, "1");
         assert_eq!(first.title, "示例漫画");
         assert_eq!(first.thumb, "https://cf.mhgui.com/cpic/b/1.jpg");
-        assert_eq!(first.extra["authors"], serde_json::json!(["作者A"]));
-        assert_eq!(first.extra["status"], "连载中");
-        assert_eq!(first.extra["latestChapter"], "第12话");
-        assert_eq!(first.extra["updatedAt"], "2026-01-02 03:04");
-        assert_eq!(
-            first.extra["categories"],
-            serde_json::json!(["冒险", "奇幻"])
-        );
-        assert_eq!(first.extra["description"], "一个示例故事。");
-        assert_eq!(first.extra["score"], 8.5);
-        assert_eq!(first.extra["ratingCount"], 123);
+
+        let SearchExtra::Manhuagui(extra) = &first.extra else {
+            panic!("expected manhuagui search extra");
+        };
+        assert_eq!(extra.authors, ["作者A"]);
+        assert_eq!(extra.status.as_deref(), Some("连载中"));
+        assert_eq!(extra.latest_chapter.as_deref(), Some("第12话"));
+        assert_eq!(extra.updated_at.as_deref(), Some("2026-01-02 03:04"));
+        assert_eq!(extra.categories, ["冒险", "奇幻"]);
+        assert_eq!(extra.description.as_deref(), Some("一个示例故事。"));
+        assert_eq!(extra.score, Some(8.5));
+        assert_eq!(extra.rating_count, Some(123));
     }
 
     #[test]

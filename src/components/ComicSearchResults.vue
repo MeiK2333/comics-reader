@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import type { ComicPlatform, ComicSearchResult } from "../api/comics";
+import type { ComicSearchResult } from "../api/comics";
 import { useErrorMessage } from "../composables/useErrorMessage";
 import type { AppError } from "../errors";
 import { useAppI18n } from "../i18n";
 import ComicResultCard from "./ComicResultCard.vue";
 
 const props = defineProps<{
-  platform: ComicPlatform;
   loading: boolean;
   page: number;
   response: ComicSearchResult | null;
@@ -66,7 +65,6 @@ function changePage(next: number) {
             <ComicResultCard
               v-for="item in response.result"
               :key="item.id"
-              :platform="platform"
               :item="item"
             />
           </div>

@@ -6,11 +6,10 @@ use reqwest::RequestBuilder;
 use reqwest::header::{ACCEPT_LANGUAGE, REFERER};
 use scraper::{ElementRef, Html, Selector};
 use serde::Serialize;
-use serde_json::json;
 use url::Url;
 
 use crate::error::{AppError, Result};
-use crate::image::model::{ComicDetail, SearchItem, SearchResponse};
+use crate::image::model::{ComicDetail, JmExtra, SearchExtra, SearchItem, SearchResponse};
 
 use super::{Platform, RequestSpec, absolute_url, collapse_whitespace, host_matches, jm_id};
 
@@ -136,12 +135,12 @@ impl Platform for Jm {
                 .filter(|tag| !tag.is_empty())
                 .collect::<Vec<_>>();
 
-            result.push(SearchItem {
+            result.push(SearchItem::new(
                 id,
                 title,
                 thumb,
-                extra: json!({ "tags": tags }),
-            });
+                SearchExtra::Jm(JmExtra { tags }),
+            ));
         }
 
         Ok(SearchResponse {
@@ -200,7 +199,7 @@ impl Platform for Jm {
                 .and_then(|found| found.as_str().parse::<u32>().ok())
         });
 
-        let extra = JmExtra {
+        let extra = JmDetailExtra {
             authors: itemprop_links(root, "author", "author"),
             tags: itemprop_links(root, "genre", "tags"),
             works: itemprop_links(root, "author", "works"),
@@ -233,7 +232,7 @@ impl Platform for Jm {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct JmExtra {
+struct JmDetailExtra {
     authors: Vec<String>,
     tags: Vec<String>,
     works: Vec<String>,
@@ -306,6 +305,7 @@ fn attr_of(scope: ElementRef<'_>, css: &str, attr: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::image::model::SearchPlatform;
 
     const SEARCH_HTML: &str = r#"
 <span class="text-white">2</span> A漫.
@@ -352,10 +352,15 @@ mod tests {
         assert_eq!(response.result.len(), 2);
 
         let first = &response.result[0];
+        assert_eq!(first.platform, SearchPlatform::Jm);
         assert_eq!(first.id, "123");
         assert_eq!(first.title, "示例 & 漫画");
         assert_eq!(first.thumb, "https://cdn.example/1.jpg");
-        assert_eq!(first.extra["tags"], serde_json::json!(["标签A", "标签B"]));
+
+        let SearchExtra::Jm(extra) = &first.extra else {
+            panic!("expected jm search extra");
+        };
+        assert_eq!(extra.tags, ["标签A", "标签B"]);
     }
 
     #[test]

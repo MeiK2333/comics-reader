@@ -31,7 +31,6 @@ const {
 
     <ComicSearchResults
       v-if="hasSearched"
-      :platform="platform"
       :loading="loading"
       :page="page"
       :response="response"

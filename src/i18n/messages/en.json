@@ -31,7 +31,16 @@
       "total": "Results: {total}",
       "empty": "No comics found. Try another keyword.",
       "pages": "Pages: {count}",
-      "favorites": "Favorites: {count}"
+      "favorites": "Favorites: {count}",
+      "authors": "Authors: {names}",
+      "latestChapter": "Latest: {chapter}",
+      "updatedAt": "Updated: {date}",
+      "statusOngoing": "Ongoing",
+      "statusCompleted": "Completed",
+      "score": "★ {score}",
+      "ratings": "{count} ratings",
+      "noTags": "No tags",
+      "moreTags": "+{count}"
     }
   },
   "notFound": {

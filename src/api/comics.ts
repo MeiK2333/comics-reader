@@ -3,13 +3,66 @@ import { invoke } from "@tauri-apps/api/core";
 /** Platforms that implement keyword search and exact-id detail lookups. */
 export type ComicPlatform = "manhuagui" | "jm" | "nhentai";
 
-export interface ComicSearchItem {
+/** Search fields returned by manhuagui. `null` means the upstream value is absent. */
+export interface ManhuaguiExtra {
+  originalTitle: string | null;
+  authors: string[];
+  status: string | null;
+  latestChapter: string | null;
+  updatedAt: string | null;
+  year: string | null;
+  region: string | null;
+  categories: string[];
+  aliases: string[];
+  description: string | null;
+  score: number | null;
+  ratingCount: number | null;
+}
+
+export interface JmExtra {
+  tags: string[];
+}
+
+export interface NhentaiExtra {
+  mediaId: string;
+  japaneseTitle: string | null;
+  thumbnailWidth: number | null;
+  thumbnailHeight: number | null;
+  numPages: number | null;
+  numFavorites: number | null;
+  tagIds: number[];
+  blacklisted: boolean | null;
+}
+
+interface SearchItemBase {
   id: string;
   title: string;
   thumb: string;
-  /** Platform-specific fields; narrow this at the call site. */
-  extra: Record<string, unknown>;
 }
+
+export type ManhuaguiSearchItem = SearchItemBase & {
+  platform: "manhuagui";
+  extra: ManhuaguiExtra;
+};
+
+export type JmSearchItem = SearchItemBase & {
+  platform: "jm";
+  extra: JmExtra;
+};
+
+export type NhentaiSearchItem = SearchItemBase & {
+  platform: "nhentai";
+  extra: NhentaiExtra;
+};
+
+/**
+ * `platform` is the discriminant: each branch carries the exact fields its
+ * parser produced, so cards never read an unstructured JSON bag.
+ */
+export type ComicSearchItem =
+  | ManhuaguiSearchItem
+  | JmSearchItem
+  | NhentaiSearchItem;
 
 export interface ComicSearchResult {
   total: number;

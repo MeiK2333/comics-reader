@@ -4,7 +4,9 @@ use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::error::Result;
-use crate::image::model::{ComicDetail, SearchItem, SearchResponse};
+use crate::image::model::{
+    ComicDetail, NhentaiSearchExtra, SearchExtra, SearchItem, SearchResponse,
+};
 
 use super::{Platform, RequestSpec, host_matches, numeric_id};
 
@@ -66,12 +68,12 @@ impl Platform for Nhentai {
                     blacklisted: item.blacklisted,
                 };
 
-                Ok(SearchItem {
-                    id: item.id.to_string(),
+                Ok(SearchItem::new(
+                    item.id.to_string(),
                     title,
                     thumb,
-                    extra: serde_json::to_value(extra)?,
-                })
+                    SearchExtra::Nhentai(extra),
+                ))
             })
             .collect::<Result<Vec<_>>>()?;
 
@@ -227,19 +229,6 @@ struct ApiTag {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct NhentaiSearchExtra {
-    media_id: String,
-    japanese_title: Option<String>,
-    thumbnail_width: Option<u32>,
-    thumbnail_height: Option<u32>,
-    num_pages: Option<u32>,
-    num_favorites: Option<u32>,
-    tag_ids: Vec<u64>,
-    blacklisted: Option<bool>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
 struct NhentaiDetailExtra {
     media_id: String,
     japanese_title: Option<String>,
@@ -271,6 +260,7 @@ fn cover_url(path: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::image::model::SearchPlatform;
 
     const SEARCH_JSON: &str = r#"
 {
@@ -342,15 +332,20 @@ mod tests {
         assert_eq!(response.result.len(), 1);
 
         let first = &response.result[0];
+        assert_eq!(first.platform, SearchPlatform::Nhentai);
         assert_eq!(first.id, "42");
         assert_eq!(first.title, "Example Gallery");
         assert_eq!(
             first.thumb,
             "https://t.nhentai.net/galleries/100/thumb.webp"
         );
-        assert_eq!(first.extra["mediaId"], "100");
-        assert_eq!(first.extra["japaneseTitle"], "サンプル");
-        assert_eq!(first.extra["tagIds"], serde_json::json!([1, 2]));
+
+        let SearchExtra::Nhentai(extra) = &first.extra else {
+            panic!("expected nhentai search extra");
+        };
+        assert_eq!(extra.media_id, "100");
+        assert_eq!(extra.japanese_title.as_deref(), Some("サンプル"));
+        assert_eq!(extra.tag_ids, [1, 2]);
     }
 
     #[test]
