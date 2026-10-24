@@ -64,6 +64,7 @@
 │  ├─ App.vue                    Naive UI Provider 与 RouterView 外壳
 │  ├─ components/
 │  │  └─ ComicThumb.vue          结果缩略图：Rust 缓存 + 资产协议
+│  ├─ assets/platforms/          平台真实图标（favicon/logo；PNG 或按像素重绘的 SVG）
 │  ├─ views/
 │  │  ├─ HomeView.vue            搜索页：平台选择、搜索、结果网格
 │  │  └─ NotFoundView.vue        404 页面
@@ -232,7 +233,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 | 修改远程抓取的站点、请求头或缓存策略 | `src-tauri/src/image/`、`src-tauri/tauri.conf.json`（资产协议 scope） |
 | 新增图片平台 | `src-tauri/src/image/platform/`（实现 trait、注册、host/header 与测试） |
 | 新增/修改平台搜索或详情 | `src-tauri/src/image/platform/`、`src-tauri/src/image/model.rs`、`src/api/comics.ts` |
-| 修改首页搜索/结果 UI | `src/views/HomeView.vue`、`src/components/ComicThumb.vue`、`src/api/comics.ts` |
+| 修改首页搜索/结果 UI | `src/views/HomeView.vue`、`src/components/ComicThumb.vue`、`src/assets/platforms/`、`src/api/comics.ts` |
 | 修改全局样式 | `src/styles/base.scss`；组件样式保持在组件内 |
 | 修改 Android 原生配置 | `src-tauri/gen/android/`（已跟踪，但大部分是生成内容，修改前要确认） |
 | 重新生成应用图标 | `src-tauri/icons/`，通过 `pnpm tauri icon <source>` 生成；不要手改 |
@@ -262,7 +263,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 3. 在 `platform/mod.rs` 的 `PLATFORMS` 中注册；把 host 后缀、base URL 和 headers 放在该平台模块内。
 4. 平台请求头或缓存语义变化时递增该平台的 `cache_version()`；id、公共字段名和 `extra` 结构保持稳定。若 URL query 只是签名/过期参数，实现 `cache_key_url` 在缓存键中去掉 query。
 5. 补 parser fixture 测试：真实 HTML/JSON 片段、URL 编码、total/page_size、thumb 绝对化、`extra` 字段。
-6. 前端同步更新 `src/api/comics.ts` 的 `ComicPlatform` 与 `HomeView.vue` 的平台按钮。
+6. 前端同步更新 `src/api/comics.ts` 的 `ComicPlatform`，并在 `HomeView.vue` 的平台图标按钮中加入新平台；图标放到 `src/assets/platforms/`，优先使用平台站点资源；可按官方 favicon 的像素网格重绘 SVG，但不要凭空绘制。
 
 ### 新增路由
 

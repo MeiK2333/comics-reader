@@ -21,10 +21,13 @@
   },
   "home": {
     "search": {
-      "subtitle": "Search comics across manhuagui, JM and nhentai.",
-      "placeholder": "Search comics...",
       "submit": "Search",
       "platform": "Platform",
+      "platforms": {
+        "manhuagui": "Manhuagui",
+        "jm": "JM",
+        "nhentai": "nhentai"
+      },
       "total": "Results: {total}",
       "empty": "No comics found. Try another keyword.",
       "pages": "Pages: {count}",

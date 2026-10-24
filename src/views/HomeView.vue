@@ -1,27 +1,75 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, h, ref } from "vue";
+import type { DropdownOption } from "naive-ui";
 import {
   searchComics,
   type ComicPlatform,
   type ComicSearchItem,
   type ComicSearchResult,
 } from "../api/comics";
+import manhuaguiIcon from "../assets/platforms/manhuagui.svg";
+import jmIcon from "../assets/platforms/jm.png";
+import nhentaiIcon from "../assets/platforms/nhentai.svg";
 import ComicThumb from "../components/ComicThumb.vue";
+import SearchIcon from "../components/SearchIcon.vue";
 import { useErrorMessage } from "../composables/useErrorMessage";
 import { toAppError } from "../errors";
 import type { AppError } from "../errors";
 import { useAppI18n } from "../i18n";
+import type { MessageKey } from "../i18n";
 
 const { t } = useAppI18n();
 const errorText = useErrorMessage();
 
-const platforms: ReadonlyArray<{ label: string; value: ComicPlatform }> = [
-  { label: "Manhuagui", value: "manhuagui" },
-  { label: "JM", value: "jm" },
-  { label: "nhentai", value: "nhentai" },
+const platforms: ReadonlyArray<{
+  icon: string;
+  nameKey: MessageKey;
+  value: ComicPlatform;
+}> = [
+  {
+    icon: manhuaguiIcon,
+    nameKey: "home.search.platforms.manhuagui",
+    value: "manhuagui",
+  },
+  { icon: jmIcon, nameKey: "home.search.platforms.jm", value: "jm" },
+  {
+    icon: nhentaiIcon,
+    nameKey: "home.search.platforms.nhentai",
+    value: "nhentai",
+  },
 ];
 
+const platformOptions = computed<DropdownOption[]>(() =>
+  platforms.map((option) => ({
+    key: option.value,
+    label: t(option.nameKey),
+    icon: () => {
+      const nhentai = option.value === "nhentai";
+      return h("img", {
+        src: option.icon,
+        alt: "",
+        style: {
+          width: "20px",
+          height: "20px",
+          borderRadius: "4px",
+          objectFit: "contain",
+          boxSizing: "border-box",
+          background: nhentai ? "#0c0c0c" : "transparent",
+          padding: nhentai ? "3px 2px" : "0",
+        },
+      });
+    },
+  })),
+);
+
 const platform = ref<ComicPlatform>("manhuagui");
+const selectedPlatform = computed(
+  () =>
+    platforms.find((option) => option.value === platform.value) ?? platforms[0],
+);
+const platformTriggerLabel = computed(
+  () => `${t("home.search.platform")}: ${t(selectedPlatform.value.nameKey)}`,
+);
 const query = ref("");
 const page = ref(1);
 const loading = ref(false);
@@ -97,6 +145,13 @@ function selectPlatform(next: ComicPlatform) {
   loading.value = false;
 }
 
+function selectPlatformFromDropdown(key: string | number) {
+  const next = platforms.find((option) => option.value === String(key));
+  if (next) {
+    selectPlatform(next.value);
+  }
+}
+
 function changePage(next: number) {
   if (next === page.value) {
     return;
@@ -148,28 +203,42 @@ function metaFor(item: ComicSearchItem): string[] {
 <template>
   <main class="home" :class="{ 'has-results': hasSearched }">
     <section class="hero">
-      <h1 class="brand">{{ t("app.name") }}</h1>
-      <p class="subtitle">{{ t("home.search.subtitle") }}</p>
-
-      <div class="platforms" role="group" :aria-label="t('home.search.platform')">
-        <NButton
-          v-for="option in platforms"
-          :key="option.value"
-          round
-          :type="platform === option.value ? 'primary' : 'default'"
-          @click="selectPlatform(option.value)"
-        >
-          {{ option.label }}
-        </NButton>
-      </div>
-
       <form class="search-form" @submit.prevent="search">
+        <NDropdown
+          trigger="click"
+          :options="platformOptions"
+          placement="bottom-start"
+          @select="selectPlatformFromDropdown"
+        >
+          <NButton
+            attr-type="button"
+            quaternary
+            circle
+            size="large"
+            class="platform-trigger"
+            :aria-label="platformTriggerLabel"
+          >
+            <template #icon>
+              <img
+                class="platform-trigger-icon"
+                :class="{
+                  'platform-trigger-icon--nhentai':
+                    selectedPlatform.value === 'nhentai',
+                }"
+                :src="selectedPlatform.icon"
+                alt=""
+                draggable="false"
+              />
+            </template>
+          </NButton>
+        </NDropdown>
         <NInput
           v-model:value="query"
           class="search-input"
           size="large"
           :bordered="false"
-          :placeholder="t('home.search.placeholder')"
+          placeholder=""
+          :input-props="{ 'aria-label': t('home.search.submit') }"
           :disabled="loading"
           clearable
           autofocus
@@ -177,13 +246,17 @@ function metaFor(item: ComicSearchItem): string[] {
         <NButton
           attr-type="submit"
           type="primary"
+          quaternary
+          circle
           size="large"
-          round
-          class="search-submit"
+          class="search-action"
           :loading="loading"
           :disabled="!query.trim()"
+          :aria-label="t('home.search.submit')"
         >
-          {{ t("home.search.submit") }}
+          <template #icon>
+            <SearchIcon />
+          </template>
         </NButton>
       </form>
     </section>
@@ -259,7 +332,9 @@ function metaFor(item: ComicSearchItem): string[] {
 
 <style scoped>
 .home {
-  width: min(1100px, 100%);
+  /* Account for the horizontal padding so a narrow window does not add a
+     page-level horizontal scrollbar. */
+  width: min(1100px, calc(100% - 2.5rem));
   margin: 0 auto;
   padding: 2rem 1.25rem 4rem;
 }
@@ -286,78 +361,73 @@ function metaFor(item: ComicSearchItem): string[] {
   text-align: left;
 }
 
-.home.has-results .brand {
-  font-size: 1.75rem;
-  letter-spacing: -0.02em;
-}
-
-.home.has-results .subtitle {
-  display: none;
-}
-
-.home.has-results .platforms {
-  justify-content: flex-start;
-}
-
 .home.has-results .search-form {
   align-self: flex-start;
 }
 
-.brand {
-  margin: 0;
-  font-size: clamp(2.5rem, 7vw, 4.5rem);
-  font-weight: 700;
-  letter-spacing: -0.04em;
+.platform-trigger {
+  flex: none;
 }
 
-.subtitle {
-  max-width: 36rem;
-  margin: 0;
-  opacity: 0.65;
+.platform-trigger-icon {
+  display: block;
+  width: 30px;
+  height: 30px;
+  border-radius: 4px;
+  object-fit: contain;
 }
 
-.platforms {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 0.5rem;
-  margin-top: 0.25rem;
+.platform-trigger-icon--nhentai {
+  padding: 3px 2px;
+  border-radius: 50%;
+  background: #0c0c0c;
+  box-sizing: border-box;
+}
+
+.platform-trigger :deep(.n-button__icon),
+.search-action :deep(.n-button__icon) {
+  margin-right: 0;
 }
 
 .search-form {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.1rem;
   align-items: center;
   width: min(100%, 760px);
   margin-top: 0.5rem;
-  padding: 0.35rem 0.35rem 0.35rem 1rem;
+  padding: 0.35rem;
   border: 1px solid rgba(127, 127, 127, 0.28);
   border-radius: 999px;
   background: rgba(127, 127, 127, 0.07);
-  transition:
-    box-shadow 0.18s ease,
-    border-color 0.18s ease;
-}
-
-.search-form:focus-within {
-  border-color: rgba(127, 127, 127, 0.45);
-  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.12);
 }
 
 .search-input {
   flex: 1;
   min-width: 0;
   text-align: left;
-  --n-color: transparent;
-  --n-color-focus: transparent;
+  background-color: transparent !important;
+  box-shadow: none !important;
+  --n-color: transparent !important;
+  --n-color-focus: transparent !important;
+  --n-padding-left: 3px !important;
+  --n-padding-right: 3px !important;
 }
 
-.search-input :deep(.n-input__input-el),
-.search-input :deep(.n-input__placeholder) {
+.search-input :deep(.n-input-wrapper) {
+  padding-left: 3px !important;
+  padding-right: 3px !important;
+}
+
+.search-input :deep(.n-input__border),
+.search-input :deep(.n-input__state-border) {
+  display: none !important;
+}
+
+.search-input :deep(.n-input__input-el) {
   text-align: left;
 }
 
-.search-submit {
+.search-action {
   flex: none;
 }
 
@@ -424,17 +494,6 @@ function metaFor(item: ComicSearchItem): string[] {
 
   .hero {
     min-height: 45vh;
-  }
-
-  .search-form {
-    flex-direction: column;
-    padding: 0.5rem;
-    border-radius: 1rem;
-  }
-
-  .search-input,
-  .search-submit {
-    width: 100%;
   }
 }
 </style>

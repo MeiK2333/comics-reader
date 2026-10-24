@@ -14,7 +14,7 @@ export type LocalePreference = "system" | AppLocale;
 /** English is the master schema; every other catalog must mirror its keys. */
 export type MessageSchema = typeof en;
 
-/** Dotted path of every message key, e.g. `home.search.placeholder`. */
+/** Dotted path of every message key, e.g. `home.search.submit`. */
 export type MessageKey = PickupPaths<MessageSchema>;
 
 type MessageParams = Record<string, string | number>;

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Pixel-accurate redraw of https://www.manhuagui.com/favicon.ico -->
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" shape-rendering="crispEdges">
+  <path fill="#000000" d="M0 7h16v1h-16zM1 8h1v1h-1zM14 8h1v1h-1zM13 9h2v1h-2zM5 10h2v1h-2zM9 10h2v1h-2zM13 10h2v1h-2zM6 11h1v1h-1zM9 11h1v1h-1zM13 11h2v1h-2zM2 12h1v1h-1zM13 12h2v1h-2zM1 13h3v1h-3zM12 13h3v1h-3zM2 14h12v1h-12zM3 15h10v1h-10z"/>
+  <path fill="#ffffff" d="M4 8h9v1h-9zM3 9h10v1h-10zM3 10h2v1h-2zM7 10h2v1h-2zM11 10h2v1h-2zM3 11h2v1h-2zM7 11h2v1h-2zM11 11h2v1h-2zM3 12h10v1h-10zM4 13h8v1h-8z"/>
+  <path fill="#575757" d="M3 0h12v1h-12zM2 1h13v1h-13z"/>
+  <path fill="#010101" d="M1 6h14v1h-14zM2 8h2v1h-2zM13 8h1v1h-1zM1 9h2v1h-2zM1 10h2v1h-2zM1 11h2v1h-2zM1 12h1v1h-1z"/>
+  <path fill="#3b3b3b" d="M1 1h1v1h-1zM1 2h3v1h-3zM13 2h2v1h-2zM1 3h2v1h-2zM13 3h2v1h-2zM1 4h2v1h-2zM13 4h2v1h-2zM1 5h2v1h-2zM13 5h2v1h-2zM0 6h1v1h-1zM15 6h1v1h-1zM0 8h1v1h-1zM15 8h1v1h-1zM5 11h1v1h-1zM10 11h1v1h-1z"/>
+  <path fill="#5fa1cf" d="M4 3h8v1h-8zM4 4h8v1h-8z"/>
+  <path fill="#3480b4" d="M12 2h1v1h-1zM12 3h1v1h-1zM12 4h1v1h-1zM4 5h9v1h-9z"/>
+  <path fill="#9bcff2" d="M4 2h8v1h-8zM3 3h1v1h-1zM3 4h1v1h-1zM3 5h1v1h-1z"/>
+</svg>

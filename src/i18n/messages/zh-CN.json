@@ -21,10 +21,13 @@
   },
   "home": {
     "search": {
-      "subtitle": "在 manhuagui、JM 和 nhentai 中搜索漫画。",
-      "placeholder": "搜索漫画……",
       "submit": "搜索",
       "platform": "平台",
+      "platforms": {
+        "manhuagui": "漫画柜",
+        "jm": "JM",
+        "nhentai": "nhentai"
+      },
       "total": "共 {total} 个结果",
       "empty": "没有找到漫画，换个关键词试试。",
       "pages": "页数：{count}",
