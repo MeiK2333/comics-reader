@@ -10,6 +10,10 @@ import { toAppError } from "../errors";
 const ERROR_MESSAGE_KEYS: Record<ErrorCode, MessageKey> = {
   invalidInput: "errors.invalidInput",
   network: "errors.network",
+  httpStatus: "errors.httpStatus",
+  emptyResponse: "errors.emptyResponse",
+  notImage: "errors.notImage",
+  tooLarge: "errors.tooLarge",
   notFound: "errors.notFound",
   io: "errors.io",
   json: "errors.json",

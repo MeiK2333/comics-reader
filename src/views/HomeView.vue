@@ -1,44 +1,33 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref } from "vue";
-import { invoke } from "@tauri-apps/api/core";
-import { fetch as httpFetch } from "@tauri-apps/plugin-http";
-import { useMessage } from "naive-ui";
+import { computed, ref } from "vue";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { useErrorMessage } from "../composables/useErrorMessage";
 import { toAppError } from "../errors";
+import type { AppError } from "../errors";
 import { useAppI18n } from "../i18n";
 import type { LocalePreference } from "../i18n";
 import { useSettingsStore } from "../stores/settings";
 import type { ThemeMode } from "../stores/settings";
 
 const { t } = useAppI18n();
-const message = useMessage();
 const errorText = useErrorMessage();
 const settings = useSettingsStore();
-
-const greetName = ref("");
-const name = ref("");
 
 const imageUrl = ref("");
 const imageLoading = ref(false);
 const imageSrc = ref("");
-let imageObjectUrl = "";
 
-type ImageErrorDetail =
-  | { code: "http"; status: number }
-  | { code: "empty" }
-  | { code: "notImage"; contentType: string }
-  | { code: "display" }
-  | { code: "unknown"; message: string };
-
-class ImageLoadError extends Error {
-  constructor(readonly detail: ImageErrorDetail) {
-    super(detail.code);
-  }
+interface CachedImage {
+  path: string;
+  contentType: string;
+  byteLength: number;
+  fromCache: boolean;
 }
 
-// Store the failure reason instead of a rendered string so the alert follows
-// language changes.
-const imageError = ref<ImageErrorDetail | null>(null);
+// Keep the structured error so the alert follows language changes; the
+// display failure has no Rust code because it happens inside the webview.
+const imageError = ref<AppError | null>(null);
+const imageDisplayError = ref(false);
 
 const themeOptions = computed<{ label: string; value: ThemeMode }[]>(() => [
   { label: t("home.settings.theme.options.system"), value: "system" },
@@ -55,64 +44,11 @@ const localeOptions = computed<{ label: string; value: LocalePreference }[]>(
 );
 
 const imageErrorMessage = computed(() => {
-  const detail = imageError.value;
-  if (!detail) {
-    return "";
+  if (imageDisplayError.value) {
+    return t("home.image.errors.display");
   }
-
-  switch (detail.code) {
-    case "http":
-      return t("home.image.errors.http", { status: detail.status });
-    case "empty":
-      return t("home.image.errors.empty");
-    case "notImage":
-      return t("home.image.errors.notImage", { type: detail.contentType });
-    case "display":
-      return t("home.image.errors.display");
-    case "unknown":
-      return t("home.image.errors.unknown", { message: detail.message });
-  }
+  return imageError.value ? errorText(imageError.value) : "";
 });
-
-async function greet() {
-  try {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    greetName.value = await invoke<string>("greet", { name: name.value });
-  } catch (error) {
-    message.error(errorText(error));
-  }
-}
-
-function revokeImage() {
-  if (imageObjectUrl) {
-    URL.revokeObjectURL(imageObjectUrl);
-    imageObjectUrl = "";
-  }
-}
-
-async function showImage(blob: Blob) {
-  const previous = imageObjectUrl;
-  imageObjectUrl = URL.createObjectURL(blob);
-  imageSrc.value = imageObjectUrl;
-
-  // Let Vue swap the <img> source before releasing the previous blob URL,
-  // otherwise the browser can report a load error for the old image.
-  await nextTick();
-  if (previous) {
-    URL.revokeObjectURL(previous);
-  }
-}
-
-async function fetchImage(url: string) {
-  // Use the Tauri HTTP plugin: it is not subject to CORS and its allowed
-  // origins are configured in the capability file.
-  return httpFetch(url, {
-    headers: {
-      Referer: "https://www.manhuagui.com/",
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36"
-    }
-  });
-}
 
 async function loadImage() {
   const url = imageUrl.value.trim();
@@ -122,50 +58,28 @@ async function loadImage() {
 
   imageLoading.value = true;
   imageError.value = null;
+  imageDisplayError.value = false;
+  imageSrc.value = "";
   try {
-    const response = await fetchImage(url);
-    if (!response.ok) {
-      throw new ImageLoadError({ code: "http", status: response.status });
-    }
-
-    const blob = await response.blob();
-    if (blob.size === 0) {
-      throw new ImageLoadError({ code: "empty" });
-    }
-    if (blob.type && !blob.type.startsWith("image/")) {
-      throw new ImageLoadError({ code: "notImage", contentType: blob.type });
-    }
-
-    await showImage(blob);
+    // Rust downloads and caches the image; the asset protocol then serves the
+    // cached file, so the webview never requests the remote host directly.
+    const cached = await invoke<CachedImage>("fetch_image", { url });
+    imageSrc.value = convertFileSrc(cached.path);
   } catch (error) {
-    imageError.value =
-      error instanceof ImageLoadError
-        ? error.detail
-        : { code: "unknown", message: toAppError(error).message };
+    imageError.value = toAppError(error);
   } finally {
     imageLoading.value = false;
   }
 }
 
 function onImageError() {
-  imageError.value = { code: "display" };
-  revokeImage();
+  imageDisplayError.value = true;
   imageSrc.value = "";
 }
-
-onBeforeUnmount(revokeImage);
 </script>
 
 <template>
   <main class="container">
-    <form class="greet" @submit.prevent="greet">
-      <NInput v-model:value="name" class="greet-input" :placeholder="t('home.greet.placeholder')" />
-      <NButton attr-type="submit" type="primary">
-        {{ t("home.greet.submit") }}
-      </NButton>
-    </form>
-    <p>{{ greetName ? t("home.greet.result", { name: greetName }) : "" }}</p>
-
     <NCard class="image-tester" :title="t('home.image.title')" size="small">
       <form class="image-form" @submit.prevent="loadImage">
         <NInput v-model:value="imageUrl" class="image-url" :placeholder="t('home.image.placeholder')" />

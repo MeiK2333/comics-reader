@@ -8,8 +8,7 @@
 
 当前界面仍是脚手架，还不是完整的阅读器：
 
-- `greet` 命令用于演示 Vue ↔ Rust 的 IPC 链路；
-- 图片 URL 测试器通过 Tauri HTTP 插件抓取远程图片，并硬编码了 `Referer`，用于 manhuagui 等做了防盗链的站点；
+- 图片 URL 测试器由 Rust 命令抓取远程图片并缓存到应用缓存目录，前端通过资产协议读取缓存文件；请求附带 manhuagui 等站点防盗链所需的 `Referer`；
 - 主题与语言设置保存在 webview 本地。
 
 不要假设项目里已经有漫画库、章节浏览、下载器、数据库或阅读器引擎；这些都属于待实现的新功能。
@@ -19,7 +18,7 @@
 ### 技术栈
 
 - **前端：** Vue 3.5（`<script setup>`）、Vue Router 4（hash 路由）、Pinia 4 + `pinia-plugin-persistedstate`、vue-i18n 11、Naive UI 2（自动导入）、Sass、TypeScript 6。
-- **后端：** Rust edition 2024、Tauri 2、`thiserror` 2、Tauri 插件 `http`（启用 `unsafe-headers`）与 `opener`。
+- **后端：** Rust edition 2024、Tauri 2（启用 `protocol-asset`）、`reqwest`（rustls）负责抓取、`sha2` 生成缓存键、`thiserror` 2、Tauri 插件 `opener`。
 - **工具链：** pnpm（单包项目，不是 monorepo）、Vite 8、`vue-tsc`。
 - **平台：** Windows/macOS/Linux 桌面端。Android 工程已在 `src-tauri/gen/android` 初始化；iOS 尚未初始化。
 
@@ -63,7 +62,7 @@
 │  ├─ main.ts                    启动：Pinia、i18n、router；挂载前应用主题/语言
 │  ├─ App.vue                    Naive UI Provider 与 RouterView 外壳
 │  ├─ views/
-│  │  ├─ HomeView.vue            问候表单、图片测试器、主题/语言设置
+│  │  ├─ HomeView.vue            图片测试器、主题/语言设置
 │  │  └─ NotFoundView.vue        404 页面
 │  ├─ router/index.ts            Hash 路由、路由元数据、原生窗口标题
 │  ├─ stores/
@@ -82,8 +81,9 @@
 ├─ src-tauri/
 │  ├─ src/lib.rs                 Tauri Builder、命令注册、插件初始化
 │  ├─ src/error.rs               AppError 序列化、错误码、测试
+│  ├─ src/image_cache.rs         远程图片下载、校验与磁盘缓存
 │  ├─ src/main.rs                桌面端二进制入口
-│  ├─ capabilities/default.json  窗口权限（HTTP、标题、opener）
+│  ├─ capabilities/default.json  窗口权限（标题、opener）
 │  ├─ tauri.conf.json            窗口、构建、安全与打包配置
 │  ├─ icons/                     Tauri 生成的应用图标
 │  └─ gen/
@@ -108,7 +108,7 @@
 
 ### 分层
 
-- Vue UI 只通过 Tauri JS API 与系统交互：`@tauri-apps/api/core` 的 `invoke`、plugin-http 以及窗口 API。
+- Vue UI 只通过 Tauri JS API 与系统交互：`@tauri-apps/api/core` 的 `invoke`、`convertFileSrc` 以及窗口 API。
 - Rust 命令返回数据或类型化错误。**面向用户的文案只放在前端语言包中**，绝不放在 Rust 命令返回值里。
 - 设置保存在 webview 的 `localStorage` 中，键名为 `comics-reader:<store-id>`；Rust 侧不持有这些设置。
 - 路由使用 `createWebHashHistory()`。不要在未处理 Tauri webview 路由回退的情况下改成 web history。
@@ -120,7 +120,7 @@
 Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 
 ```json
-{ "code": "invalidInput", "message": "invalid `name`: must not be empty", "details": { "field": "name" } }
+{ "code": "invalidInput", "message": "invalid `url`: scheme must be http or https", "details": { "field": "url" } }
 ```
 
 `code` 是稳定、机器可读的标识；`message` 是供日志与兜底展示的技术英文；`details` 是作为 i18n 参数使用的原始上下文。
@@ -139,6 +139,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 - 命令不要返回裸字符串，也不要 panic；应新增 `AppError` 变体。
 - 只加 Rust 变体而不加前端映射时，运行时会回退为 `"unknown"`。必须在同一次改动中更新所有层。
 - 序列化后的 payload 结构若有变化，必须同步更新 `error.rs` 中的单元测试。
+- 图片抓取使用 `httpStatus`、`emptyResponse`、`notImage`、`tooLarge` 四个错误码；`details` 分别带 `url`、`status`、`contentType`、`limit`。
 
 ### i18n 契约
 
@@ -155,13 +156,14 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 - 给 `SettingsState` 新增字段会自动持久化，老用户通常会回落到 store 的初始值。重命名或删除已持久化字段则需要迁移，否则旧数据会被静默忽略。
 - `useTheme()` 与 `useLocale()` 只在 shell 层调用一次。其他组件直接读 `useSettingsStore()`；重复调用 `useTheme()` 会重复注册 media query 监听器。
 
-### 远程 HTTP 与图片
+### 远程 HTTP 与图片缓存
 
-- `HomeView.vue` 使用 `@tauri-apps/plugin-http` 的 `fetch`，而不是浏览器 `fetch`，因此不受 CORS 限制。
-- Rust 依赖启用了 `unsafe-headers`，因为图片站点可能要求 `Referer` / `User-Agent`。只要还在使用这些请求头，就不要移除该 feature。
-- capability 文件允许所有 `http://*:*` 与 `https://*:*` 来源，以支持用户输入任意图片 URL。这是当前有意的宽松配置；如果产品不再需要任意站点，应收窄范围。
-- 保留 `HomeView.vue` 中的 object URL 生命周期：先创建新 URL，等 Vue 完成 `<img>` 切换后再释放旧 URL；组件卸载时也要释放。
-- 显示前要校验响应：非 2xx 状态、空 blob、非图片 MIME 类型都已有显式处理。
+- 图片抓取全部在 Rust 中完成：`HomeView.vue` 调用 `fetch_image` 命令（`src-tauri/src/image_cache.rs`），由 `reqwest` 携带 `Referer` / `User-Agent` 请求远程图片，webview 不再直接访问图片站点。
+- 命令校验响应（非 2xx、空响应、超过 32 MiB、非图片格式）后，用 URL 的 SHA-256 作为文件名写入 `app_cache_dir()/images/<hash>.<ext>`；同一 URL 再次请求会直接命中缓存，不再联网。
+- 前端用 `convertFileSrc(cached.path)` 生成资产协议 URL 交给 `<img>`，从本地缓存目录读取图片。不要再改回 blob/object URL 或浏览器 `fetch`。
+- 资产协议需要三处同时成立：`tauri` 的 `protocol-asset` feature、`tauri.conf.json` 的 `app.security.assetProtocol.enable`、覆盖 `$APPCACHE/images/**` 的 scope。缺任一项通常表现为图片 403 或空白。
+- 图片格式优先按魔数判断，文件扩展名决定资产协议返回的 MIME；新增格式时要同时更新 `ImageFormat` 的魔数、扩展名与 MIME 映射。
+- `CACHE_VERSION` 变化会让旧缓存自然失效；当前没有自动清理或容量上限，缓存会随浏览增长。
 
 ## 编码约定
 
@@ -169,12 +171,12 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 
 - 使用 `<script setup lang="ts">` 与 Composition API。组件保持职责单一；可复用逻辑抽到 `src/composables/use*.ts`。
 - TypeScript 开启了 strict、`noUnusedLocals` 与 `noUnusedParameters`。不要留下未使用的 import 或变量。
-- 避免 `any`。未知输入用 `unknown` + 类型守卫（参考 `src/errors.ts`），或用可辨识联合（参考 `ImageErrorDetail`）。
+- 避免 `any`。未知输入用 `unknown` + 类型守卫（参考 `src/errors.ts`）。
 - 仅类型导入使用 `import type`。保持现有 import 分组：Vue、Tauri、Naive UI、本地模块。
 - 解构响应式 store 状态时使用 `storeToRefs()`。
 - 依赖设置或语言的值用 `computed`，确保变化时重新计算。下拉选项与消息应在 `computed` 中构造，不要在模块顶层构造。
 - 异步逻辑使用 `try` / `catch` / `finally`，并重置 loading 标记；错误通过 `useErrorMessage()` 呈现。
-- 在 `onBeforeUnmount` / `onScopeDispose` 中清理监听器、定时器与 object URL。
+- 在 `onBeforeUnmount` / `onScopeDispose` 中清理监听器与定时器。
 - 只有确实要忽略 Promise 时才使用 `void promise.catch(...)`，参考 `router/index.ts`。
 
 ### Rust
@@ -194,7 +196,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 
 ### 注释
 
-本仓库的注释解释**为什么**，而不是复述代码在做什么。请沿用这种风格：在不易理解的决定旁写简短、完整的句子（例如 hydration 顺序、object URL 时序、capability 原因）。不要给显而易见的代码加旁白。
+本仓库的注释解释**为什么**，而不是复述代码在做什么。请沿用这种风格：在不易理解的决定旁写简短、完整的句子（例如 hydration 顺序、缓存失效、资产协议 scope、capability 原因）。不要给显而易见的代码加旁白。
 
 ## 修改位置速查
 
@@ -208,7 +210,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 | 修改窗口权限 | `src-tauri/capabilities/default.json` |
 | 修改窗口/构建/打包配置 | `src-tauri/tauri.conf.json` |
 | 新增 Tauri 插件 | `src-tauri/Cargo.toml`、`src-tauri/src/lib.rs`、`package.json`（若需要 JS API）、capabilities |
-| 修改远程抓取的站点或请求头 | `src/views/HomeView.vue`、`capabilities/default.json`、`Cargo.toml` |
+| 修改远程抓取的站点、请求头或缓存策略 | `src-tauri/src/image_cache.rs`、`src-tauri/tauri.conf.json`（资产协议 scope） |
 | 修改全局样式 | `src/styles/base.scss`；组件样式保持在组件内 |
 | 修改 Android 原生配置 | `src-tauri/gen/android/`（已跟踪，但大部分是生成内容，修改前要确认） |
 | 重新生成应用图标 | `src-tauri/icons/`，通过 `pnpm tauri icon <source>` 生成；不要手改 |
@@ -229,7 +231,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 2. 如果前端需要调用插件 API，再用 `pnpm add` 添加 JS 包。
 3. 只把功能所需的权限加入 `capabilities/default.json`。
 4. 运行一次 `pnpm tauri dev`，让 Tauri 重新生成 capability schema 并校验配置。
-5. 不要为了抓取图片而添加 `fs`、`shell` 等大范围权限；应使用 HTTP 插件。
+5. 不要为了读取缓存图片而引入 `fs` 插件或大范围权限；应使用 Rust 命令 + 资产协议。
 
 ### 新增路由
 
@@ -244,39 +246,38 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 
 - **前端改动：** 运行 `pnpm build`。它会执行 `vue-tsc --noEmit` 与生产构建。
 - **Rust 改动：** 在 `src-tauri/` 下运行 `cargo test`、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`。
-- **运行时相关改动**（IPC、HTTP、主题、i18n、路由）：运行 `pnpm tauri dev`，在真实窗口中冒烟测试。只跑 `pnpm dev` 无法验证 Tauri API。
+- **运行时相关改动**（IPC、图片缓存、主题、i18n、路由）：运行 `pnpm tauri dev`，在真实窗口中冒烟测试。只跑 `pnpm dev` 无法验证 Tauri API。
 - **Android 改动：** 在模拟器或真机上运行 `pnpm tauri android dev`。
 
 当前 Vite 构建会对主 bundle（>500 kB）给出 chunk 体积警告。这是预期行为，不是失败；除非任务本身就是优化包体积，否则不要追这个警告。
 
 ### 手动冒烟测试
 
-- 问候功能：名字为空时出现本地化的 invalid-input 提示；输入名字后出现问候语。
-- 图片测试器：输入有效图片 URL 能显示预览；无效 URL 显示本地化错误。错误显示期间切换语言，确认提示同步更新。
+- 图片测试器：输入有效图片 URL 能显示预览；再点一次相同 URL 应直接命中缓存。无效 URL 显示本地化错误。错误显示期间切换语言，确认提示同步更新。
 - 主题：切换浅色/深色/跟随系统，确认立即生效，并在重启后保持。
 - 语言：切换 English/简体中文，确认界面、`document.documentElement.lang`、Naive UI 文案与原生窗口标题都更新，且重启后保持。
 - 访问 `#/does-not-exist`：显示 404 页面与本地化标题，返回首页链接可用。
 
 ### 测试现状
 
-- Rust 测试目前只覆盖错误契约（`src-tauri/src/error.rs`），共 2 个测试。
+- Rust 测试覆盖错误契约（`src-tauri/src/error.rs`）与图片缓存的纯逻辑（`src-tauri/src/image_cache.rs`），共 9 个测试。
 - 前端没有单元/E2E 测试框架（没有 Vitest、Playwright，也没有 `pnpm test`），仓库也没有 CI。不要声称存在并未运行的测试覆盖。如果新增测试体系，请在 `package.json` 中加脚本并同步更新本文件。
 
 ## 陷阱与刻意保留的现状
 
-- **`pnpm dev` 不是完整应用。** 它只提供 UI，没有 Tauri，因此 `invoke`、plugin-http 与窗口 API 都会失败。浏览器兜底逻辑已被有意移除。
+- **`pnpm dev` 不是完整应用。** 它只提供 UI，没有 Tauri，因此 `invoke`、`convertFileSrc` 与窗口 API 都会失败。浏览器兜底逻辑已被有意移除。
 - **Rust 与前端构建是分开的。** Vite 不监听 `src-tauri/**`；修改 Rust 后请用 `pnpm tauri dev` / `pnpm tauri build`。`pnpm build` 永远不会编译 Rust。
 - **开发端口固定。** `1420` 与 `build.devUrl` 必须保持一致；只改一处会破坏应用。
 - **生成文件。** 不要手改 `src/components.d.ts`、`src-tauri/gen/schemas/`、`src-tauri/gen/android/**/build/`、`src-tauri/target/`、`dist/` 或 `src-tauri/icons/` 下的 PNG；应通过工具重新生成。
 - **命令未注册会在运行时失败。** 只写函数不够，必须加入 `generate_handler!`。
 - **capability 决定运行时权限。** 即使 Rust 插件已安装，缺少权限仍会报 "not allowed"。
-- **当前抓取依赖 `unsafe-headers`。** 移除它会破坏图片测试器的 `Referer` / `User-Agent`。
+- **资产协议需要三处同时成立。** `tauri` 的 `protocol-asset` feature、`tauri.conf.json` 的 `assetProtocol.enable`，以及覆盖 `$APPCACHE/images/**` 的 scope；缺一不可，失败通常表现为图片请求 403 或空白。
 - **错误码必须两端同步。** 只改 Rust 会在 UI 中退化为 `"unknown"`；只改 TS 通常会触发穷举映射的类型错误。请同时更新两端与语言包。
 - **翻译只在编译期做部分校验。** 缺少 `zh-CN` key 会编译报错，但多余 key 不会；请严格镜像英文结构。
 - **持久化没有迁移层。** 重命名设置字段会让用户静默回到默认值；要保留旧 key 或添加迁移。
 - **`bundle.active` 为 `false`。** `pnpm tauri build` 产出可执行文件，但不会生成安装包。需要打包时请显式开启。
 - **CSP 已关闭（`csp: null`）。** webview 没有内容安全策略保护。不要在未处理该问题的前提下引入远程 HTML 或 `v-html` 渲染。
-- **HTTP 白名单很宽。** 当前允许所有 `http(s)` 来源，以支持图片测试器。图片站点固定后应收窄范围。
+- **缓存键是 URL 的哈希。** 修改 URL 归一化、请求头或缓存目录时请提升 `CACHE_VERSION`，否则旧缓存会继续命中；当前没有自动清理策略。
 - **`scripts/` 仅限本地。** 它被 gitignore，需要 Python 3.15+，不属于应用构建。不要把应用代码放进去。
 - **README 已过时。** 它只是上游模板；如有文档需求，请更新 README 或本文件。
 
@@ -284,7 +285,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 
 - 提交风格遵循现有历史：Conventional Commits，scope 可选。
   - `feat(reader): add chapter list command`
-  - `fix(http): handle 403 from image host`
+  - `fix(image): handle 403 from image host`
   - `refactor(i18n): derive locale options from catalogs`
   - `docs: update AGENTS.md`
 - 使用祈使句、小写 subject。每次提交只做一个逻辑变更。
@@ -302,6 +303,6 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 - [ ] 新增界面文案同时存在于 `en.json` 与 `zh-CN.json`。
 - [ ] 新增或修改的错误码已贯通 Rust、`errors.ts`、`useErrorMessage.ts` 与两个语言包。
 - [ ] Tauri 命令已注册，所需 capability 已添加。
-- [ ] 当改动涉及 IPC、HTTP、主题、i18n 或路由时，已用 `pnpm tauri dev` 做运行时冒烟测试。
+- [ ] 当改动涉及 IPC、图片缓存、主题、i18n 或路由时，已用 `pnpm tauri dev` 做运行时冒烟测试。
 - [ ] 没有修改或暂存生成文件与构建产物。
 - [ ] 如果命令、架构或契约发生变化，本文件已同步更新。

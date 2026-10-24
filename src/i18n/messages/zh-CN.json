@@ -8,6 +8,10 @@
   "errors": {
     "invalidInput": "输入不合法：{message}",
     "network": "请求失败：{message}",
+    "httpStatus": "服务器返回了 HTTP {status}。",
+    "emptyResponse": "服务器返回了空响应。",
+    "notImage": "服务器返回的是 {contentType}，而不是图片。",
+    "tooLarge": "图片超过 {limit} 字节的大小上限。",
     "notFound": "找不到内容：{message}",
     "io": "文件系统出错：{message}",
     "json": "数据格式有误：{message}",
@@ -23,23 +27,14 @@
       "tauri": "Tauri 标志",
       "vue": "Vue 标志"
     },
-    "greet": {
-      "placeholder": "输入名字……",
-      "submit": "打招呼",
-      "result": "你好，{name}！这是来自 Rust 的问候！"
-    },
     "image": {
       "title": "图片测试",
       "placeholder": "粘贴图片 URL……",
       "load": "加载",
-      "hint": "在桌面端通过 Tauri HTTP 插件获取图片。",
+      "hint": "由 Rust 后端下载并缓存到本地，前端直接读取缓存文件。",
       "alt": "获取到的预览图",
       "errors": {
-        "http": "请求失败，HTTP 状态码 {status}。",
-        "empty": "服务器返回了空响应。",
-        "notImage": "服务器返回的是 {type}，而不是图片。",
-        "display": "获取到的数据无法作为图片显示。",
-        "unknown": "发生意外错误：{message}"
+        "display": "缓存文件无法作为图片显示。"
       }
     },
     "settings": {

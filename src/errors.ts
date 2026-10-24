@@ -18,6 +18,10 @@ export interface ErrorPayload {
 export type ErrorCode =
   | "invalidInput"
   | "network"
+  | "httpStatus"
+  | "emptyResponse"
+  | "notImage"
+  | "tooLarge"
   | "notFound"
   | "io"
   | "json"
@@ -31,6 +35,10 @@ export type ErrorDetails = Record<string, string | number>;
 const ERROR_CODES: readonly ErrorCode[] = [
   "invalidInput",
   "network",
+  "httpStatus",
+  "emptyResponse",
+  "notImage",
+  "tooLarge",
   "notFound",
   "io",
   "json",

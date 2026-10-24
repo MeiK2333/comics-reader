@@ -8,6 +8,10 @@
   "errors": {
     "invalidInput": "Invalid input: {message}",
     "network": "Request failed: {message}",
+    "httpStatus": "The server responded with HTTP {status}.",
+    "emptyResponse": "The server returned an empty response.",
+    "notImage": "The server returned {contentType} instead of an image.",
+    "tooLarge": "The image exceeds the {limit} byte limit.",
     "notFound": "Not found: {message}",
     "io": "File system error: {message}",
     "json": "Malformed data: {message}",
@@ -23,23 +27,14 @@
       "tauri": "Tauri logo",
       "vue": "Vue logo"
     },
-    "greet": {
-      "placeholder": "Enter a name...",
-      "submit": "Greet",
-      "result": "Hello, {name}! You've been greeted from Rust!"
-    },
     "image": {
       "title": "Image tester",
       "placeholder": "Paste an image URL...",
       "load": "Load",
-      "hint": "Fetches the image through the Tauri HTTP plugin in the desktop app.",
+      "hint": "Downloads the image in Rust, caches it on disk, and displays the cached file.",
       "alt": "Fetched preview",
       "errors": {
-        "http": "Request failed with HTTP {status}.",
-        "empty": "The server returned an empty response.",
-        "notImage": "The server returned {type} instead of an image.",
-        "display": "The fetched data could not be displayed as an image.",
-        "unknown": "Unexpected error: {message}"
+        "display": "The cached file could not be displayed as an image."
       }
     },
     "settings": {

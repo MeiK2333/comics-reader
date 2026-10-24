@@ -22,6 +22,10 @@ pub type Result<T, E = AppError> = std::result::Result<T, E>;
 pub enum ErrorCode {
     InvalidInput,
     Network,
+    HttpStatus,
+    EmptyResponse,
+    NotImage,
+    TooLarge,
     NotFound,
     Io,
     Json,
@@ -36,6 +40,10 @@ impl ErrorCode {
         match self {
             Self::InvalidInput => "invalidInput",
             Self::Network => "network",
+            Self::HttpStatus => "httpStatus",
+            Self::EmptyResponse => "emptyResponse",
+            Self::NotImage => "notImage",
+            Self::TooLarge => "tooLarge",
             Self::NotFound => "notFound",
             Self::Io => "io",
             Self::Json => "json",
@@ -56,6 +64,22 @@ pub enum AppError {
     /// point at the host that refused it.
     #[error("request to {url} failed: {reason}")]
     Network { url: String, reason: String },
+
+    /// The host answered with a non-success status.
+    #[error("request to {url} returned HTTP {status}")]
+    HttpStatus { url: String, status: u16 },
+
+    /// The host answered successfully but sent no bytes.
+    #[error("request to {url} returned an empty body")]
+    EmptyResponse { url: String },
+
+    /// The payload is not an image format the webview can display.
+    #[error("response from {url} is not a supported image ({content_type})")]
+    NotImage { url: String, content_type: String },
+
+    /// The payload exceeded the cache's size limit.
+    #[error("image at {url} exceeds the {limit} byte limit")]
+    TooLarge { url: String, limit: u64 },
 
     /// A file or resource the command depends on does not exist.
     #[error("`{resource}` was not found")]
@@ -82,6 +106,10 @@ impl AppError {
         match self {
             Self::InvalidInput { .. } => ErrorCode::InvalidInput,
             Self::Network { .. } => ErrorCode::Network,
+            Self::HttpStatus { .. } => ErrorCode::HttpStatus,
+            Self::EmptyResponse { .. } => ErrorCode::EmptyResponse,
+            Self::NotImage { .. } => ErrorCode::NotImage,
+            Self::TooLarge { .. } => ErrorCode::TooLarge,
             Self::NotFound { .. } => ErrorCode::NotFound,
             Self::Io(_) => ErrorCode::Io,
             Self::Json(_) => ErrorCode::Json,
@@ -100,6 +128,21 @@ impl AppError {
             }
             Self::Network { url, .. } => {
                 details.insert("url".into(), Value::from(url.clone()));
+            }
+            Self::HttpStatus { url, status } => {
+                details.insert("url".into(), Value::from(url.clone()));
+                details.insert("status".into(), Value::from(*status));
+            }
+            Self::EmptyResponse { url } => {
+                details.insert("url".into(), Value::from(url.clone()));
+            }
+            Self::NotImage { url, content_type } => {
+                details.insert("url".into(), Value::from(url.clone()));
+                details.insert("contentType".into(), Value::from(content_type.clone()));
+            }
+            Self::TooLarge { url, limit } => {
+                details.insert("url".into(), Value::from(url.clone()));
+                details.insert("limit".into(), Value::from(*limit));
             }
             Self::NotFound { resource } => {
                 details.insert("resource".into(), Value::from(resource.clone()));
@@ -146,16 +189,36 @@ mod tests {
     #[test]
     fn invalid_input_serializes_code_message_and_details() {
         let error = AppError::InvalidInput {
-            field: "name",
-            reason: "must not be empty".into(),
+            field: "url",
+            reason: "scheme must be http or https".into(),
         };
 
         assert_eq!(
             serde_json::to_value(&error).unwrap(),
             json!({
                 "code": "invalidInput",
-                "message": "invalid `name`: must not be empty",
-                "details": { "field": "name" }
+                "message": "invalid `url`: scheme must be http or https",
+                "details": { "field": "url" }
+            })
+        );
+    }
+
+    #[test]
+    fn http_status_serializes_url_and_status() {
+        let error = AppError::HttpStatus {
+            url: "https://example.com/a.png".into(),
+            status: 403,
+        };
+
+        assert_eq!(
+            serde_json::to_value(&error).unwrap(),
+            json!({
+                "code": "httpStatus",
+                "message": "request to https://example.com/a.png returned HTTP 403",
+                "details": {
+                    "url": "https://example.com/a.png",
+                    "status": 403
+                }
             })
         );
     }
