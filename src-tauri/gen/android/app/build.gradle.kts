@@ -1,3 +1,4 @@
+import java.io.FileInputStream
 import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
@@ -14,6 +15,15 @@ val tauriProperties = Properties().apply {
     }
 }
 
+// Signing credentials are local-only and gitignored. Keeping the release build
+// unsigned when the file is absent lets other machines build without secrets.
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties()
+val hasKeystore = keystorePropertiesFile.exists()
+if (hasKeystore) {
+    FileInputStream(keystorePropertiesFile).use { keystoreProperties.load(it) }
+}
+
 android {
     compileSdk = 37
     namespace = "com.meik.comics_reader"
@@ -24,6 +34,25 @@ android {
         targetSdk = 37
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
         versionName = tauriProperties.getProperty("tauri.android.versionName", "1.0")
+    }
+    signingConfigs {
+        if (hasKeystore) {
+            val storeFilePath = requireNotNull(keystoreProperties.getProperty("storeFile")) {
+                "keystore.properties is missing storeFile"
+            }
+            val keyAliasValue = requireNotNull(keystoreProperties.getProperty("keyAlias")) {
+                "keystore.properties is missing keyAlias"
+            }
+            val passwordValue = requireNotNull(keystoreProperties.getProperty("password")) {
+                "keystore.properties is missing password"
+            }
+            create("release") {
+                keyAlias = keyAliasValue
+                keyPassword = passwordValue
+                storePassword = passwordValue
+                storeFile = file(storeFilePath)
+            }
+        }
     }
     buildTypes {
         getByName("debug") {
@@ -39,6 +68,9 @@ android {
             }
         }
         getByName("release") {
+            if (hasKeystore) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             optimization {
                enable = true
             }
