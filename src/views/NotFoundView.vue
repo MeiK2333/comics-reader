@@ -13,23 +13,4 @@ const { t } = useAppI18n();
   </main>
 </template>
 
-<style scoped>
-.not-found {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 20vh 24px;
-  text-align: center;
-}
-
-.not-found h1 {
-  margin: 0;
-}
-
-.not-found p {
-  margin: 0;
-  opacity: 0.7;
-}
-</style>
+<style scoped></style>

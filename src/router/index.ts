@@ -1,6 +1,5 @@
 import { createRouter, createWebHashHistory } from "vue-router";
 import type { RouteMeta } from "vue-router";
-import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { translate } from "../i18n";
 import HomeView from "../views/HomeView.vue";
@@ -55,11 +54,9 @@ export function updateWindowTitle(
   // The document title is not mirrored to the native window, so set it
   // explicitly. Android/iOS windows have no title and `setTitle` is a no-op
   // there, hence the swallowed rejection to stay safe on every platform.
-  if (isTauri()) {
-    void getCurrentWindow()
-      .setTitle(title)
-      .catch(() => undefined);
-  }
+  void getCurrentWindow()
+    .setTitle(title)
+    .catch(() => undefined);
 }
 
 router.afterEach((to) => updateWindowTitle(to.meta));
