@@ -108,6 +108,9 @@ function changePage(next: number) {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: 1rem;
+  /* Covers now keep their intrinsic height, so let cards end with their
+     content instead of stretching to the tallest card in the row. */
+  align-items: start;
 }
 
 .pagination {

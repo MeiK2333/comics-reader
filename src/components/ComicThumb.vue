@@ -110,22 +110,24 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .comic-thumb {
-  display: grid;
-  place-items: center;
   width: 100%;
-  aspect-ratio: 3 / 4;
   overflow: hidden;
   background: rgba(127, 127, 127, 0.14);
 }
 
+/* Let the cached cover keep its intrinsic ratio; cropping it to a fixed frame
+   cut off the top and bottom of non-3:4 artwork. */
 .comic-thumb img {
   display: block;
   width: 100%;
-  height: 100%;
-  object-fit: cover;
+  height: auto;
 }
 
 .comic-thumb__placeholder {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 3 / 4;
   font-size: 2.5rem;
   font-weight: 600;
   color: inherit;
