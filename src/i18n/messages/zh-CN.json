@@ -11,7 +11,7 @@
     "httpStatus": "服务器返回了 HTTP {status}。",
     "emptyResponse": "服务器返回了空响应。",
     "notImage": "服务器返回的是 {contentType}，而不是图片。",
-    "tooLarge": "图片超过 {limit} 字节的大小上限。",
+    "tooLarge": "响应超过 {limit} 字节的大小上限。",
     "notFound": "找不到内容：{message}",
     "io": "文件系统出错：{message}",
     "json": "数据格式有误：{message}",
@@ -20,42 +20,15 @@
     "unknown": "发生意外错误：{message}"
   },
   "home": {
-    "title": "欢迎使用 Tauri + Vue",
-    "intro": "点击 Tauri、Vite 和 Vue 图标了解更多。",
-    "logos": {
-      "vite": "Vite 标志",
-      "tauri": "Tauri 标志",
-      "vue": "Vue 标志"
-    },
-    "image": {
-      "title": "图片测试",
-      "placeholder": "粘贴图片 URL……",
-      "load": "加载",
-      "hint": "由 Rust 后端下载并缓存到本地，前端直接读取缓存文件。",
-      "alt": "获取到的预览图",
-      "errors": {
-        "display": "缓存文件无法作为图片显示。"
-      }
-    },
-    "settings": {
-      "title": "设置",
-      "theme": {
-        "label": "主题",
-        "options": {
-          "system": "跟随系统",
-          "light": "浅色",
-          "dark": "深色"
-        }
-      },
-      "language": {
-        "label": "语言",
-        "options": {
-          "system": "跟随系统",
-          "en": "English",
-          "zh-CN": "简体中文"
-        }
-      },
-      "hint": "保存在本机，下次启动时自动恢复。"
+    "search": {
+      "subtitle": "在 manhuagui、JM 和 nhentai 中搜索漫画。",
+      "placeholder": "搜索漫画……",
+      "submit": "搜索",
+      "platform": "平台",
+      "total": "共 {total} 个结果",
+      "empty": "没有找到漫画，换个关键词试试。",
+      "pages": "页数：{count}",
+      "favorites": "收藏：{count}"
     }
   },
   "notFound": {

@@ -78,7 +78,7 @@ pub enum AppError {
     NotImage { url: String, content_type: String },
 
     /// The payload exceeded the cache's size limit.
-    #[error("image at {url} exceeds the {limit} byte limit")]
+    #[error("response from {url} exceeds the {limit} byte limit")]
     TooLarge { url: String, limit: u64 },
 
     /// A file or resource the command depends on does not exist.
