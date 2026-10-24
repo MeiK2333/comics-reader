@@ -63,16 +63,21 @@
 │  ├─ main.ts                    启动：Pinia、i18n、router；挂载前应用主题/语言
 │  ├─ App.vue                    Naive UI Provider 与 RouterView 外壳
 │  ├─ components/
-│  │  └─ ComicThumb.vue          结果缩略图：Rust 缓存 + 资产协议
+│  │  ├─ ComicThumb.vue          结果缩略图：Rust 缓存 + 资产协议
+│  │  ├─ ComicSearchBar.vue      搜索表单：平台选择、关键词输入、提交
+│  │  ├─ PlatformPicker.vue      平台下拉菜单与图标
+│  │  ├─ ComicSearchResults.vue  结果区：错误/加载/空态、网格、分页
+│  │  └─ ComicResultCard.vue     单条结果卡片与平台元信息
 │  ├─ assets/platforms/          平台真实图标（favicon/logo；PNG 或按像素重绘的 SVG）
 │  ├─ views/
-│  │  ├─ HomeView.vue            搜索页：平台选择、搜索、结果网格
+│  │  ├─ HomeView.vue            搜索页布局：组合搜索栏与结果区
 │  │  └─ NotFoundView.vue        404 页面
 │  ├─ router/index.ts            Hash 路由、路由元数据、原生窗口标题
 │  ├─ stores/
 │  │  ├─ index.ts                Pinia + 持久化命名空间
 │  │  └─ settings.ts             持久化的主题与语言偏好
 │  ├─ composables/
+│  │  ├─ useComicSearch.ts       搜索状态、请求竞态与分页
 │  │  ├─ useTheme.ts             系统/浅色/深色解析 + <html data-theme>
 │  │  ├─ useLocale.ts            语言、Naive UI locale 对象、窗口标题同步
 │  │  └─ useErrorMessage.ts      错误码 → 本地化消息
@@ -157,7 +162,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 - `src/i18n/messages/en.json` 是主 schema。`MessageSchema = typeof en`，`MessageKey` 由它派生，因此其他语言包缺少 key 会直接编译报错。
 - 新代码请使用 `src/i18n` 导出的 `translate()` 或 `useAppI18n()`。不要用 `useI18n().t()` 传裸字符串，那会绕过编译期 key 校验。
 - 每个新 key 必须在同一次改动中同时加入 `en.json` 与 `zh-CN.json`，并保持占位符（`{name}`、`{status}`）一致。
-- 错误要以数据形式保存（code/details），在渲染时翻译，而不是提前拼成字符串。`HomeView` 的 `error` ref 是参考模式，这样切换语言时提示会同步更新。
+- 错误要以数据形式保存（code/details），在渲染时翻译，而不是提前拼成字符串。`useComicSearch` 的 `error` ref 是参考模式，这样切换语言时提示会同步更新。
 - 新增语言时需要更新：`SUPPORTED_LOCALES`、`messages` 映射、`useLocale.ts` 中的 `NAIVE_LOCALES`，必要时还要改 `detectSystemLocale()`。
 
 ### 设置、主题与持久化
@@ -171,7 +176,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 ### 远程 HTTP、图片缓存与平台检索
 
 - 图片抓取全部在 Rust 中完成：`ComicThumb.vue` 对可见缩略图调用 `fetch_image` 命令（`src-tauri/src/image/`），由 `reqwest` 请求并缓存，webview 通过资产协议读取文件；首页本身不再直接请求图片站点。
-- 首页由 `HomeView.vue` 提供平台选择、关键词搜索、结果网格和分页；`ComicThumb.vue` 用 `IntersectionObserver` 懒加载缩略图，避免一次性请求整页图片。
+- 首页由 `useComicSearch.ts` 管理平台、关键词、分页与请求竞态；`ComicSearchBar.vue`（含 `PlatformPicker.vue`）负责输入，`ComicSearchResults.vue` 负责错误/加载/空态与分页，`ComicResultCard.vue` 渲染单条结果；`ComicThumb.vue` 用 `IntersectionObserver` 懒加载缩略图，避免一次性请求整页图片。
 - 平台差异集中在 `src-tauri/src/image/platform/`：每个平台实现 `Platform`（`id`、`matches`、`configure`），主流程只负责下载、校验与缓存。当前支持 `generic`、`manhuagui`、`jm`、`nhentai`。
 - 命令的 `platform` 参数可省略：省略时按 URL host 自动识别，未知 host 回退 `generic`；调用方已知平台时应显式传入，JM 等域名轮换的站点尤其应显式指定。
 - 命令校验响应（非 2xx、空响应、超过 32 MiB、非图片格式）后，用“平台 + 平台缓存版本 + 缓存用 URL”的 SHA-256 作为文件名；manhuagui 和 jm 会在计算 key 前去掉图片 URL 的 query（签名/过期参数不影响命中），但下载仍使用完整 URL，写入 `app_cache_dir()/images/<platform>/<hash>.<ext>`；同一 URL 在同一平台下再次请求会直接命中缓存。
@@ -233,7 +238,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 | 修改远程抓取的站点、请求头或缓存策略 | `src-tauri/src/image/`、`src-tauri/tauri.conf.json`（资产协议 scope） |
 | 新增图片平台 | `src-tauri/src/image/platform/`（实现 trait、注册、host/header 与测试） |
 | 新增/修改平台搜索或详情 | `src-tauri/src/image/platform/`、`src-tauri/src/image/model.rs`、`src/api/comics.ts` |
-| 修改首页搜索/结果 UI | `src/views/HomeView.vue`、`src/components/ComicThumb.vue`、`src/assets/platforms/`、`src/api/comics.ts` |
+| 修改首页搜索/结果 UI | `src/views/HomeView.vue`、`src/components/ComicSearchBar.vue`、`src/components/ComicSearchResults.vue`、`src/components/ComicResultCard.vue`、`src/components/PlatformPicker.vue`、`src/composables/useComicSearch.ts`、`src/components/ComicThumb.vue`、`src/assets/platforms/`、`src/api/comics.ts` |
 | 修改全局样式 | `src/styles/base.scss`；组件样式保持在组件内 |
 | 修改 Android 原生配置 | `src-tauri/gen/android/`（已跟踪，但大部分是生成内容，修改前要确认） |
 | 重新生成应用图标 | `src-tauri/icons/`，通过 `pnpm tauri icon <source>` 生成；不要手改 |
@@ -263,7 +268,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 3. 在 `platform/mod.rs` 的 `PLATFORMS` 中注册；把 host 后缀、base URL 和 headers 放在该平台模块内。
 4. 平台请求头或缓存语义变化时递增该平台的 `cache_version()`；id、公共字段名和 `extra` 结构保持稳定。若 URL query 只是签名/过期参数，实现 `cache_key_url` 在缓存键中去掉 query。
 5. 补 parser fixture 测试：真实 HTML/JSON 片段、URL 编码、total/page_size、thumb 绝对化、`extra` 字段。
-6. 前端同步更新 `src/api/comics.ts` 的 `ComicPlatform`，并在 `HomeView.vue` 的平台图标按钮中加入新平台；图标放到 `src/assets/platforms/`，优先使用平台站点资源；可按官方 favicon 的像素网格重绘 SVG，但不要凭空绘制。
+6. 前端同步更新 `src/api/comics.ts` 的 `ComicPlatform`，并在 `PlatformPicker.vue` 的平台列表中注册新平台、在 `ComicResultCard.vue` 中补充该平台的元信息；图标放到 `src/assets/platforms/`，优先使用平台站点资源；可按官方 favicon 的像素网格重绘 SVG，但不要凭空绘制。
 
 ### 新增路由
 

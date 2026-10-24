@@ -11,6 +11,9 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    ComicResultCard: typeof import('./components/ComicResultCard.vue')['default']
+    ComicSearchBar: typeof import('./components/ComicSearchBar.vue')['default']
+    ComicSearchResults: typeof import('./components/ComicSearchResults.vue')['default']
     ComicThumb: typeof import('./components/ComicThumb.vue')['default']
     NAlert: typeof import('naive-ui')['NAlert']
     NButton: typeof import('naive-ui')['NButton']
@@ -22,6 +25,7 @@ declare module 'vue' {
     NMessageProvider: typeof import('naive-ui')['NMessageProvider']
     NPagination: typeof import('naive-ui')['NPagination']
     NSpin: typeof import('naive-ui')['NSpin']
+    PlatformPicker: typeof import('./components/PlatformPicker.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     SearchIcon: typeof import('./components/SearchIcon.vue')['default']
