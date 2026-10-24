@@ -1,8 +1,24 @@
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
+pub mod error;
+
+use error::{AppError, Result};
+
+/// Echo the trimmed name back to the frontend.
+///
+/// Commands return [`Result`] so a failure crosses the IPC boundary as a
+/// `{ code, message, details }` payload; the frontend picks the localized copy
+/// from `code` instead of parsing a string.
 #[tauri::command]
-fn greet(name: &str) -> String {
+fn greet(name: &str) -> Result<String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(AppError::InvalidInput {
+            field: "name",
+            reason: "must not be empty".into(),
+        });
+    }
+
     // Return data only; user-facing copy lives in the frontend i18n catalogs.
-    name.trim().to_string()
+    Ok(name.to_string())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

@@ -5,6 +5,16 @@
   "meta": {
     "notFound": "Page Not Found · {app}"
   },
+  "errors": {
+    "invalidInput": "Invalid input: {message}",
+    "network": "Request failed: {message}",
+    "notFound": "Not found: {message}",
+    "io": "File system error: {message}",
+    "json": "Malformed data: {message}",
+    "tauri": "Desktop integration error: {message}",
+    "unexpected": "Unexpected error: {message}",
+    "unknown": "Unexpected error: {message}"
+  },
   "home": {
     "title": "Welcome to Tauri + Vue",
     "intro": "Click on the Tauri, Vite, and Vue logos to learn more.",
@@ -16,8 +26,7 @@
     "greet": {
       "placeholder": "Enter a name...",
       "submit": "Greet",
-      "result": "Hello, {name}! You've been greeted from Rust!",
-      "failed": "Greet failed: {error}"
+      "result": "Hello, {name}! You've been greeted from Rust!"
     },
     "image": {
       "title": "Image tester",

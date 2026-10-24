@@ -509,6 +509,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-http",
  "tauri-plugin-opener",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

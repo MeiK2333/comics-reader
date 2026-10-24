@@ -3,6 +3,8 @@ import { computed, nextTick, onBeforeUnmount, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { fetch as httpFetch } from "@tauri-apps/plugin-http";
 import { useMessage } from "naive-ui";
+import { useErrorMessage } from "../composables/useErrorMessage";
+import { toAppError } from "../errors";
 import { useAppI18n } from "../i18n";
 import type { LocalePreference } from "../i18n";
 import { useSettingsStore } from "../stores/settings";
@@ -10,6 +12,7 @@ import type { ThemeMode } from "../stores/settings";
 
 const { t } = useAppI18n();
 const message = useMessage();
+const errorText = useErrorMessage();
 const settings = useSettingsStore();
 
 const greetName = ref("");
@@ -76,7 +79,7 @@ async function greet() {
     // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
     greetName.value = await invoke<string>("greet", { name: name.value });
   } catch (error) {
-    message.error(t("home.greet.failed", { error: errorMessage(error) }));
+    message.error(errorText(error));
   }
 }
 
@@ -98,10 +101,6 @@ async function showImage(blob: Blob) {
   if (previous) {
     URL.revokeObjectURL(previous);
   }
-}
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
 }
 
 async function fetchImage(url: string) {
@@ -142,7 +141,7 @@ async function loadImage() {
     imageError.value =
       error instanceof ImageLoadError
         ? error.detail
-        : { code: "unknown", message: errorMessage(error) };
+        : { code: "unknown", message: toAppError(error).message };
   } finally {
     imageLoading.value = false;
   }

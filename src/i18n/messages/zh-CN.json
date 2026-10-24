@@ -5,6 +5,16 @@
   "meta": {
     "notFound": "页面不存在 · {app}"
   },
+  "errors": {
+    "invalidInput": "输入不合法：{message}",
+    "network": "请求失败：{message}",
+    "notFound": "找不到内容：{message}",
+    "io": "文件系统出错：{message}",
+    "json": "数据格式有误：{message}",
+    "tauri": "桌面端集成出错：{message}",
+    "unexpected": "发生意外错误：{message}",
+    "unknown": "发生意外错误：{message}"
+  },
   "home": {
     "title": "欢迎使用 Tauri + Vue",
     "intro": "点击 Tauri、Vite 和 Vue 图标了解更多。",
@@ -16,8 +26,7 @@
     "greet": {
       "placeholder": "输入名字……",
       "submit": "打招呼",
-      "result": "你好，{name}！这是来自 Rust 的问候！",
-      "failed": "问候失败：{error}"
+      "result": "你好，{name}！这是来自 Rust 的问候！"
     },
     "image": {
       "title": "图片测试",
