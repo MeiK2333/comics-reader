@@ -123,7 +123,7 @@
     },
     "proxy": {
       "title": "HTTP proxy",
-      "hint": "After saving, searches, details and image downloads use this proxy.",
+      "hint": "When enabled, enter the host and port and save. Turning it off restores a direct connection immediately.",
       "enable": "Use proxy",
       "host": "Host",
       "hostPlaceholder": "127.0.0.1",

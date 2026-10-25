@@ -47,6 +47,37 @@ const PROXY_ERROR_KEYS: Record<ProxyValidationError, MessageKey> = {
   portInvalid: "settings.proxy.errors.portInvalid",
 };
 
+function proxyErrorMessage(cause: unknown): string {
+  const error = toAppError(cause);
+  return error.code === "invalidInput" && error.details.field === "proxy"
+    ? t("settings.proxy.errors.invalid")
+    : formatError(cause);
+}
+
+/**
+ * Turning the proxy off is always safe to apply immediately: there is no
+ * address to validate, and the user may need to fall back to a direct
+ * connection right away. Enabling still requires the save button so host and
+ * port can be validated first.
+ */
+async function onProxyToggle(enabled: boolean) {
+  if (enabled || savingProxy.value) {
+    return;
+  }
+
+  const next: ProxySettings = { ...settings.proxy, enabled: false };
+  savingProxy.value = true;
+  try {
+    await applyProxy(next);
+    settings.proxy = next;
+  } catch (cause) {
+    proxyDraft.enabled = true;
+    message.error(proxyErrorMessage(cause));
+  } finally {
+    savingProxy.value = false;
+  }
+}
+
 async function saveProxy() {
   const validationError = proxyDraft.enabled
     ? validateProxy(proxyDraft.host, proxyDraft.port)
@@ -68,12 +99,7 @@ async function saveProxy() {
     settings.proxy = next;
     message.success(t("settings.proxy.saved"));
   } catch (cause) {
-    const error = toAppError(cause);
-    message.error(
-      error.code === "invalidInput" && error.details.field === "proxy"
-        ? t("settings.proxy.errors.invalid")
-        : formatError(cause),
-    );
+    message.error(proxyErrorMessage(cause));
   } finally {
     savingProxy.value = false;
   }
@@ -127,7 +153,12 @@ function goHome() {
 
       <div class="setting">
         <span>{{ t("settings.proxy.enable") }}</span>
-        <NSwitch v-model:value="proxyDraft.enabled" />
+        <NSwitch
+          v-model:value="proxyDraft.enabled"
+          :loading="savingProxy"
+          :disabled="savingProxy"
+          @update:value="onProxyToggle"
+        />
       </div>
 
       <div class="proxy-fields">
@@ -153,7 +184,7 @@ function goHome() {
         </div>
       </div>
 
-      <div class="proxy-actions">
+      <div v-if="proxyDraft.enabled" class="proxy-actions">
         <NButton
           attr-type="button"
           size="small"
