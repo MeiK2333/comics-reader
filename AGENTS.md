@@ -18,7 +18,7 @@
 
 `README.md` 仍是上游 Tauri/Vue 模板，不能可靠描述本项目。请以本文件、`package.json`、`src-tauri/Cargo.toml` 和 `src-tauri/tauri.conf.json` 为准。
 
-当前 ECH 接入的实施计划见 [ECH_INTEGRATION_PLAN.md](ECH_INTEGRATION_PLAN.md)；该文件是多智能体协作和交接的协调文档。
+ECH 接入已完成；当前实现与约束见本文件的“远程 HTTP、图片缓存与平台检索”和“陷阱与刻意保留的现状”两节。
 
 ### 技术栈
 
