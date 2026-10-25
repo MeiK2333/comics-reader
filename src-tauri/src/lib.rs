@@ -26,6 +26,7 @@ pub fn run() {
             image::fetch_image,
             image::search_comics,
             image::get_comic,
+            image::get_reader_chapter,
             image::set_http_proxy,
             ech::fetch_ech_config,
             ech::probe_ech_handshake,

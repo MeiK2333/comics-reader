@@ -10,6 +10,7 @@ type RouteTitleKey =
   | "app.name"
   | "meta.search"
   | "meta.comic"
+  | "meta.reader"
   | "meta.favorites"
   | "meta.downloads"
   | "meta.history"
@@ -68,6 +69,12 @@ const router = createRouter({
       meta: { titleKey: "meta.logs" },
     },
     {
+      path: "/comic/:platform(manhuagui|jm|nhentai)/:id/read/:chapterId?",
+      name: "comic-reader",
+      component: () => import("../views/ComicReaderView.vue"),
+      meta: { titleKey: "meta.reader" },
+    },
+    {
       path: "/comic/:platform(manhuagui|jm|nhentai)/:id",
       name: "comic-detail",
       component: () => import("../views/ComicDetailView.vue"),
@@ -104,6 +111,7 @@ function translateTitleKey(key: RouteTitleKey) {
       return translate("meta.notFound", { app: translate("app.name") });
     case "meta.search":
     case "meta.comic":
+    case "meta.reader":
     case "meta.favorites":
     case "meta.downloads":
     case "meta.history":

@@ -194,6 +194,34 @@ pub(crate) struct NhentaiDetailExtra {
     pub tags: Vec<NhentaiTag>,
 }
 
+/// One chapter's page list. Single-work platforms leave `chapter_id` and the
+/// navigation refs empty; chaptered platforms fill them in later.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ReaderChapter {
+    /// Display title of the work, used for the native window title.
+    pub title: String,
+    pub chapter_id: Option<String>,
+    pub chapter_title: Option<String>,
+    pub pages: Vec<ReaderPage>,
+    pub previous: Option<ChapterRef>,
+    pub next: Option<ChapterRef>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct ReaderPage {
+    pub url: String,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ChapterRef {
+    pub id: String,
+    pub title: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -256,5 +284,33 @@ mod tests {
         assert_eq!(value["extra"]["pageCount"], 20);
         // The discriminant is a sibling of `extra`, not a duplicate inside it.
         assert!(value["extra"].get("platform").is_none());
+    }
+
+    #[test]
+    fn reader_chapter_uses_camel_case_on_the_wire() {
+        let chapter = ReaderChapter {
+            title: "Example".into(),
+            chapter_id: Some("12".into()),
+            chapter_title: Some("Chapter 12".into()),
+            pages: vec![ReaderPage {
+                url: "https://cdn.example/1.jpg".into(),
+                width: Some(800),
+                height: Some(1200),
+            }],
+            previous: Some(ChapterRef {
+                id: "11".into(),
+                title: "Chapter 11".into(),
+            }),
+            next: None,
+        };
+
+        let value = serde_json::to_value(chapter).unwrap();
+        assert_eq!(value["title"], "Example");
+        assert_eq!(value["chapterId"], "12");
+        assert_eq!(value["chapterTitle"], "Chapter 12");
+        assert_eq!(value["pages"][0]["width"], 800);
+        assert_eq!(value["previous"]["id"], "11");
+        assert!(value["next"].is_null());
+        assert!(value.get("chapter_id").is_none());
     }
 }

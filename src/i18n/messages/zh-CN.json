@@ -5,6 +5,7 @@
   "meta": {
     "search": "搜索 · {app}",
     "comic": "漫画详情 · {app}",
+    "reader": "阅读 · {app}",
     "favorites": "收藏 · {app}",
     "downloads": "下载 · {app}",
     "history": "历史 · {app}",
@@ -64,6 +65,7 @@
   "detail": {
     "backToSearch": "返回搜索结果",
     "backHome": "返回首页",
+    "read": "开始阅读",
     "retry": "重试",
     "notFound": "未找到漫画",
     "notFoundDescription": "该漫画可能已被删除，或链接无效。",
@@ -104,6 +106,27 @@
       "other": "其他"
     }
   },
+  "reader": {
+    "back": "返回详情",
+    "loading": "正在加载章节…",
+    "loadFailed": "章节加载失败",
+    "empty": "该章节没有可阅读的页面。",
+    "emptyDescription": "章节数据源返回了空的页面列表。",
+    "retry": "重试",
+    "pageIndicator": "{current} / {total}",
+    "pageAnnouncement": "第 {current} 页，共 {total} 页",
+    "pageAlt": "第 {current} 页（共 {total} 页）",
+    "imageFailed": "图片加载失败。",
+    "previousPage": "上一页",
+    "nextPage": "下一页",
+    "previousChapter": "上一章",
+    "nextChapter": "下一章",
+    "zoomIn": "放大",
+    "zoomOut": "缩小",
+    "resetZoom": "重置缩放",
+    "fullscreen": "全屏",
+    "exitFullscreen": "退出全屏"
+  },
   "settings": {
     "title": "设置",
     "back": "返回首页",
@@ -121,6 +144,14 @@
         "system": "跟随系统",
         "en": "English",
         "zh-CN": "简体中文"
+      }
+    },
+    "readerDirection": {
+      "label": "阅读方向",
+      "options": {
+        "ltr": "从左到右",
+        "rtl": "从右到左",
+        "ttb": "从上到下"
       }
     },
     "proxy": {

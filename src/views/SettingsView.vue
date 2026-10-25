@@ -34,6 +34,21 @@ const localeOptions = computed<SelectOption[]>(() => [
   { label: t("settings.language.options.zh-CN"), value: "zh-CN" },
 ]);
 
+const readerDirectionOptions = computed<SelectOption[]>(() => [
+  {
+    label: t("settings.readerDirection.options.ltr"),
+    value: "ltr",
+  },
+  {
+    label: t("settings.readerDirection.options.rtl"),
+    value: "rtl",
+  },
+  {
+    label: t("settings.readerDirection.options.ttb"),
+    value: "ttb",
+  },
+]);
+
 // The form edits a copy so a rejected address is never persisted. Only a
 // successful `set_http_proxy` call writes back to the store.
 const proxyDraft = reactive<{
@@ -238,6 +253,14 @@ function goHome() {
           v-model:value="settings.locale"
           class="setting-select"
           :options="localeOptions"
+        />
+      </div>
+      <div class="setting">
+        <span>{{ t("settings.readerDirection.label") }}</span>
+        <NSelect
+          v-model:value="settings.readerDirection"
+          class="setting-select"
+          :options="readerDirectionOptions"
         />
       </div>
 

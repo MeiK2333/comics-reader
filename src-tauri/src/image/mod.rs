@@ -20,7 +20,7 @@ use crate::logging;
 use cache::ImageFormat;
 pub(crate) use http::HttpClient;
 use http::HttpProxyConfig;
-use model::{ComicDetail, SearchResponse};
+use model::{ComicDetail, ReaderChapter, SearchResponse};
 use platform::{find as find_platform, resolve as resolve_platform, unknown_platform};
 
 /// Bump only when the cache layout itself changes. Per-platform header changes
@@ -232,6 +232,62 @@ async fn get_comic_inner(client: &HttpClient, platform: &str, id: &str) -> Resul
     let spec = platform.detail_request(id)?;
     let body = http::fetch_document(client, platform, &spec).await?;
     platform.parse_detail(id, &body)
+}
+
+/// Fetch the page list for one chapter. Platforms with a single implicit
+/// chapter ignore `chapter_id`; chaptered platforms use it to select the page.
+#[tauri::command]
+pub(crate) async fn get_reader_chapter(
+    client: State<'_, HttpClient>,
+    platform: String,
+    id: String,
+    chapter_id: Option<String>,
+) -> Result<ReaderChapter> {
+    let result =
+        get_reader_chapter_inner(client.inner(), &platform, &id, chapter_id.as_deref()).await;
+
+    match &result {
+        Ok(chapter) => logging::info(
+            "reader",
+            format!(
+                "reader chapter loaded: platform={platform} id={id:?} chapter={:?} pages={}",
+                chapter_id.as_deref().unwrap_or("-"),
+                chapter.pages.len()
+            ),
+        ),
+        Err(error) => logging::error(
+            "reader",
+            format!(
+                "reader chapter failed: platform={platform} id={id:?} chapter={:?} code={} error={error}",
+                chapter_id.as_deref().unwrap_or("-"),
+                error.code().as_str()
+            ),
+        ),
+    }
+
+    result
+}
+
+async fn get_reader_chapter_inner(
+    client: &HttpClient,
+    platform: &str,
+    id: &str,
+    chapter_id: Option<&str>,
+) -> Result<ReaderChapter> {
+    let platform = find_platform(platform).ok_or_else(|| unknown_platform(platform))?;
+
+    let id = id.trim();
+    if id.is_empty() {
+        return Err(AppError::InvalidInput {
+            field: "id",
+            reason: "must not be empty".into(),
+        });
+    }
+    let chapter_id = chapter_id.map(str::trim).filter(|value| !value.is_empty());
+
+    let spec = platform.reader_chapter_request(id, chapter_id)?;
+    let body = http::fetch_document(client, platform, &spec).await?;
+    platform.parse_reader_chapter(id, chapter_id, &body)
 }
 
 /// Apply or clear the user's HTTP proxy for every subsequent request.

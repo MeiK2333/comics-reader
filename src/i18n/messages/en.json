@@ -5,6 +5,7 @@
   "meta": {
     "search": "Search · {app}",
     "comic": "Comic · {app}",
+    "reader": "Read · {app}",
     "favorites": "Favorites · {app}",
     "downloads": "Downloads · {app}",
     "history": "History · {app}",
@@ -64,6 +65,7 @@
   "detail": {
     "backToSearch": "Back to results",
     "backHome": "Back to home",
+    "read": "Start reading",
     "retry": "Retry",
     "notFound": "Comic not found",
     "notFoundDescription": "This comic may have been removed, or the link is invalid.",
@@ -104,6 +106,27 @@
       "other": "Other"
     }
   },
+  "reader": {
+    "back": "Back to details",
+    "loading": "Loading chapter…",
+    "loadFailed": "Could not load this chapter",
+    "empty": "This chapter has no pages.",
+    "emptyDescription": "The chapter source returned an empty page list.",
+    "retry": "Retry",
+    "pageIndicator": "{current} / {total}",
+    "pageAnnouncement": "Page {current} of {total}",
+    "pageAlt": "Page {current} of {total}",
+    "imageFailed": "Could not load this page.",
+    "previousPage": "Previous page",
+    "nextPage": "Next page",
+    "previousChapter": "Previous chapter",
+    "nextChapter": "Next chapter",
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "resetZoom": "Reset zoom",
+    "fullscreen": "Fullscreen",
+    "exitFullscreen": "Exit fullscreen"
+  },
   "settings": {
     "title": "Settings",
     "back": "Back to home",
@@ -121,6 +144,14 @@
         "system": "System",
         "en": "English",
         "zh-CN": "简体中文"
+      }
+    },
+    "readerDirection": {
+      "label": "Reading direction",
+      "options": {
+        "ltr": "Left to right",
+        "rtl": "Right to left",
+        "ttb": "Top to bottom"
       }
     },
     "proxy": {

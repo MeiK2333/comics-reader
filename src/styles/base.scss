@@ -1,5 +1,6 @@
 :root {
   --app-background: #f6f6f6;
+  --app-safe-area-top: env(safe-area-inset-top, 0px);
   color-scheme: light;
   color: #0f0f0f;
   background-color: var(--app-background);
@@ -33,7 +34,7 @@ body {
   position: sticky;
   top: 0;
   z-index: 10;
-  height: env(safe-area-inset-top, 0px);
+  height: var(--app-safe-area-top);
   background-color: var(--app-background);
 }
 

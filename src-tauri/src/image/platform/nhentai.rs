@@ -3,10 +3,10 @@ use reqwest::header::{ACCEPT_LANGUAGE, REFERER};
 use serde::Deserialize;
 use url::Url;
 
-use crate::error::Result;
+use crate::error::{AppError, Result};
 use crate::image::model::{
-    ComicDetail, DetailExtra, NhentaiDetailExtra, NhentaiSearchExtra, NhentaiTag, SearchExtra,
-    SearchItem, SearchResponse,
+    ComicDetail, DetailExtra, NhentaiDetailExtra, NhentaiSearchExtra, NhentaiTag, ReaderChapter,
+    ReaderPage, SearchExtra, SearchItem, SearchResponse,
 };
 
 use super::{Platform, RequestSpec, host_matches, numeric_id};
@@ -98,53 +98,96 @@ impl Platform for Nhentai {
     }
 
     fn parse_detail(&self, id: &str, body: &[u8]) -> Result<ComicDetail> {
-        let response: ApiDetail = serde_json::from_slice(body)?;
-        let ApiDetail {
-            media_id,
-            title,
-            cover,
-            thumbnail,
-            scanlator,
-            upload_date,
-            tags,
-            num_pages,
-            num_favorites,
-        } = response;
-
-        let japanese_title = non_empty(title.japanese);
-        let pretty_title = non_empty(title.pretty);
-        let display_title = non_empty(title.english)
-            .or_else(|| pretty_title.clone())
-            .or_else(|| japanese_title.clone())
-            .unwrap_or_else(|| format!("#{id}"));
-        let thumb = thumbnail
-            .as_ref()
-            .map(|image| thumbnail_url(&image.path))
-            .unwrap_or_default();
-        let cover_path = cover.as_ref().map(|image| cover_url(&image.path));
-        let cover_width = cover.as_ref().and_then(|image| image.width);
-        let cover_height = cover.as_ref().and_then(|image| image.height);
-
-        let extra = NhentaiDetailExtra {
-            media_id,
-            japanese_title,
-            pretty_title,
-            num_pages,
-            num_favorites,
-            scanlator: non_empty(scanlator),
-            upload_date,
-            cover: cover_path,
-            cover_width,
-            cover_height,
-            tags,
-        };
-
-        Ok(ComicDetail::new(
-            display_title,
-            thumb,
-            DetailExtra::Nhentai(extra),
-        ))
+        Ok(parse_gallery(id, body)?.0)
     }
+
+    fn reader_chapter_request(&self, id: &str, _chapter_id: Option<&str>) -> Result<RequestSpec> {
+        // A gallery is one implicit chapter, so the detail endpoint already
+        // contains the complete page list.
+        self.detail_request(id)
+    }
+
+    fn parse_reader_chapter(
+        &self,
+        id: &str,
+        _chapter_id: Option<&str>,
+        body: &[u8],
+    ) -> Result<ReaderChapter> {
+        let (detail, pages) = parse_gallery(id, body)?;
+        if pages.is_empty() {
+            return Err(AppError::NotFound {
+                resource: format!("nhentai gallery `{id}` pages"),
+            });
+        }
+
+        Ok(ReaderChapter {
+            title: detail.title,
+            chapter_id: None,
+            chapter_title: None,
+            pages,
+            previous: None,
+            next: None,
+        })
+    }
+}
+
+fn parse_gallery(id: &str, body: &[u8]) -> Result<(ComicDetail, Vec<ReaderPage>)> {
+    let response: ApiDetail = serde_json::from_slice(body)?;
+    let ApiDetail {
+        media_id,
+        title,
+        cover,
+        thumbnail,
+        scanlator,
+        upload_date,
+        tags,
+        num_pages,
+        num_favorites,
+        pages,
+    } = response;
+
+    let japanese_title = non_empty(title.japanese);
+    let pretty_title = non_empty(title.pretty);
+    let display_title = non_empty(title.english)
+        .or_else(|| pretty_title.clone())
+        .or_else(|| japanese_title.clone())
+        .unwrap_or_else(|| format!("#{id}"));
+    let thumb = thumbnail
+        .as_ref()
+        .map(|image| thumbnail_url(&image.path))
+        .unwrap_or_default();
+    let cover_path = cover.as_ref().map(|image| cover_url(&image.path));
+    let cover_width = cover.as_ref().and_then(|image| image.width);
+    let cover_height = cover.as_ref().and_then(|image| image.height);
+
+    let extra = NhentaiDetailExtra {
+        media_id,
+        japanese_title,
+        pretty_title,
+        num_pages,
+        num_favorites,
+        scanlator: non_empty(scanlator),
+        upload_date,
+        cover: cover_path,
+        cover_width,
+        cover_height,
+        tags,
+    };
+
+    let pages = pages
+        .into_iter()
+        .filter(|page| !page.path.trim().is_empty())
+        .map(|page| ReaderPage {
+            url: page_url(&page.path),
+            width: page.width,
+            height: page.height,
+        })
+        .collect();
+
+    Ok((
+        ComicDetail::new(display_title, thumb, DetailExtra::Nhentai(extra)),
+        pages,
+    ))
 }
 
 #[derive(Deserialize)]
@@ -196,6 +239,8 @@ struct ApiDetail {
     num_pages: Option<u32>,
     #[serde(default)]
     num_favorites: Option<u32>,
+    #[serde(default)]
+    pages: Vec<ApiPage>,
 }
 
 #[derive(Deserialize)]
@@ -217,6 +262,15 @@ struct ApiImage {
     height: Option<u32>,
 }
 
+#[derive(Deserialize)]
+struct ApiPage {
+    path: String,
+    #[serde(default)]
+    width: Option<u32>,
+    #[serde(default)]
+    height: Option<u32>,
+}
+
 fn non_empty(value: Option<String>) -> Option<String> {
     value
         .map(|text| text.trim().to_string())
@@ -228,6 +282,10 @@ fn thumbnail_url(path: &str) -> String {
 }
 
 fn cover_url(path: &str) -> String {
+    format!("https://i.nhentai.net/{}", path.trim_start_matches('/'))
+}
+
+fn page_url(path: &str) -> String {
     format!("https://i.nhentai.net/{}", path.trim_start_matches('/'))
 }
 
@@ -276,7 +334,11 @@ mod tests {
     { "id": 1, "type": "tag", "name": "example", "slug": "example", "count": 10 }
   ],
   "num_pages": 20,
-  "num_favorites": 5
+  "num_favorites": 5,
+  "pages": [
+    { "number": 1, "path": "galleries/100/1.jpg", "width": 1280, "height": 1800 },
+    { "number": 2, "path": "galleries/100/2.png", "width": 1280, "height": 1800 }
+  ]
 }
 "#;
 
@@ -346,5 +408,40 @@ mod tests {
         assert_eq!(extra.tags[0].kind, "tag");
         assert_eq!(extra.tags[0].name, "example");
         assert_eq!(extra.tags[0].count, Some(10));
+    }
+
+    #[test]
+    fn parses_reader_pages() {
+        let chapter = Nhentai
+            .parse_reader_chapter("42", None, DETAIL_JSON.as_bytes())
+            .unwrap();
+
+        assert_eq!(chapter.title, "Example Gallery");
+        assert!(chapter.chapter_id.is_none());
+        assert!(chapter.chapter_title.is_none());
+        assert_eq!(chapter.pages.len(), 2);
+        assert_eq!(
+            chapter.pages[0].url,
+            "https://i.nhentai.net/galleries/100/1.jpg"
+        );
+        assert_eq!(chapter.pages[0].width, Some(1280));
+        assert_eq!(chapter.pages[0].height, Some(1800));
+        assert_eq!(
+            chapter.pages[1].url,
+            "https://i.nhentai.net/galleries/100/2.png"
+        );
+    }
+
+    #[test]
+    fn reader_rejects_a_gallery_without_pages() {
+        let body = r#"{
+            "media_id": "100",
+            "title": { "english": "Example Gallery" },
+            "pages": []
+        }"#;
+        let error = Nhentai
+            .parse_reader_chapter("42", None, body.as_bytes())
+            .unwrap_err();
+        assert_eq!(error.code(), crate::error::ErrorCode::NotFound);
     }
 }

@@ -14,7 +14,7 @@ use reqwest::RequestBuilder;
 use url::Url;
 
 use crate::error::{AppError, Result};
-use crate::image::model::{ComicDetail, SearchResponse};
+use crate::image::model::{ComicDetail, ReaderChapter, SearchResponse};
 
 use generic::Generic;
 use jm::Jm;
@@ -88,6 +88,22 @@ pub(crate) trait Platform: Send + Sync {
     /// Parse a comic detail response body.
     fn parse_detail(&self, _id: &str, _body: &[u8]) -> Result<ComicDetail> {
         Err(self.unsupported("comic detail"))
+    }
+
+    /// Build the request that returns a chapter's page list. `chapter_id` is
+    /// `None` for galleries that have a single implicit chapter.
+    fn reader_chapter_request(&self, _id: &str, _chapter_id: Option<&str>) -> Result<RequestSpec> {
+        Err(self.unsupported("reading"))
+    }
+
+    /// Parse a chapter page list from the response body.
+    fn parse_reader_chapter(
+        &self,
+        _id: &str,
+        _chapter_id: Option<&str>,
+        _body: &[u8],
+    ) -> Result<ReaderChapter> {
+        Err(self.unsupported("reading"))
     }
 
     /// Error used by platforms that only implement image fetching.

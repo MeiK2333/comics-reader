@@ -46,6 +46,11 @@ const backTarget = computed(() =>
 const backLabel = computed(() =>
   t(canReturnToSearch.value ? "detail.backToSearch" : "detail.backHome"),
 );
+// Only nhentai has a reader page source so far. Keeping the entry point gated
+// avoids sending users into an unsupported reader for the other platforms.
+const canRead = computed(
+  () => detail.value?.platform === "nhentai" && platform.value !== null,
+);
 
 const manhuaguiDetail = computed<ManhuaguiDetailData | null>(() =>
   detail.value?.platform === "manhuagui" ? detail.value : null,
@@ -76,6 +81,16 @@ const errorText = computed(() => {
 
 function goBack() {
   void router.push(backTarget.value);
+}
+
+function openReader() {
+  if (!detail.value || detail.value.platform !== "nhentai") {
+    return;
+  }
+  void router.push({
+    name: "comic-reader",
+    params: { platform: detail.value.platform, id: id.value },
+  });
 }
 
 async function load() {
@@ -157,6 +172,14 @@ onBeforeUnmount(() => {
           </svg>
         </template>
       </NButton>
+      <NButton
+        v-if="canRead"
+        attr-type="button"
+        type="primary"
+        @click="openReader"
+      >
+        {{ t("detail.read") }}
+      </NButton>
     </header>
 
     <div v-if="loading" class="detail-loading" aria-busy="true">
@@ -203,6 +226,8 @@ onBeforeUnmount(() => {
 .detail-topbar {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
   margin-bottom: 1rem;
 }
 

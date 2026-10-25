@@ -3,6 +3,9 @@ import type { LocalePreference } from "../i18n";
 
 export type ThemeMode = "system" | "light" | "dark";
 
+/** Reading order shared by the reader's layout, swipe and arrow-key mapping. */
+export type ReaderDirection = "ltr" | "rtl" | "ttb";
+
 export interface ProxySettings {
   enabled: boolean;
   host: string;
@@ -18,6 +21,8 @@ export interface SettingsState {
   ech: boolean;
   /** Mirrored to Rust through set_logging_enabled; writes to the app log file. */
   logging: boolean;
+  /** Layout and navigation direction used by the comic reader. */
+  readerDirection: ReaderDirection;
 }
 
 export const useSettingsStore = defineStore("settings", {
@@ -31,6 +36,7 @@ export const useSettingsStore = defineStore("settings", {
     },
     ech: false,
     logging: false,
+    readerDirection: "ltr",
   }),
   // Persisted under `comics-reader:settings` (see `src/stores/index.ts`) and
   // rehydrated synchronously when the store is first used.
