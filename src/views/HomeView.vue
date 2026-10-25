@@ -2,6 +2,7 @@
 import { ref } from "vue";
 import type { ComicPlatform } from "../api/comics";
 import ComicSearchBar from "../components/ComicSearchBar.vue";
+import HomeShortcuts from "../components/HomeShortcuts.vue";
 import { useRouteTransition } from "../composables/useRouteTransition";
 import { useSearchStore } from "../stores/search";
 
@@ -37,6 +38,7 @@ function submit() {
         @select-platform="selectPlatform"
         @search="submit"
       />
+      <HomeShortcuts />
     </section>
   </main>
 </template>

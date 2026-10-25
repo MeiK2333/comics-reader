@@ -16,6 +16,7 @@ declare module 'vue' {
     ComicSearchResults: typeof import('./components/ComicSearchResults.vue')['default']
     ComicThumb: typeof import('./components/ComicThumb.vue')['default']
     HomeIcon: typeof import('./components/HomeIcon.vue')['default']
+    HomeShortcuts: typeof import('./components/HomeShortcuts.vue')['default']
     JmResultCard: typeof import('./components/result-cards/JmResultCard.vue')['default']
     ManhuaguiResultCard: typeof import('./components/result-cards/ManhuaguiResultCard.vue')['default']
     NButton: typeof import('naive-ui')['NButton']
@@ -27,6 +28,7 @@ declare module 'vue' {
     NInput: typeof import('naive-ui')['NInput']
     NMessageProvider: typeof import('naive-ui')['NMessageProvider']
     NPagination: typeof import('naive-ui')['NPagination']
+    NSelect: typeof import('naive-ui')['NSelect']
     NSpin: typeof import('naive-ui')['NSpin']
     NTag: typeof import('naive-ui')['NTag']
     PlatformPicker: typeof import('./components/PlatformPicker.vue')['default']
@@ -34,5 +36,6 @@ declare module 'vue' {
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     SearchIcon: typeof import('./components/SearchIcon.vue')['default']
+    ShortcutIcon: typeof import('./components/ShortcutIcon.vue')['default']
   }
 }

@@ -1,3 +1,15 @@
+:root {
+  color-scheme: light;
+  color: #0f0f0f;
+  background-color: #f6f6f6;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  color: #f6f6f6;
+  background-color: #2f2f2f;
+}
+
 html,
 body {
   height: 100%;
@@ -5,6 +17,7 @@ body {
 
 body {
   margin: 0;
+  background-color: inherit;
 }
 
 #app {

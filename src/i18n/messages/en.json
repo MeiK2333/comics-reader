@@ -4,6 +4,10 @@
   },
   "meta": {
     "search": "Search · {app}",
+    "favorites": "Favorites · {app}",
+    "downloads": "Downloads · {app}",
+    "history": "History · {app}",
+    "settings": "Settings · {app}",
     "notFound": "Page Not Found · {app}"
   },
   "errors": {
@@ -21,6 +25,13 @@
     "unknown": "Unexpected error: {message}"
   },
   "home": {
+    "shortcuts": {
+      "label": "Quick links",
+      "favorites": "Favorites",
+      "downloads": "Downloads",
+      "history": "History",
+      "settings": "Settings"
+    },
     "search": {
       "submit": "Search",
       "platform": "Platform",
@@ -46,6 +57,32 @@
   },
   "search": {
     "home": "Home"
+  },
+  "settings": {
+    "title": "Settings",
+    "back": "Back to home",
+    "theme": {
+      "label": "Theme",
+      "options": {
+        "system": "System",
+        "light": "Light",
+        "dark": "Dark"
+      }
+    },
+    "language": {
+      "label": "Language",
+      "options": {
+        "system": "System",
+        "en": "English",
+        "zh-CN": "简体中文"
+      }
+    }
+  },
+  "shortcut": {
+    "placeholder": {
+      "description": "This feature is coming soon.",
+      "back": "Back to home"
+    }
   },
   "notFound": {
     "title": "Page not found",

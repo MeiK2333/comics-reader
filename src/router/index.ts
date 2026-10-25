@@ -6,7 +6,14 @@ import pinia from "../stores";
 import { useSearchStore } from "../stores/search";
 import HomeView from "../views/HomeView.vue";
 
-type RouteTitleKey = "app.name" | "meta.search" | "meta.notFound";
+type RouteTitleKey =
+  | "app.name"
+  | "meta.search"
+  | "meta.favorites"
+  | "meta.downloads"
+  | "meta.history"
+  | "meta.settings"
+  | "meta.notFound";
 
 declare module "vue-router" {
   interface RouteMeta {
@@ -24,6 +31,33 @@ const router = createRouter({
       name: "home",
       component: HomeView,
       meta: { titleKey: "app.name" },
+    },
+    {
+      path: "/favorites",
+      name: "favorites",
+      component: () => import("../views/ShortcutPlaceholderView.vue"),
+      props: { feature: "favorites" },
+      meta: { titleKey: "meta.favorites" },
+    },
+    {
+      path: "/downloads",
+      name: "downloads",
+      component: () => import("../views/ShortcutPlaceholderView.vue"),
+      props: { feature: "downloads" },
+      meta: { titleKey: "meta.downloads" },
+    },
+    {
+      path: "/history",
+      name: "history",
+      component: () => import("../views/ShortcutPlaceholderView.vue"),
+      props: { feature: "history" },
+      meta: { titleKey: "meta.history" },
+    },
+    {
+      path: "/settings",
+      name: "settings",
+      component: () => import("../views/SettingsView.vue"),
+      meta: { titleKey: "meta.settings" },
     },
     {
       path: "/search",
@@ -51,7 +85,11 @@ function translateTitleKey(key: RouteTitleKey) {
     case "meta.notFound":
       return translate("meta.notFound", { app: translate("app.name") });
     case "meta.search":
-      return translate("meta.search", { app: translate("app.name") });
+    case "meta.favorites":
+    case "meta.downloads":
+    case "meta.history":
+    case "meta.settings":
+      return translate(key, { app: translate("app.name") });
     case "app.name":
       return translate("app.name");
   }
