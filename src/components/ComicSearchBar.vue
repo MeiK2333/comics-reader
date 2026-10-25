@@ -77,6 +77,7 @@ function submit() {
   /* Keep the pill inside its parent width; otherwise the padding and border
      push the right edge past the page gutter. */
   box-sizing: border-box;
+  view-transition-name: search-form;
 }
 
 .search-input {
@@ -107,6 +108,7 @@ function submit() {
 
 .search-action {
   flex: none;
+  view-transition-name: search-action;
 }
 
 .search-action :deep(.n-button__icon) {

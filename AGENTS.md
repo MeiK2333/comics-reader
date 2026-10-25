@@ -84,6 +84,7 @@
 │  │  ├─ search.ts               内存态搜索会话：平台、关键词、分页与请求竞态
 │  │  └─ settings.ts             持久化的主题与语言偏好
 │  ├─ composables/
+│  │  ├─ useRouteTransition.ts   首页/结果页的 View Transition 导航
 │  │  ├─ useTheme.ts             系统/浅色/深色解析 + <html data-theme>
 │  │  ├─ useLocale.ts            语言、Naive UI locale 对象、窗口标题同步
 │  │  └─ useErrorMessage.ts      错误码 → 本地化消息
@@ -182,7 +183,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 ### 远程 HTTP、图片缓存与平台检索
 
 - 图片抓取全部在 Rust 中完成：`ComicThumb.vue` 对可见缩略图调用 `fetch_image` 命令（`src-tauri/src/image/`），由 `reqwest` 请求并缓存，webview 通过资产协议读取文件；首页本身不再直接请求图片站点。
-- 搜索会话由 `src/stores/search.ts` 管理平台、关键词、分页与请求竞态；`HomeView.vue` 只负责搜索入口，提交后跳转无查询参数的 `/search`；`SearchView.vue` 绑定 store 并复用 `ComicSearchResults.vue`；`/search` 的守卫在没有内存态搜索时重定向首页，首页图标始终回首页。`ComicSearchBar.vue`（含 `PlatformPicker.vue`）负责输入，`ComicSearchResults.vue` 负责错误/加载/空态与分页，`ComicResultCard.vue` 只按 `item.platform` 分发到 `result-cards/` 下对应平台的卡片，字段解释与排版留在各平台卡片内；`ComicThumb.vue` 用 `IntersectionObserver` 懒加载缩略图，避免一次性请求整页图片。
+- 搜索会话由 `src/stores/search.ts` 管理平台、关键词、分页与请求竞态；`HomeView.vue` 只负责搜索入口，提交后跳转无查询参数的 `/search`；`SearchView.vue` 绑定 store 并复用 `ComicSearchResults.vue`；`/search` 的守卫在没有内存态搜索时重定向首页，首页图标始终回首页；两页之间通过 `useRouteTransition` 触发 View Transition，不支持时代码会直接导航。`ComicSearchBar.vue`（含 `PlatformPicker.vue`）负责输入，`ComicSearchResults.vue` 负责错误/加载/空态与分页，`ComicResultCard.vue` 只按 `item.platform` 分发到 `result-cards/` 下对应平台的卡片，字段解释与排版留在各平台卡片内；`ComicThumb.vue` 用 `IntersectionObserver` 懒加载缩略图，避免一次性请求整页图片。
 - 平台差异集中在 `src-tauri/src/image/platform/`：每个平台实现 `Platform`（`id`、`matches`、`configure`），主流程只负责下载、校验与缓存。当前支持 `generic`、`manhuagui`、`jm`、`nhentai`。
 - 命令的 `platform` 参数可省略：省略时按 URL host 自动识别，未知 host 回退 `generic`；调用方已知平台时应显式传入，JM 等域名轮换的站点尤其应显式指定。
 - 命令校验响应（非 2xx、空响应、超过 32 MiB、非图片格式）后，用“平台 + 平台缓存版本 + 缓存用 URL”的 SHA-256 作为文件名；manhuagui 和 jm 会在计算 key 前去掉图片 URL 的 query（签名/过期参数不影响命中），但下载仍使用完整 URL，写入 `app_cache_dir()/images/<platform>/<hash>.<ext>`；同一 URL 在同一平台下再次请求会直接命中缓存。
@@ -244,7 +245,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 | 修改远程抓取的站点、请求头或缓存策略 | `src-tauri/src/image/`、`src-tauri/tauri.conf.json`（资产协议 scope） |
 | 新增图片平台 | `src-tauri/src/image/platform/`（实现 trait、注册、host/header 与测试） |
 | 新增/修改平台搜索或详情 | `src-tauri/src/image/platform/`、`src-tauri/src/image/model.rs`、`src/api/comics.ts` |
-| 修改首页搜索/结果 UI | `src/views/HomeView.vue`、`src/views/SearchView.vue`、`src/stores/search.ts`、`src/components/ComicSearchBar.vue`、`src/components/ComicSearchResults.vue`、`src/components/ComicResultCard.vue`、`src/components/result-cards/`、`src/components/PlatformPicker.vue`、`src/components/ComicThumb.vue`、`src/assets/platforms/`、`src/api/comics.ts` |
+| 修改首页搜索/结果 UI | `src/views/HomeView.vue`、`src/views/SearchView.vue`、`src/stores/search.ts`、`src/composables/useRouteTransition.ts`、`src/components/ComicSearchBar.vue`、`src/components/ComicSearchResults.vue`、`src/components/ComicResultCard.vue`、`src/components/result-cards/`、`src/components/PlatformPicker.vue`、`src/components/ComicThumb.vue`、`src/assets/platforms/`、`src/api/comics.ts` |
 | 修改全局样式 | `src/styles/base.scss`；组件样式保持在组件内 |
 | 修改 Android 原生配置 | `src-tauri/gen/android/`（已跟踪，但大部分是生成内容，修改前要确认） |
 | 重新生成应用图标 | `src-tauri/icons/`，通过 `pnpm tauri icon <source>` 生成；不要手改 |
@@ -296,7 +297,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 
 ### 手动冒烟测试
 
-- 搜索流程：从首页选择平台、输入关键词进入 `#/search`，确认结果数/卡片/缩略图/分页正常；切换平台、重新搜索、翻页都留在结果页；点击首页图标固定回首页；直接打开或刷新 `#/search` 回到首页；无结果与错误状态正常。
+- 搜索流程：从首页选择平台、输入关键词进入 `#/search`，确认结果数/卡片/缩略图/分页正常；切换平台、重新搜索、翻页都留在结果页；点击首页图标固定回首页，并与结果页搜索栏的反向动画同时完成；直接打开或刷新 `#/search` 回到首页；无结果与错误状态正常。
 - 平台检索：分别用 manhuagui/nhentai 搜索关键词并取一条详情，确认 total/page_size/result 与 thumb/extras；JM 若被 Cloudflare 403，应返回本地化 httpStatus 错误而不是崩溃。
 - 启动时主题与语言仍从持久化设置恢复；当前首页没有修改入口，因此不提供运行时切换冒烟项。
 - 访问 `#/does-not-exist`：显示 404 页面与本地化标题，返回首页链接可用。
@@ -311,6 +312,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 - **`pnpm dev` 不是完整应用。** 它只提供 UI，没有 Tauri，因此 `invoke`、`convertFileSrc` 与窗口 API 都会失败。浏览器兜底逻辑已被有意移除。
 - **首页没有设置入口。** 主题/语言偏好仍会持久化，但修改需要恢复设置 UI 或直接改 store；不要假设用户能在界面切换。
 - **`/search` 不携带查询参数。** 结果页依赖内存态 `search` store；刷新或直接打开 `#/search` 会被路由守卫送回首页，这是刻意取舍。首页图标固定回首页，不使用 `router.back()`。
+- **首页与结果页之间使用 View Transition。** 搜索表单、搜索按钮和首页图标通过 `view-transition-name` 跨路由衔接；不要用延迟 `router.push` 的方式等待收起动画，否则会产生卡顿感。WebView 不支持该 API 时应直接导航。
 - **缩略图不要直接使用远程 URL。** 搜索结果缩略图必须走 `ComicThumb` → `fetch_image` → 资产协议，否则防盗链站点会 403。
 - **Rust 与前端构建是分开的。** Vite 不监听 `src-tauri/**`；修改 Rust 后请用 `pnpm tauri dev` / `pnpm tauri build`。`pnpm build` 永远不会编译 Rust。
 - **开发端口固定。** `1420` 与 `build.devUrl` 必须保持一致；只改一处会破坏应用。

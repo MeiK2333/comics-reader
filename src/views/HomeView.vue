@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { ref } from "vue";
-import { useRouter } from "vue-router";
 import type { ComicPlatform } from "../api/comics";
 import ComicSearchBar from "../components/ComicSearchBar.vue";
+import { useRouteTransition } from "../composables/useRouteTransition";
 import { useSearchStore } from "../stores/search";
 
-const router = useRouter();
+const { navigate } = useRouteTransition();
 const search = useSearchStore();
 
 // Keep the last query when coming back from the results page, but only the
@@ -23,7 +23,7 @@ function submit() {
   }
 
   search.beginSearch(platform.value, query.value);
-  void router.push({ name: "search" });
+  void navigate({ name: "search" });
 }
 </script>
 
