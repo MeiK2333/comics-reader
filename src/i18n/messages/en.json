@@ -122,9 +122,8 @@
       }
     },
     "proxy": {
-      "title": "HTTP proxy",
-      "hint": "When enabled, enter the host and port and save. Turning it off restores a direct connection immediately.",
-      "enable": "Use proxy",
+      "title": "Network settings",
+      "enable": "HTTP proxy",
       "host": "Host",
       "hostPlaceholder": "127.0.0.1",
       "port": "Port",
@@ -136,6 +135,9 @@
         "portInvalid": "Enter a port between 1 and 65535.",
         "invalid": "The proxy address is invalid. Check the host and port."
       }
+    },
+    "ech": {
+      "enable": "Enable ECH"
     }
   },
   "shortcut": {

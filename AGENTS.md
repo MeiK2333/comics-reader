@@ -11,8 +11,8 @@
 - 首页是 Google 风格搜索页：选择平台、输入关键词后进入独立的 `/search` 结果页；结果页负责分页与错误/空态，缩略图由 Rust `fetch_image` 缓存后通过资产协议显示；
 - 结果卡片进入 `/comic/:platform/:id` 详情页，manhuagui/JM/nhentai 各自渲染封面、元数据和标签；详情页可直接刷新或通过深链接打开；
 - `search_comics` / `get_comic` 为 manhuagui、jm、nhentai 提供统一的关键词搜索与精确 id 详情，搜索与详情分别返回带 `platform` 判别的强类型扩展字段；
-- 首页搜索框下方有收藏、下载、历史、设置快捷入口；前三个目前指向占位页，设置页已提供主题、语言与 HTTP 代理配置。
-- 主题、语言与 HTTP 代理偏好从 webview 本地恢复，并可在设置页修改；代理配置会同步到 Rust 的 HTTP client。
+- 首页搜索框下方有收藏、下载、历史、设置快捷入口；前三个目前指向占位页，设置页已提供主题、语言、HTTP 代理与 ECH 开关。
+- 主题、语言、HTTP 代理与 ECH 偏好从 webview 本地恢复，并可在设置页修改；代理配置会同步到 Rust 的 HTTP client。
 
 不要假设项目里已经有漫画库、章节浏览、下载器、数据库或阅读器引擎；这些都属于待实现的新功能。
 
@@ -90,13 +90,13 @@
 │  │  ├─ SearchView.vue          结果页：首页图标、搜索栏与结果区
 │  │  ├─ ComicDetailView.vue     详情页：加载/错误/重试与平台内容分发
 │  │  ├─ ShortcutPlaceholderView.vue  收藏/下载/历史的占位页
-│  │  ├─ SettingsView.vue        设置页：主题、语言与代理
+│  │  ├─ SettingsView.vue        设置页：主题、语言、代理与 ECH
 │  │  └─ NotFoundView.vue        404 页面
 │  ├─ router/index.ts            Hash 路由、守卫、详情路由、滚动行为与原生窗口标题
 │  ├─ stores/
 │  │  ├─ index.ts                Pinia + 持久化命名空间
 │  │  ├─ search.ts               内存态搜索会话：平台、关键词、分页与请求竞态
-│  │  └─ settings.ts             持久化的主题、语言与代理偏好
+│  │  └─ settings.ts             持久化的主题、语言、代理与 ECH 偏好
 │  ├─ composables/
 │  │  ├─ useRouteTransition.ts   首页/结果页的 View Transition 导航
 │  │  ├─ useTheme.ts             系统/浅色/深色解析 + <html data-theme>
@@ -195,6 +195,8 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 - 给 `SettingsState` 新增字段会自动持久化，老用户通常会回落到 store 的初始值。重命名或删除已持久化字段则需要迁移，否则旧数据会被静默忽略。
 - `useTheme()` 与 `useLocale()` 只在 shell 层调用一次。其他组件直接读 `useSettingsStore()`；重复调用 `useTheme()` 会重复注册 media query 监听器。
 - 首页提供设置快捷入口，设置页可切换主题与语言，并可保存 HTTP 代理；主题/语言立即生效。关闭代理开关会立即通过 `set_http_proxy(null)` 清除代理并写回 store，无需点击保存；开启代理或修改地址仍需点击“保存并应用”，且只有 `set_http_proxy` 成功后才写回 store，避免持久化无法应用的地址。
+- `settings.ech` 是纯前端开关，目前没有 ECH 后端。开启 ECH 时如果代理已开启，会立即清除代理并写回 store；应用启动时如果 ECH 已开启且代理仍为开启，也会在挂载和首个请求前关闭代理。不要在 ECH 上添加未经实现的网络副作用。
+- 设置页的“网络设置”区域把 HTTP 代理与 ECH 放在一起，不再为 ECH 单独分组；区块标题用“网络设置”，代理开关文案用“HTTP 代理”，不要写回旧的“使用代理”或单独 ECH 章节。
 
 ### 远程 HTTP、图片缓存与平台检索
 
@@ -333,6 +335,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 - 平台检索：分别用 manhuagui/nhentai 搜索关键词并取一条详情，确认 total/page_size/result 与 thumb/extras；JM 若被 Cloudflare 403，应返回本地化 httpStatus 错误而不是崩溃。
 - 设置页：切换主题立即生效并在重启后恢复；切换语言后文案、Naive UI 与窗口标题同步更新。
 - 设置页代理：启用并填写可达代理后搜索与缩略图正常；非法地址有本地化提示且不持久化；关闭开关后立即恢复默认网络行为（无需保存）；开启或修改地址后仍需保存并应用；重启后配置恢复。
+- ECH：代理开启时打开 ECH，确认代理立即关闭且持久化；持久化为 `ech: true` + 代理开启后重启，确认启动阶段代理被自动关闭；关闭 ECH 不改变代理。
 - 移动端安全区：在真机或 DevTools 中临时给 `.safe-area-top` 设置高度（如 32px），确认所有页面从安全区下方开始；滚动后安全区条仍固定在顶部并遮住其下内容；切换深色主题时背景色一致。
 - 详情页：从结果卡片进入三个平台详情，确认标题/封面/信息/标签；直接刷新 `#/comic/...` 可加载；返回按钮回到原搜索结果；非法 id 显示本地化未找到；窄窗口切换单列。
 - 访问 `#/does-not-exist`：显示 404 页面与本地化标题，返回首页链接可用。
@@ -345,6 +348,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 ## 陷阱与刻意保留的现状
 
 - **`pnpm dev` 不是完整应用。** 它只提供 UI，没有 Tauri，因此 `invoke`、`convertFileSrc` 与窗口 API 都会失败。浏览器兜底逻辑已被有意移除。
+- **ECH 只是前端开关。** 当前没有 ECH 后端，开启它只会关闭/阻止自定义代理；不要把它当作真正的 ECH 实现，也不要添加未经验证的网络副作用。
 - **代理是 Rust 的运行时状态。** 不要把代理持久化到 Rust；启动和设置页保存时通过 `set_http_proxy` 同步，命令失败时保留旧 client。
 - **顶部安全区不要用页面 padding。** 页面滚动时 padding 会跟着滚走；顶部安全区由 `App.vue` 的 sticky `.safe-area-top` 统一留白，滚动内容不会显示到状态栏或刘海区域。
 - **主题与语言只能通过设置页修改。** 偏好保存在 `comics-reader:settings`；不要在组件里绕过 `useSettingsStore`，也不要重复调用 `useTheme()`/`useLocale()`。

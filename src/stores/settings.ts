@@ -14,6 +14,8 @@ export interface SettingsState {
   locale: LocalePreference;
   /** Applied to the Rust HTTP client on startup and after saving the form. */
   proxy: ProxySettings;
+  /** Frontend-only preference; enabling it clears any configured proxy. */
+  ech: boolean;
 }
 
 export const useSettingsStore = defineStore("settings", {
@@ -25,6 +27,7 @@ export const useSettingsStore = defineStore("settings", {
       host: "",
       port: 8080,
     },
+    ech: false,
   }),
   // Persisted under `comics-reader:settings` (see `src/stores/index.ts`) and
   // rehydrated synchronously when the store is first used.

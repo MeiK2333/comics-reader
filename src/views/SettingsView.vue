@@ -40,6 +40,7 @@ const proxyDraft = reactive<{
   port: number | null;
 }>({ ...settings.proxy });
 const savingProxy = ref(false);
+const savingEch = ref(false);
 
 const PROXY_ERROR_KEYS: Record<ProxyValidationError, MessageKey> = {
   hostRequired: "settings.proxy.errors.hostRequired",
@@ -54,6 +55,22 @@ function proxyErrorMessage(cause: unknown): string {
     : formatError(cause);
 }
 
+async function disableProxyNow(): Promise<boolean> {
+  const next: ProxySettings = { ...settings.proxy, enabled: false };
+  savingProxy.value = true;
+  try {
+    await applyProxy(next);
+    settings.proxy = next;
+    proxyDraft.enabled = false;
+    return true;
+  } catch (cause) {
+    message.error(proxyErrorMessage(cause));
+    return false;
+  } finally {
+    savingProxy.value = false;
+  }
+}
+
 /**
  * Turning the proxy off is always safe to apply immediately: there is no
  * address to validate, and the user may need to fall back to a direct
@@ -65,17 +82,26 @@ async function onProxyToggle(enabled: boolean) {
     return;
   }
 
-  const next: ProxySettings = { ...settings.proxy, enabled: false };
-  savingProxy.value = true;
-  try {
-    await applyProxy(next);
-    settings.proxy = next;
-  } catch (cause) {
+  if (!(await disableProxyNow())) {
     proxyDraft.enabled = true;
-    message.error(proxyErrorMessage(cause));
-  } finally {
-    savingProxy.value = false;
   }
+}
+
+/** ECH and the custom proxy are mutually exclusive for now. */
+async function onEchToggle(enabled: boolean) {
+  if (!enabled || savingEch.value) {
+    return;
+  }
+  if (!proxyDraft.enabled && !settings.proxy.enabled) {
+    return;
+  }
+
+  savingEch.value = true;
+  const cleared = await disableProxyNow();
+  if (!cleared) {
+    settings.ech = false;
+  }
+  savingEch.value = false;
 }
 
 async function saveProxy() {
@@ -149,7 +175,6 @@ function goHome() {
       <NDivider class="settings-divider" />
 
       <h2 class="settings-subtitle">{{ t("settings.proxy.title") }}</h2>
-      <p class="settings-hint">{{ t("settings.proxy.hint") }}</p>
 
       <div class="setting">
         <span>{{ t("settings.proxy.enable") }}</span>
@@ -193,6 +218,16 @@ function goHome() {
         >
           {{ t("settings.proxy.save") }}
         </NButton>
+      </div>
+
+      <div class="setting ech-setting">
+        <span>{{ t("settings.ech.enable") }}</span>
+        <NSwitch
+          v-model:value="settings.ech"
+          :loading="savingEch"
+          :disabled="savingEch || savingProxy"
+          @update:value="onEchToggle"
+        />
       </div>
     </NCard>
   </main>
@@ -244,15 +279,9 @@ function goHome() {
 }
 
 .settings-subtitle {
-  margin: 0 0 0.35rem;
+  margin: 0 0 0.75rem;
   font-size: 1rem;
   font-weight: 600;
-}
-
-.settings-hint {
-  margin: 0 0 0.75rem;
-  font-size: 0.85rem;
-  opacity: 0.7;
 }
 
 .proxy-fields {
@@ -281,6 +310,10 @@ function goHome() {
 .proxy-actions {
   display: flex;
   justify-content: flex-end;
+  margin-top: 0.9rem;
+}
+
+.ech-setting {
   margin-top: 0.9rem;
 }
 </style>

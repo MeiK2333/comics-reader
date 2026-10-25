@@ -18,6 +18,12 @@ async function bootstrap() {
   applyTheme(settings.theme);
   setLocale(resolveLocale(settings.locale));
 
+  // ECH is mutually exclusive with the custom proxy. Resolve a persisted
+  // conflict before the first request can be issued.
+  if (settings.ech && settings.proxy.enabled) {
+    settings.proxy = { ...settings.proxy, enabled: false };
+  }
+
   // The proxy is runtime state in Rust. Restore it before mounting so the
   // first search or thumbnail cannot race ahead with a direct connection.
   if (isTauri()) {

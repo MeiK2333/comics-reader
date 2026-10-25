@@ -122,9 +122,8 @@
       }
     },
     "proxy": {
-      "title": "HTTP 代理",
-      "hint": "开启后填写主机和端口并保存；关闭开关会立即恢复直连。",
-      "enable": "使用代理",
+      "title": "网络设置",
+      "enable": "HTTP 代理",
       "host": "主机",
       "hostPlaceholder": "127.0.0.1",
       "port": "端口",
@@ -136,6 +135,9 @@
         "portInvalid": "请输入 1 到 65535 之间的端口。",
         "invalid": "代理地址无效，请检查主机和端口。"
       }
+    },
+    "ech": {
+      "enable": "启用 ECH"
     }
   },
   "shortcut": {
