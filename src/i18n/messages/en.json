@@ -3,6 +3,7 @@
     "name": "Comics Reader"
   },
   "meta": {
+    "search": "Search · {app}",
     "notFound": "Page Not Found · {app}"
   },
   "errors": {
@@ -42,6 +43,9 @@
       "noTags": "No tags",
       "moreTags": "+{count}"
     }
+  },
+  "search": {
+    "home": "Home"
   },
   "notFound": {
     "title": "Page not found",

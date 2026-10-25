@@ -8,7 +8,7 @@
 
 当前界面仍是脚手架，还不是完整的阅读器：
 
-- 首页是 Google 风格搜索页：选择平台、输入关键词、分页展示结果；缩略图由 Rust `fetch_image` 缓存后通过资产协议显示；
+- 首页是 Google 风格搜索页：选择平台、输入关键词后进入独立的 `/search` 结果页；结果页负责分页与错误/空态，缩略图由 Rust `fetch_image` 缓存后通过资产协议显示；
 - `search_comics` / `get_comic` 为 manhuagui、jm、nhentai 提供统一的关键词搜索与精确 id 详情，返回公共字段和平台扩展字段；
 - 主题与语言偏好从 webview 本地恢复，但首页不再提供修改入口。
 
@@ -75,14 +75,15 @@
 │  │     └─ NhentaiResultCard.vue
 │  ├─ assets/platforms/          平台真实图标（favicon/logo；PNG 或按像素重绘的 SVG）
 │  ├─ views/
-│  │  ├─ HomeView.vue            搜索页布局：组合搜索栏与结果区
+│  │  ├─ HomeView.vue            首页：搜索入口
+│  │  ├─ SearchView.vue          结果页：首页图标、搜索栏与结果区
 │  │  └─ NotFoundView.vue        404 页面
-│  ├─ router/index.ts            Hash 路由、路由元数据、原生窗口标题
+│  ├─ router/index.ts            Hash 路由、路由守卫、路由元数据、原生窗口标题
 │  ├─ stores/
 │  │  ├─ index.ts                Pinia + 持久化命名空间
+│  │  ├─ search.ts               内存态搜索会话：平台、关键词、分页与请求竞态
 │  │  └─ settings.ts             持久化的主题与语言偏好
 │  ├─ composables/
-│  │  ├─ useComicSearch.ts       搜索状态、请求竞态与分页
 │  │  ├─ useTheme.ts             系统/浅色/深色解析 + <html data-theme>
 │  │  ├─ useLocale.ts            语言、Naive UI locale 对象、窗口标题同步
 │  │  └─ useErrorMessage.ts      错误码 → 本地化消息
@@ -167,12 +168,12 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 - `src/i18n/messages/en.json` 是主 schema。`MessageSchema = typeof en`，`MessageKey` 由它派生，因此其他语言包缺少 key 会直接编译报错。
 - 新代码请使用 `src/i18n` 导出的 `translate()` 或 `useAppI18n()`。不要用 `useI18n().t()` 传裸字符串，那会绕过编译期 key 校验。
 - 每个新 key 必须在同一次改动中同时加入 `en.json` 与 `zh-CN.json`，并保持占位符（`{name}`、`{status}`）一致。
-- 错误要以数据形式保存（code/details），在渲染时翻译，而不是提前拼成字符串。`useComicSearch` 的 `error` ref 是参考模式，这样切换语言时提示会同步更新。
+- 错误要以数据形式保存（code/details），在渲染时翻译，而不是提前拼成字符串。搜索 store（`src/stores/search.ts`）的 `error` ref 是参考模式，这样切换语言时提示会同步更新。
 - 新增语言时需要更新：`SUPPORTED_LOCALES`、`messages` 映射、`useLocale.ts` 中的 `NAIVE_LOCALES`，必要时还要改 `detectSystemLocale()`。
 
 ### 设置、主题与持久化
 
-- `src/stores/settings.ts` 是唯一持久化的 store。插件在 `src/stores/index.ts` 中为键名加上 `comics-reader:` 前缀。
+- `src/stores/settings.ts` 是唯一持久化的 store；`src/stores/search.ts` 只保存内存态搜索会话，刷新后失效。插件在 `src/stores/index.ts` 中为键名加上 `comics-reader:` 前缀。
 - 只持久化用户偏好或小型持久状态。不要持久化大对象、瞬态加载标记或密钥。
 - 给 `SettingsState` 新增字段会自动持久化，老用户通常会回落到 store 的初始值。重命名或删除已持久化字段则需要迁移，否则旧数据会被静默忽略。
 - `useTheme()` 与 `useLocale()` 只在 shell 层调用一次。其他组件直接读 `useSettingsStore()`；重复调用 `useTheme()` 会重复注册 media query 监听器。
@@ -181,7 +182,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 ### 远程 HTTP、图片缓存与平台检索
 
 - 图片抓取全部在 Rust 中完成：`ComicThumb.vue` 对可见缩略图调用 `fetch_image` 命令（`src-tauri/src/image/`），由 `reqwest` 请求并缓存，webview 通过资产协议读取文件；首页本身不再直接请求图片站点。
-- 首页由 `useComicSearch.ts` 管理平台、关键词、分页与请求竞态；`ComicSearchBar.vue`（含 `PlatformPicker.vue`）负责输入，`ComicSearchResults.vue` 负责错误/加载/空态与分页，`ComicResultCard.vue` 只按 `item.platform` 分发到 `result-cards/` 下对应平台的卡片，字段解释与排版留在各平台卡片内；`ComicThumb.vue` 用 `IntersectionObserver` 懒加载缩略图，避免一次性请求整页图片。
+- 搜索会话由 `src/stores/search.ts` 管理平台、关键词、分页与请求竞态；`HomeView.vue` 只负责搜索入口，提交后跳转无查询参数的 `/search`；`SearchView.vue` 绑定 store 并复用 `ComicSearchResults.vue`；`/search` 的守卫在没有内存态搜索时重定向首页，首页图标始终回首页。`ComicSearchBar.vue`（含 `PlatformPicker.vue`）负责输入，`ComicSearchResults.vue` 负责错误/加载/空态与分页，`ComicResultCard.vue` 只按 `item.platform` 分发到 `result-cards/` 下对应平台的卡片，字段解释与排版留在各平台卡片内；`ComicThumb.vue` 用 `IntersectionObserver` 懒加载缩略图，避免一次性请求整页图片。
 - 平台差异集中在 `src-tauri/src/image/platform/`：每个平台实现 `Platform`（`id`、`matches`、`configure`），主流程只负责下载、校验与缓存。当前支持 `generic`、`manhuagui`、`jm`、`nhentai`。
 - 命令的 `platform` 参数可省略：省略时按 URL host 自动识别，未知 host 回退 `generic`；调用方已知平台时应显式传入，JM 等域名轮换的站点尤其应显式指定。
 - 命令校验响应（非 2xx、空响应、超过 32 MiB、非图片格式）后，用“平台 + 平台缓存版本 + 缓存用 URL”的 SHA-256 作为文件名；manhuagui 和 jm 会在计算 key 前去掉图片 URL 的 query（签名/过期参数不影响命中），但下载仍使用完整 URL，写入 `app_cache_dir()/images/<platform>/<hash>.<ext>`；同一 URL 在同一平台下再次请求会直接命中缓存。
@@ -243,7 +244,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 | 修改远程抓取的站点、请求头或缓存策略 | `src-tauri/src/image/`、`src-tauri/tauri.conf.json`（资产协议 scope） |
 | 新增图片平台 | `src-tauri/src/image/platform/`（实现 trait、注册、host/header 与测试） |
 | 新增/修改平台搜索或详情 | `src-tauri/src/image/platform/`、`src-tauri/src/image/model.rs`、`src/api/comics.ts` |
-| 修改首页搜索/结果 UI | `src/views/HomeView.vue`、`src/components/ComicSearchBar.vue`、`src/components/ComicSearchResults.vue`、`src/components/ComicResultCard.vue`、`src/components/result-cards/`、`src/components/PlatformPicker.vue`、`src/composables/useComicSearch.ts`、`src/components/ComicThumb.vue`、`src/assets/platforms/`、`src/api/comics.ts` |
+| 修改首页搜索/结果 UI | `src/views/HomeView.vue`、`src/views/SearchView.vue`、`src/stores/search.ts`、`src/components/ComicSearchBar.vue`、`src/components/ComicSearchResults.vue`、`src/components/ComicResultCard.vue`、`src/components/result-cards/`、`src/components/PlatformPicker.vue`、`src/components/ComicThumb.vue`、`src/assets/platforms/`、`src/api/comics.ts` |
 | 修改全局样式 | `src/styles/base.scss`；组件样式保持在组件内 |
 | 修改 Android 原生配置 | `src-tauri/gen/android/`（已跟踪，但大部分是生成内容，修改前要确认） |
 | 重新生成应用图标 | `src-tauri/icons/`，通过 `pnpm tauri icon <source>` 生成；不要手改 |
@@ -295,7 +296,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 
 ### 手动冒烟测试
 
-- 搜索页：选择平台、输入关键词，确认结果数/卡片/缩略图/分页正常；切换平台会清空旧结果；无结果与错误状态正常。
+- 搜索流程：从首页选择平台、输入关键词进入 `#/search`，确认结果数/卡片/缩略图/分页正常；切换平台、重新搜索、翻页都留在结果页；点击首页图标固定回首页；直接打开或刷新 `#/search` 回到首页；无结果与错误状态正常。
 - 平台检索：分别用 manhuagui/nhentai 搜索关键词并取一条详情，确认 total/page_size/result 与 thumb/extras；JM 若被 Cloudflare 403，应返回本地化 httpStatus 错误而不是崩溃。
 - 启动时主题与语言仍从持久化设置恢复；当前首页没有修改入口，因此不提供运行时切换冒烟项。
 - 访问 `#/does-not-exist`：显示 404 页面与本地化标题，返回首页链接可用。
@@ -309,6 +310,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 
 - **`pnpm dev` 不是完整应用。** 它只提供 UI，没有 Tauri，因此 `invoke`、`convertFileSrc` 与窗口 API 都会失败。浏览器兜底逻辑已被有意移除。
 - **首页没有设置入口。** 主题/语言偏好仍会持久化，但修改需要恢复设置 UI 或直接改 store；不要假设用户能在界面切换。
+- **`/search` 不携带查询参数。** 结果页依赖内存态 `search` store；刷新或直接打开 `#/search` 会被路由守卫送回首页，这是刻意取舍。首页图标固定回首页，不使用 `router.back()`。
 - **缩略图不要直接使用远程 URL。** 搜索结果缩略图必须走 `ComicThumb` → `fetch_image` → 资产协议，否则防盗链站点会 403。
 - **Rust 与前端构建是分开的。** Vite 不监听 `src-tauri/**`；修改 Rust 后请用 `pnpm tauri dev` / `pnpm tauri build`。`pnpm build` 永远不会编译 Rust。
 - **开发端口固定。** `1420` 与 `build.devUrl` 必须保持一致；只改一处会破坏应用。

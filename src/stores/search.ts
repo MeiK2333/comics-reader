@@ -1,4 +1,5 @@
 import { computed, ref } from "vue";
+import { defineStore } from "pinia";
 import {
   searchComics,
   type ComicPlatform,
@@ -8,12 +9,13 @@ import type { AppError } from "../errors";
 import { toAppError } from "../errors";
 
 /**
- * Own the search form and request lifecycle for the home page.
+ * In-memory search session shared by the home and results views.
  *
- * Every request captures a generation id: a slow response from a previous
- * query, page or platform is dropped instead of overwriting newer results.
+ * The results route deliberately has no query parameters, so the active
+ * query, page and response live here. A page reload starts a fresh session
+ * and the route guard sends `/search` back to the home page.
  */
-export function useComicSearch() {
+export const useSearchStore = defineStore("search", () => {
   const platform = ref<ComicPlatform>("manhuagui");
   const query = ref("");
   const page = ref(1);
@@ -22,19 +24,20 @@ export function useComicSearch() {
   const error = ref<AppError | null>(null);
   let requestId = 0;
 
-  const hasSearched = computed(
-    () => loading.value || response.value !== null || error.value !== null,
-  );
+  const active = computed(() => query.value.trim().length > 0);
 
   async function runSearch(targetPage: number) {
     const text = query.value.trim();
-    if (!text || loading.value) {
+    if (!text) {
       return;
     }
 
     const id = ++requestId;
     loading.value = true;
     error.value = null;
+    // Drop the previous query's results immediately so the new URL-free
+    // search page never shows stale cards under a different keyword.
+    response.value = null;
     page.value = targetPage;
 
     try {
@@ -54,30 +57,20 @@ export function useComicSearch() {
     }
   }
 
-  function search() {
-    if (!query.value.trim() || loading.value) {
+  function beginSearch(nextPlatform: ComicPlatform, text: string) {
+    const trimmed = text.trim();
+    if (!trimmed) {
       return;
     }
+
+    platform.value = nextPlatform;
+    query.value = trimmed;
+    page.value = 1;
     void runSearch(1);
   }
 
-  function selectPlatform(next: ComicPlatform) {
-    if (platform.value === next) {
-      return;
-    }
-
-    // Results belong to the old platform, so clear them and invalidate any
-    // in-flight response before the next search.
-    platform.value = next;
-    requestId++;
-    response.value = null;
-    error.value = null;
-    page.value = 1;
-    loading.value = false;
-  }
-
   function changePage(next: number) {
-    if (next === page.value) {
+    if (next < 1 || next === page.value) {
       return;
     }
     void runSearch(next);
@@ -90,9 +83,8 @@ export function useComicSearch() {
     loading,
     response,
     error,
-    hasSearched,
-    search,
-    selectPlatform,
+    active,
+    beginSearch,
     changePage,
   };
-}
+});

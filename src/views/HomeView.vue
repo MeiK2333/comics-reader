@@ -1,42 +1,43 @@
 <script setup lang="ts">
+import { ref } from "vue";
+import { useRouter } from "vue-router";
+import type { ComicPlatform } from "../api/comics";
 import ComicSearchBar from "../components/ComicSearchBar.vue";
-import ComicSearchResults from "../components/ComicSearchResults.vue";
-import { useComicSearch } from "../composables/useComicSearch";
+import { useSearchStore } from "../stores/search";
 
-const {
-  platform,
-  query,
-  page,
-  loading,
-  response,
-  error,
-  hasSearched,
-  search,
-  selectPlatform,
-  changePage,
-} = useComicSearch();
+const router = useRouter();
+const search = useSearchStore();
+
+// Keep the last query when coming back from the results page, but only the
+// form values: results are rendered exclusively by the search route.
+const platform = ref<ComicPlatform>(search.platform);
+const query = ref(search.query);
+
+function selectPlatform(next: ComicPlatform) {
+  platform.value = next;
+}
+
+function submit() {
+  if (!query.value.trim()) {
+    return;
+  }
+
+  search.beginSearch(platform.value, query.value);
+  void router.push({ name: "search" });
+}
 </script>
 
 <template>
-  <main class="home" :class="{ 'has-results': hasSearched }">
+  <main class="home">
     <section class="hero">
       <ComicSearchBar
         v-model:query="query"
         :platform="platform"
-        :loading="loading"
+        :loading="false"
         @select-platform="selectPlatform"
-        @search="search"
+        @search="submit"
       />
     </section>
-
-    <ComicSearchResults
-      v-if="hasSearched"
-      :loading="loading"
-      :page="page"
-      :response="response"
-      :error="error"
-      @update:page="changePage"
-    />
   </main>
 </template>
 
@@ -57,21 +58,6 @@ const {
   gap: 0.75rem;
   min-height: 55vh;
   text-align: center;
-}
-
-.home.has-results {
-  padding-top: 1rem;
-  /* Keep the pagination close to the window edge instead of leaving a large
-     empty band under the last result row. */
-  padding-bottom: 1.5rem;
-}
-
-.home.has-results .hero {
-  align-items: flex-start;
-  min-height: 0;
-  gap: 0.5rem;
-  padding-top: 0.25rem;
-  text-align: left;
 }
 
 @media (max-width: 560px) {

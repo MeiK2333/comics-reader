@@ -59,6 +59,7 @@ function submit() {
         <SearchIcon />
       </template>
     </NButton>
+    <slot name="trailing" />
   </form>
 </template>
 
@@ -73,6 +74,9 @@ function submit() {
   border: 1px solid rgba(127, 127, 127, 0.28);
   border-radius: 999px;
   background: rgba(127, 127, 127, 0.07);
+  /* Keep the pill inside its parent width; otherwise the padding and border
+     push the right edge past the page gutter. */
+  box-sizing: border-box;
 }
 
 .search-input {

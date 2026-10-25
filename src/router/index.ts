@@ -2,9 +2,11 @@ import { createRouter, createWebHashHistory } from "vue-router";
 import type { RouteMeta } from "vue-router";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { translate } from "../i18n";
+import pinia from "../stores";
+import { useSearchStore } from "../stores/search";
 import HomeView from "../views/HomeView.vue";
 
-type RouteTitleKey = "app.name" | "meta.notFound";
+type RouteTitleKey = "app.name" | "meta.search" | "meta.notFound";
 
 declare module "vue-router" {
   interface RouteMeta {
@@ -24,6 +26,18 @@ const router = createRouter({
       meta: { titleKey: "app.name" },
     },
     {
+      path: "/search",
+      name: "search",
+      component: () => import("../views/SearchView.vue"),
+      meta: { titleKey: "meta.search" },
+      // `/search` has no URL state, so a fresh load or manual visit has
+      // nothing to show. Only in-session searches may enter the results view.
+      beforeEnter: () => {
+        const search = useSearchStore(pinia);
+        return search.active ? true : { name: "home", replace: true };
+      },
+    },
+    {
       path: "/:pathMatch(.*)*",
       name: "not-found",
       component: () => import("../views/NotFoundView.vue"),
@@ -36,6 +50,8 @@ function translateTitleKey(key: RouteTitleKey) {
   switch (key) {
     case "meta.notFound":
       return translate("meta.notFound", { app: translate("app.name") });
+    case "meta.search":
+      return translate("meta.search", { app: translate("app.name") });
     case "app.name":
       return translate("app.name");
   }

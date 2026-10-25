@@ -3,6 +3,7 @@
     "name": "Comics Reader"
   },
   "meta": {
+    "search": "搜索 · {app}",
     "notFound": "页面不存在 · {app}"
   },
   "errors": {
@@ -42,6 +43,9 @@
       "noTags": "暂无标签",
       "moreTags": "+{count}"
     }
+  },
+  "search": {
+    "home": "首页"
   },
   "notFound": {
     "title": "页面不存在",

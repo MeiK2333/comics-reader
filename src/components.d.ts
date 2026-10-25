@@ -15,6 +15,7 @@ declare module 'vue' {
     ComicSearchBar: typeof import('./components/ComicSearchBar.vue')['default']
     ComicSearchResults: typeof import('./components/ComicSearchResults.vue')['default']
     ComicThumb: typeof import('./components/ComicThumb.vue')['default']
+    HomeIcon: typeof import('./components/HomeIcon.vue')['default']
     JmResultCard: typeof import('./components/result-cards/JmResultCard.vue')['default']
     ManhuaguiResultCard: typeof import('./components/result-cards/ManhuaguiResultCard.vue')['default']
     NButton: typeof import('naive-ui')['NButton']
