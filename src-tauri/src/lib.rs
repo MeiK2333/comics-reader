@@ -18,7 +18,9 @@ pub fn run() {
             image::get_comic,
             image::set_http_proxy,
             ech::fetch_ech_config,
-            ech::probe_ech_handshake
+            ech::probe_ech_handshake,
+            ech::set_ech_enabled,
+            ech::get_ech_status
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

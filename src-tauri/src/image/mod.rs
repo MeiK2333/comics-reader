@@ -72,7 +72,7 @@ pub(crate) async fn fetch_image(
         return cached_image(path, platform.id(), true).await;
     }
 
-    let download = http::download_image(&client.get()?, platform, &url).await?;
+    let download = http::download_image(client.inner(), platform, &url).await?;
     let path = cache_dir.join(format!("{key}.{}", download.format.extension()));
     cache::write_atomically(&cache_dir, &path, &key, &download.bytes).await?;
 
@@ -121,7 +121,7 @@ pub(crate) async fn search_comics(
     }
 
     let spec = platform.search_request(query, page)?;
-    let body = http::fetch_document(&client.get()?, platform, &spec).await?;
+    let body = http::fetch_document(client.inner(), platform, &spec).await?;
     platform.parse_search(query, page, &body)
 }
 
@@ -143,7 +143,7 @@ pub(crate) async fn get_comic(
     }
 
     let spec = platform.detail_request(id)?;
-    let body = http::fetch_document(&client.get()?, platform, &spec).await?;
+    let body = http::fetch_document(client.inner(), platform, &spec).await?;
     platform.parse_detail(id, &body)
 }
 

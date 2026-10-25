@@ -146,6 +146,12 @@ pub(crate) fn build_ech_tls_config_with_alpn(
 }
 
 fn build_plain_tls_config() -> Result<rustls::ClientConfig> {
+    build_plain_tls_config_with_alpn(&[b"http/1.1"])
+}
+
+/// Plain-TLS counterpart of [`build_ech_tls_config_with_alpn`], used by the
+/// reqwest fallback client after an ECH rejection.
+pub(crate) fn build_plain_tls_config_with_alpn(alpn: &[&[u8]]) -> Result<rustls::ClientConfig> {
     let mut config = rustls::ClientConfig::builder_with_provider(Arc::new(
         rustls::crypto::aws_lc_rs::default_provider(),
     ))
@@ -154,7 +160,7 @@ fn build_plain_tls_config() -> Result<rustls::ClientConfig> {
     .with_root_certificates(root_store())
     .with_no_client_auth();
 
-    config.alpn_protocols = vec![b"http/1.1".to_vec()];
+    config.alpn_protocols = alpn.iter().map(|protocol| protocol.to_vec()).collect();
     Ok(config)
 }
 

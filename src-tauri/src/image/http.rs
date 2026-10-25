@@ -1,12 +1,13 @@
 //! Shared HTTP client and the platform-agnostic download pipeline.
 
-use std::sync::{Mutex, MutexGuard};
-use std::time::Duration;
+use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::{Duration, SystemTime};
 
 use reqwest::header::{ACCEPT, HeaderMap, HeaderValue, USER_AGENT};
 use serde::Deserialize;
 use url::Url;
 
+use crate::ech::{EchSession, EchStatus};
 use crate::error::{AppError, Result};
 
 use super::cache::ImageFormat;
@@ -20,6 +21,9 @@ const MAX_IMAGE_BYTES: u64 = 32 * 1024 * 1024;
 const MAX_DOCUMENT_BYTES: u64 = 8 * 1024 * 1024;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+/// The first ECH version reports this deadline but does not refresh the
+/// config yet; a later step will rebuild the runtime before it expires.
+const ECH_CONFIG_TTL: Duration = Duration::from_secs(10 * 60);
 
 const USER_AGENT_VALUE: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36";
 const ACCEPT_VALUE: &str = "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8";
@@ -88,19 +92,30 @@ pub(crate) struct HttpClient {
 struct ClientState {
     /// Normalized `http://host:port/` URL, or `None` for reqwest's default.
     proxy: Option<String>,
-    client: Option<reqwest::Client>,
+    normal_client: Option<reqwest::Client>,
+    ech: Option<EchRuntime>,
+}
+
+/// The two clients used while ECH is enabled. Both resolve targets through
+/// Cloudflare DoH and ignore any proxy; only the TLS layer differs.
+struct EchRuntime {
+    session: Arc<EchSession>,
+    ech_client: reqwest::Client,
+    plain_client: reqwest::Client,
+    expires_at: SystemTime,
 }
 
 impl HttpClient {
+    /// Ordinary client, used for HTTP requests and whenever ECH is off.
     pub(super) fn get(&self) -> Result<reqwest::Client> {
         let mut state = self.lock()?;
 
-        if let Some(client) = state.client.as_ref() {
+        if let Some(client) = state.normal_client.as_ref() {
             return Ok(client.clone());
         }
 
         let client = build_client(state.proxy.as_deref())?;
-        state.client = Some(client.clone());
+        state.normal_client = Some(client.clone());
         Ok(client)
     }
 
@@ -108,12 +123,115 @@ impl HttpClient {
     /// cannot use is rejected before it can replace a working proxy.
     pub(crate) fn set_proxy(&self, proxy: Option<HttpProxyConfig>) -> Result<()> {
         let proxy = proxy.map(|proxy| proxy.normalized_url()).transpose()?;
+        let mut state = self.lock()?;
+
+        if state.ech.is_some() {
+            if proxy.is_some() {
+                return Err(invalid_proxy(
+                    "cannot enable the HTTP proxy while ECH is enabled",
+                ));
+            }
+            state.proxy = None;
+            return Ok(());
+        }
+
         let client = build_client(proxy.as_deref())?;
+        state.proxy = proxy;
+        state.normal_client = Some(client);
+        Ok(())
+    }
+
+    /// Install the ECH runtime. A previously configured proxy is cleared
+    /// because both ECH clients are built with `no_proxy`.
+    pub(crate) fn enable_ech(&self, session: Arc<EchSession>) -> Result<()> {
+        let ech_client = build_ech_client(&session, true)?;
+        let plain_client = build_ech_client(&session, false)?;
+        let normal_client = build_client(None)?;
+        let expires_at = SystemTime::now() + ECH_CONFIG_TTL;
 
         let mut state = self.lock()?;
-        state.proxy = proxy;
-        state.client = Some(client);
+        state.proxy = None;
+        state.normal_client = Some(normal_client);
+        state.ech = Some(EchRuntime {
+            session,
+            ech_client,
+            plain_client,
+            expires_at,
+        });
         Ok(())
+    }
+
+    /// Drop the ECH runtime; the ordinary client is reused on the next send.
+    pub(crate) fn disable_ech(&self) -> Result<()> {
+        self.lock()?.ech = None;
+        Ok(())
+    }
+
+    pub(crate) fn ech_status(&self) -> Result<EchStatus> {
+        let state = self.lock()?;
+        let Some(runtime) = state.ech.as_ref() else {
+            return Ok(EchStatus {
+                enabled: false,
+                ready: false,
+                config_domain: None,
+                bootstrap_doh: None,
+                expires_at: None,
+            });
+        };
+
+        let expires_at = runtime
+            .expires_at
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .ok()
+            .map(|duration| duration.as_secs());
+
+        Ok(EchStatus {
+            enabled: true,
+            ready: true,
+            config_domain: Some(runtime.session.config_domain().to_owned()),
+            bootstrap_doh: Some(runtime.session.bootstrap_doh().to_owned()),
+            expires_at,
+        })
+    }
+
+    /// Send a request through the ECH client when it is enabled, retrying once
+    /// with plain TLS when ECH cannot complete the connection.
+    ///
+    /// `build` must be able to construct the request again; the fallback path
+    /// calls it a second time. Plain HTTP always uses the ordinary client so
+    /// ECH cannot change its DNS or proxy behaviour.
+    pub(super) async fn send<F>(&self, url: &Url, build: F) -> Result<reqwest::Response>
+    where
+        F: Fn(&reqwest::Client) -> reqwest::RequestBuilder,
+    {
+        let normal_client = self.get()?;
+        let ech_clients = {
+            let state = self.lock()?;
+            state
+                .ech
+                .as_ref()
+                .map(|runtime| (runtime.ech_client.clone(), runtime.plain_client.clone()))
+        };
+
+        if url.scheme() == "https"
+            && let Some((ech_client, plain_client)) = ech_clients
+        {
+            match build(&ech_client).send().await {
+                Ok(response) => return Ok(response),
+                Err(error) if is_fallback_error(&error) => {
+                    return build(&plain_client)
+                        .send()
+                        .await
+                        .map_err(|error| network_error(url, error));
+                }
+                Err(error) => return Err(network_error(url, error)),
+            }
+        }
+
+        build(&normal_client)
+            .send()
+            .await
+            .map_err(|error| network_error(url, error))
     }
 
     fn lock(&self) -> Result<MutexGuard<'_, ClientState>> {
@@ -123,12 +241,16 @@ impl HttpClient {
     }
 }
 
-fn build_client(proxy: Option<&str>) -> Result<reqwest::Client> {
-    let mut builder = reqwest::Client::builder()
+fn base_builder() -> reqwest::ClientBuilder {
+    reqwest::Client::builder()
         .default_headers(base_headers())
         .connect_timeout(CONNECT_TIMEOUT)
         .timeout(REQUEST_TIMEOUT)
-        .redirect(reqwest::redirect::Policy::limited(10));
+        .redirect(reqwest::redirect::Policy::limited(10))
+}
+
+fn build_client(proxy: Option<&str>) -> Result<reqwest::Client> {
+    let mut builder = base_builder();
 
     if let Some(proxy) = proxy {
         // `ClientBuilder::proxy` also disables reqwest's automatic system
@@ -144,6 +266,36 @@ fn build_client(proxy: Option<&str>) -> Result<reqwest::Client> {
         .map_err(|error| AppError::Unexpected(format!("failed to build the HTTP client: {error}")))
 }
 
+fn build_ech_client(session: &Arc<EchSession>, ech: bool) -> Result<reqwest::Client> {
+    let tls = if ech {
+        session.reqwest_ech_tls()?
+    } else {
+        session.reqwest_plain_tls()?
+    };
+
+    base_builder()
+        .use_preconfigured_tls(tls)
+        .dns_resolver(session.resolver())
+        .no_proxy()
+        .build()
+        .map_err(|error| {
+            AppError::Unexpected(format!("failed to build the ECH HTTP client: {error}"))
+        })
+}
+
+/// Only transport-level failures are retried. HTTP status errors, body errors
+/// and decode errors have already reached the server and must not be repeated.
+fn is_fallback_error(error: &reqwest::Error) -> bool {
+    error.is_connect() || error.is_timeout()
+}
+
+fn network_error(url: &Url, error: reqwest::Error) -> AppError {
+    AppError::Network {
+        url: url.to_string(),
+        reason: error.to_string(),
+    }
+}
+
 fn base_headers() -> HeaderMap {
     let mut headers = HeaderMap::new();
     headers.insert(USER_AGENT, HeaderValue::from_static(USER_AGENT_VALUE));
@@ -157,18 +309,15 @@ pub(super) struct Download {
 }
 
 pub(super) async fn download_image(
-    client: &reqwest::Client,
+    http: &HttpClient,
     platform: &dyn Platform,
     url: &Url,
 ) -> Result<Download> {
-    let mut response = platform
-        .configure(client.get(url.as_str()), url)
-        .send()
-        .await
-        .map_err(|error| AppError::Network {
-            url: url.to_string(),
-            reason: error.to_string(),
-        })?;
+    let mut response = http
+        .send(url, |client| {
+            platform.configure(client.get(url.as_str()), url)
+        })
+        .await?;
 
     let status = response.status();
     if !status.is_success() {
@@ -234,20 +383,18 @@ pub(super) async fn download_image(
 
 /// Fetch an HTML or JSON document for a platform search/detail request.
 pub(super) async fn fetch_document(
-    client: &reqwest::Client,
+    http: &HttpClient,
     platform: &dyn Platform,
     spec: &RequestSpec,
 ) -> Result<Vec<u8>> {
     let url = &spec.url;
-    let mut response = platform
-        .configure(client.get(url.as_str()), url)
-        .header(ACCEPT, spec.accept)
-        .send()
-        .await
-        .map_err(|error| AppError::Network {
-            url: url.to_string(),
-            reason: error.to_string(),
-        })?;
+    let mut response = http
+        .send(url, |client| {
+            platform
+                .configure(client.get(url.as_str()), url)
+                .header(ACCEPT, spec.accept)
+        })
+        .await?;
 
     let status = response.status();
     if !status.is_success() {
@@ -381,5 +528,61 @@ mod tests {
             client.lock().unwrap().proxy.as_deref(),
             Some("http://127.0.0.1:7890/")
         );
+    }
+
+    #[test]
+    fn reports_ech_disabled_by_default() {
+        let client = HttpClient::default();
+
+        let status = client.ech_status().unwrap();
+
+        assert!(!status.enabled);
+        assert!(!status.ready);
+        assert!(status.config_domain.is_none());
+        assert!(status.bootstrap_doh.is_none());
+        assert!(status.expires_at.is_none());
+    }
+
+    /// Exercises the real runtime: ECH succeeds for nhentai, a non-Cloudflare
+    /// host falls back to plain TLS, and the proxy is rejected while ECH is on.
+    #[tokio::test]
+    #[ignore = "performs live ECH requests"]
+    async fn ech_client_fetches_and_falls_back() {
+        let http = HttpClient::default();
+        let session = Arc::new(
+            crate::ech::EchSession::bootstrap("https://dns.alidns.com/dns-query")
+                .await
+                .unwrap(),
+        );
+        http.enable_ech(session).unwrap();
+
+        let status = http.ech_status().unwrap();
+        assert!(status.enabled);
+        assert!(status.ready);
+        assert_eq!(status.config_domain.as_deref(), Some("cloudflare-ech.com"));
+
+        let nhentai = Url::parse("https://nhentai.net/").unwrap();
+        let response = http
+            .send(&nhentai, |client| client.get(nhentai.as_str()))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+
+        let qq = Url::parse("https://www.qq.com/").unwrap();
+        let response = http
+            .send(&qq, |client| client.get(qq.as_str()))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+
+        let error = http.set_proxy(Some(proxy("127.0.0.1", 7890))).unwrap_err();
+        assert!(matches!(
+            error,
+            AppError::InvalidInput { field: "proxy", .. }
+        ));
+
+        http.disable_ech().unwrap();
+        assert!(!http.ech_status().unwrap().enabled);
+        http.set_proxy(Some(proxy("127.0.0.1", 7890))).unwrap();
     }
 }

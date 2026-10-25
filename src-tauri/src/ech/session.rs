@@ -1,14 +1,20 @@
 //! Long-lived ECH state: one shared `cloudflare-ech.com` config, one
 //! Cloudflare DoH-over-ECH resolver, and per-target handshakes.
 
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
+
+use reqwest::dns::{Addrs, Name, Resolve, Resolving};
 
 use crate::error::{AppError, Result};
 
 use super::bootstrap::{self, EchConfig as DohEchConfig};
 use super::doh::CloudflareDoh;
 use super::tls::{self, EchHandshake};
+
+/// ALPN used by the reqwest clients. reqwest does not populate ALPN for a
+/// preconfigured TLS config, so both h2 and HTTP/1.1 have to be requested here.
+const REQWEST_ALPN: &[&[u8]] = &[b"h2", b"http/1.1"];
 
 /// The bootstrap DoH endpoint is only consulted once, while constructing this
 /// session. All target resolution afterwards goes through Cloudflare DoH.
@@ -44,6 +50,60 @@ impl EchSession {
         let ips = self.resolve(domain).await?;
         tls::handshake(domain, &self.config, &self.ech_tls, ips).await
     }
+
+    /// ECH TLS config for reqwest, including the h2 ALPN reqwest cannot add.
+    pub(crate) fn reqwest_ech_tls(&self) -> Result<rustls::ClientConfig> {
+        tls::build_ech_tls_config_with_alpn(&self.config.ech_config_list, REQWEST_ALPN)
+    }
+
+    /// Plain-TLS fallback config for reqwest; DNS still goes through Cloudflare.
+    pub(crate) fn reqwest_plain_tls(&self) -> Result<rustls::ClientConfig> {
+        tls::build_plain_tls_config_with_alpn(REQWEST_ALPN)
+    }
+
+    /// Resolver for the ECH and fallback clients.
+    pub(crate) fn resolver(self: &Arc<Self>) -> Arc<CloudflareResolver> {
+        Arc::new(CloudflareResolver {
+            session: self.clone(),
+        })
+    }
+
+    pub(crate) fn config_domain(&self) -> &str {
+        &self.config.domain
+    }
+
+    pub(crate) fn bootstrap_doh(&self) -> &str {
+        &self.config.doh_endpoint
+    }
+}
+
+/// `reqwest::dns::Resolve` adapter over [`EchSession::resolve`].
+///
+/// Addresses are returned with port 0 so reqwest can substitute the port from
+/// the request URL (443 for HTTPS).
+pub(crate) struct CloudflareResolver {
+    session: Arc<EchSession>,
+}
+
+impl CloudflareResolver {
+    fn address_list(ips: Vec<IpAddr>) -> Addrs {
+        Box::new(ips.into_iter().map(|ip| SocketAddr::new(ip, 0)))
+    }
+}
+
+impl Resolve for CloudflareResolver {
+    fn resolve(&self, name: Name) -> Resolving {
+        let session = self.session.clone();
+        let domain = name.as_str().to_owned();
+
+        Box::pin(async move {
+            let ips = session
+                .resolve(&domain)
+                .await
+                .map_err(|error| -> Box<dyn std::error::Error + Send + Sync> { Box::new(error) })?;
+            Ok(CloudflareResolver::address_list(ips))
+        })
+    }
 }
 
 fn validate_domain(domain: &str) -> Result<&str> {
@@ -64,27 +124,27 @@ mod tests {
     use std::net::SocketAddr;
     use std::time::Duration;
 
-    use reqwest::dns::{Addrs, Name, Resolve, Resolving};
+    #[test]
+    fn maps_resolved_addresses_to_port_zero() {
+        let addresses: Vec<SocketAddr> =
+            CloudflareResolver::address_list(vec![IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)])
+                .collect();
 
-    /// Resolve every reqwest connection through the session's Cloudflare DoH
-    /// resolver. This mirrors the resolver the real ECH client will use.
-    struct TestResolver {
-        session: Arc<EchSession>,
+        assert_eq!(
+            addresses,
+            vec![SocketAddr::new(
+                IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+                0
+            )]
+        );
     }
 
-    impl Resolve for TestResolver {
-        fn resolve(&self, name: Name) -> Resolving {
-            let session = self.session.clone();
-            let domain = name.as_str().to_owned();
+    #[test]
+    fn session_and_resolver_are_send_and_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
 
-            Box::pin(async move {
-                let ips = session.resolve(&domain).await.map_err(
-                    |error| -> Box<dyn std::error::Error + Send + Sync> { Box::new(error) },
-                )?;
-                let addresses: Addrs = Box::new(ips.into_iter().map(|ip| SocketAddr::new(ip, 0)));
-                Ok(addresses)
-            })
-        }
+        assert_send_sync::<EchSession>();
+        assert_send_sync::<CloudflareResolver>();
     }
 
     /// Live verification of the whole ECH path. Run manually:
@@ -186,14 +246,8 @@ mod tests {
                 .unwrap(),
         );
 
-        let ech_tls = tls::build_ech_tls_config_with_alpn(
-            &session.config.ech_config_list,
-            &[b"h2", b"http/1.1"],
-        )
-        .unwrap();
-        let resolver = Arc::new(TestResolver {
-            session: session.clone(),
-        });
+        let ech_tls = session.reqwest_ech_tls().unwrap();
+        let resolver = session.resolver();
 
         let ech_client = reqwest::Client::builder()
             .use_preconfigured_tls(ech_tls)
@@ -272,6 +326,7 @@ mod tests {
         );
 
         let plain_client = reqwest::Client::builder()
+            .use_preconfigured_tls(session.reqwest_plain_tls().unwrap())
             .dns_resolver(resolver)
             .no_proxy()
             .connect_timeout(Duration::from_secs(10))
