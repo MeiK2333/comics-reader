@@ -76,6 +76,22 @@
         "en": "English",
         "zh-CN": "简体中文"
       }
+    },
+    "proxy": {
+      "title": "HTTP proxy",
+      "hint": "After saving, searches, details and image downloads use this proxy.",
+      "enable": "Use proxy",
+      "host": "Host",
+      "hostPlaceholder": "127.0.0.1",
+      "port": "Port",
+      "save": "Save and apply",
+      "saved": "Proxy settings applied.",
+      "errors": {
+        "hostRequired": "Enter the proxy host.",
+        "hostInvalid": "Enter a hostname or IP address without a scheme, path or port.",
+        "portInvalid": "Enter a port between 1 and 65535.",
+        "invalid": "The proxy address is invalid. Check the host and port."
+      }
     }
   },
   "shortcut": {

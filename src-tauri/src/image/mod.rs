@@ -18,6 +18,7 @@ use crate::error::{AppError, Result};
 
 use cache::ImageFormat;
 pub(crate) use http::HttpClient;
+use http::HttpProxyConfig;
 use model::{ComicDetail, SearchResponse};
 use platform::{find as find_platform, resolve as resolve_platform, unknown_platform};
 
@@ -144,4 +145,13 @@ pub(crate) async fn get_comic(
     let spec = platform.detail_request(id)?;
     let body = http::fetch_document(&client.get()?, platform, &spec).await?;
     platform.parse_detail(id, &body)
+}
+
+/// Apply or clear the user's HTTP proxy for every subsequent request.
+#[tauri::command]
+pub(crate) fn set_http_proxy(
+    client: State<'_, HttpClient>,
+    proxy: Option<HttpProxyConfig>,
+) -> Result<()> {
+    client.set_proxy(proxy)
 }

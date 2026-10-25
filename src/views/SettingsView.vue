@@ -1,14 +1,24 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
+import { useMessage } from "naive-ui";
 import type { SelectOption } from "naive-ui";
 import HomeIcon from "../components/HomeIcon.vue";
-import { useAppI18n } from "../i18n";
-import { useSettingsStore } from "../stores/settings";
+import {
+  applyProxy,
+  validateProxy,
+  type ProxyValidationError,
+} from "../api/proxy";
+import { toAppError } from "../errors";
+import { useErrorMessage } from "../composables/useErrorMessage";
+import { useAppI18n, type MessageKey } from "../i18n";
+import { useSettingsStore, type ProxySettings } from "../stores/settings";
 
 const router = useRouter();
 const { t } = useAppI18n();
 const settings = useSettingsStore();
+const message = useMessage();
+const formatError = useErrorMessage();
 
 const themeOptions = computed<SelectOption[]>(() => [
   { label: t("settings.theme.options.system"), value: "system" },
@@ -21,6 +31,53 @@ const localeOptions = computed<SelectOption[]>(() => [
   { label: t("settings.language.options.en"), value: "en" },
   { label: t("settings.language.options.zh-CN"), value: "zh-CN" },
 ]);
+
+// The form edits a copy so a rejected address is never persisted. Only a
+// successful `set_http_proxy` call writes back to the store.
+const proxyDraft = reactive<{
+  enabled: boolean;
+  host: string;
+  port: number | null;
+}>({ ...settings.proxy });
+const savingProxy = ref(false);
+
+const PROXY_ERROR_KEYS: Record<ProxyValidationError, MessageKey> = {
+  hostRequired: "settings.proxy.errors.hostRequired",
+  hostInvalid: "settings.proxy.errors.hostInvalid",
+  portInvalid: "settings.proxy.errors.portInvalid",
+};
+
+async function saveProxy() {
+  const validationError = proxyDraft.enabled
+    ? validateProxy(proxyDraft.host, proxyDraft.port)
+    : null;
+  if (validationError) {
+    message.error(t(PROXY_ERROR_KEYS[validationError]));
+    return;
+  }
+
+  const next: ProxySettings = {
+    enabled: proxyDraft.enabled,
+    host: proxyDraft.host.trim(),
+    port: proxyDraft.port ?? settings.proxy.port,
+  };
+
+  savingProxy.value = true;
+  try {
+    await applyProxy(next);
+    settings.proxy = next;
+    message.success(t("settings.proxy.saved"));
+  } catch (cause) {
+    const error = toAppError(cause);
+    message.error(
+      error.code === "invalidInput" && error.details.field === "proxy"
+        ? t("settings.proxy.errors.invalid")
+        : formatError(cause),
+    );
+  } finally {
+    savingProxy.value = false;
+  }
+}
 
 function goHome() {
   void router.push({ name: "home" });
@@ -61,6 +118,50 @@ function goHome() {
           class="setting-select"
           :options="localeOptions"
         />
+      </div>
+
+      <NDivider class="settings-divider" />
+
+      <h2 class="settings-subtitle">{{ t("settings.proxy.title") }}</h2>
+      <p class="settings-hint">{{ t("settings.proxy.hint") }}</p>
+
+      <div class="setting">
+        <span>{{ t("settings.proxy.enable") }}</span>
+        <NSwitch v-model:value="proxyDraft.enabled" />
+      </div>
+
+      <div class="proxy-fields">
+        <div class="proxy-field">
+          <span class="proxy-field__label">{{ t("settings.proxy.host") }}</span>
+          <NInput
+            v-model:value="proxyDraft.host"
+            :disabled="!proxyDraft.enabled"
+            :placeholder="t('settings.proxy.hostPlaceholder')"
+            spellcheck="false"
+          />
+        </div>
+        <div class="proxy-field proxy-field--port">
+          <span class="proxy-field__label">{{ t("settings.proxy.port") }}</span>
+          <NInputNumber
+            v-model:value="proxyDraft.port"
+            :disabled="!proxyDraft.enabled"
+            :min="1"
+            :max="65535"
+            :precision="0"
+            :show-button="false"
+          />
+        </div>
+      </div>
+
+      <div class="proxy-actions">
+        <NButton
+          attr-type="button"
+          size="small"
+          :loading="savingProxy"
+          @click="saveProxy"
+        >
+          {{ t("settings.proxy.save") }}
+        </NButton>
       </div>
     </NCard>
   </main>
@@ -105,5 +206,50 @@ function goHome() {
 .setting-select {
   width: 9.5rem;
   flex: none;
+}
+
+.settings-divider {
+  margin: 1.25rem 0;
+}
+
+.settings-subtitle {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.settings-hint {
+  margin: 0 0 0.75rem;
+  font-size: 0.85rem;
+  opacity: 0.7;
+}
+
+.proxy-fields {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.proxy-field {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.proxy-field--port {
+  flex: 0 0 8rem;
+}
+
+.proxy-field__label {
+  font-size: 0.85rem;
+  opacity: 0.8;
+}
+
+.proxy-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.9rem;
 }
 </style>

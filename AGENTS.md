@@ -10,8 +10,8 @@
 
 - 首页是 Google 风格搜索页：选择平台、输入关键词后进入独立的 `/search` 结果页；结果页负责分页与错误/空态，缩略图由 Rust `fetch_image` 缓存后通过资产协议显示；
 - `search_comics` / `get_comic` 为 manhuagui、jm、nhentai 提供统一的关键词搜索与精确 id 详情，返回公共字段和平台扩展字段；
-- 首页搜索框下方有收藏、下载、历史、设置快捷入口；前三个目前指向占位页，设置页已提供主题与语言切换。
-- 主题与语言偏好从 webview 本地恢复，并可在设置页修改。
+- 首页搜索框下方有收藏、下载、历史、设置快捷入口；前三个目前指向占位页，设置页已提供主题、语言与 HTTP 代理配置。
+- 主题、语言与 HTTP 代理偏好从 webview 本地恢复，并可在设置页修改；代理配置会同步到 Rust 的 HTTP client。
 
 不要假设项目里已经有漫画库、章节浏览、下载器、数据库或阅读器引擎；这些都属于待实现的新功能。
 
@@ -61,7 +61,7 @@
 ```text
 .
 ├─ src/                          Vue 应用
-│  ├─ main.ts                    启动：Pinia、i18n、router；挂载前应用主题/语言
+│  ├─ main.ts                    启动：Pinia、i18n、router；挂载前应用主题/语言/代理
 │  ├─ App.vue                    Naive UI Provider 与 RouterView 外壳
 │  ├─ components/
 │  │  ├─ ComicThumb.vue          结果缩略图：Rust 缓存 + 资产协议
@@ -81,13 +81,13 @@
 │  │  ├─ HomeView.vue            首页：搜索入口
 │  │  ├─ SearchView.vue          结果页：首页图标、搜索栏与结果区
 │  │  ├─ ShortcutPlaceholderView.vue  收藏/下载/历史的占位页
-│  │  ├─ SettingsView.vue        设置页：主题与语言
+│  │  ├─ SettingsView.vue        设置页：主题、语言与代理
 │  │  └─ NotFoundView.vue        404 页面
 │  ├─ router/index.ts            Hash 路由、路由守卫、路由元数据、原生窗口标题
 │  ├─ stores/
 │  │  ├─ index.ts                Pinia + 持久化命名空间
 │  │  ├─ search.ts               内存态搜索会话：平台、关键词、分页与请求竞态
-│  │  └─ settings.ts             持久化的主题与语言偏好
+│  │  └─ settings.ts             持久化的主题、语言与代理偏好
 │  ├─ composables/
 │  │  ├─ useRouteTransition.ts   首页/结果页的 View Transition 导航
 │  │  ├─ useTheme.ts             系统/浅色/深色解析 + <html data-theme>
@@ -98,6 +98,7 @@
 │  │  └─ messages/               en.json（主 schema）与 zh-CN.json
 │  ├─ shortcuts.ts               首页快捷入口的 feature/path/label 映射
 │  ├─ api/comics.ts              平台检索/详情的前端类型与 invoke 封装
+│  ├─ api/proxy.ts               代理配置的前端校验与 set_http_proxy 封装
 │  ├─ errors.ts                  前端错误契约与 AppError
 │  ├─ styles/base.scss           全局 reset/基础样式
 │  └─ components.d.ts            由 unplugin-vue-components 生成；不要手改
@@ -105,9 +106,9 @@
 │  ├─ src/lib.rs                 Tauri Builder、命令注册、插件初始化
 │  ├─ src/error.rs               AppError 序列化、错误码、测试
 │  ├─ src/image/                 图片抓取、缓存与平台检索
-│  │  ├─ mod.rs                  fetch_image / search_comics / get_comic
+│  │  ├─ mod.rs                  fetch_image / search_comics / get_comic / set_http_proxy
 │  │  ├─ cache.rs                缓存键、查找、原子写入、格式识别
-│  │  ├─ http.rs                 共享 client、图片下载与 HTML/JSON 文档抓取
+│  │  ├─ http.rs                 共享 client、代理、图片下载与 HTML/JSON 文档抓取
 │  │  ├─ model.rs                搜索/详情 wire 类型
 │  │  └─ platform/               平台 trait、请求头与 HTML/JSON 解析
 │  ├─ src/main.rs                桌面端二进制入口
@@ -130,7 +131,7 @@
 ### 启动顺序
 
 1. `src/main.ts` 创建 Vue 应用，并注册 Pinia、i18n 与 router。
-2. 同步读取 `useSettingsStore(pinia)`（持久化状态会从 `localStorage` 恢复），在挂载前应用已保存的主题并解析语言，确保首屏就是正确状态。
+2. 同步读取 `useSettingsStore(pinia)`（持久化状态会从 `localStorage` 恢复），在挂载前应用已保存的主题、语言与 HTTP 代理（代理通过 `set_http_proxy` 写入 Rust），确保首屏就是正确状态。
 3. 应用挂载到 `#app`。
 4. `App.vue` 通过 `NConfigProvider` 提供 Naive UI 的主题与语言，并用 `NMessageProvider` 包裹路由视图。`useTheme()` 与 `useLocale()` 负责保持运行时状态同步，且只在这个外壳中调用一次。
 
@@ -138,7 +139,7 @@
 
 - Vue UI 只通过 Tauri JS API 与系统交互：`@tauri-apps/api/core` 的 `invoke`、`convertFileSrc` 以及窗口 API。
 - Rust 命令返回数据或类型化错误。**面向用户的文案只放在前端语言包中**，绝不放在 Rust 命令返回值里。
-- 设置保存在 webview 的 `localStorage` 中，键名为 `comics-reader:<store-id>`；Rust 侧不持有这些设置。
+- 设置保存在 webview 的 `localStorage` 中，键名为 `comics-reader:<store-id>`。Rust 不持久化设置；唯一例外是 HTTP 代理：前端在启动和保存设置时通过 `set_http_proxy` 把当前配置写入内存中的共享 client。
 - 路由使用 `createWebHashHistory()`。不要在未处理 Tauri webview 路由回退的情况下改成 web history。
 - 文档主题写入 `document.documentElement.dataset.theme`（`light` / `dark`）；`App.vue` 同时给 Naive UI 传入匹配的 `darkTheme` 对象。
 - Tauri 不会自动把 `document.title` 同步到原生窗口。`router/index.ts` 会显式调用当前 Tauri 窗口的 `setTitle()`；切换语言后 `useLocale` 会再次调用。
@@ -184,7 +185,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 - 只持久化用户偏好或小型持久状态。不要持久化大对象、瞬态加载标记或密钥。
 - 给 `SettingsState` 新增字段会自动持久化，老用户通常会回落到 store 的初始值。重命名或删除已持久化字段则需要迁移，否则旧数据会被静默忽略。
 - `useTheme()` 与 `useLocale()` 只在 shell 层调用一次。其他组件直接读 `useSettingsStore()`；重复调用 `useTheme()` 会重复注册 media query 监听器。
-- 首页提供设置快捷入口，设置页可切换主题与语言；偏好由 `useSettingsStore` 持久化，并在启动时和修改后立即应用。
+- 首页提供设置快捷入口，设置页可切换主题与语言，并可保存 HTTP 代理；主题/语言立即生效，代理只有在 `set_http_proxy` 成功后才会写回 store，避免持久化无法应用的地址。
 
 ### 远程 HTTP、图片缓存与平台检索
 
@@ -198,10 +199,11 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 - 资产协议需要三处同时成立：`tauri` 的 `protocol-asset` feature、`tauri.conf.json` 的 `app.security.assetProtocol.enable`、覆盖 `$APPCACHE/images/**` 的 scope。缺任一项通常表现为图片 403 或空白。
 - 图片格式优先按魔数判断，文件扩展名决定资产协议返回的 MIME；新增格式时要同时更新 `ImageFormat` 的魔数、扩展名与 MIME 映射。
 - `CACHE_VERSION` 变化会让旧缓存自然失效；当前没有自动清理或容量上限，缓存会随浏览增长。
+- 用户可在设置页启用自定义 HTTP 代理（无认证，`http://host:port`）。启动时和保存后由 `set_http_proxy` 重建共享 `reqwest::Client`；`fetch_image`、`search_comics` 与 `get_comic` 都通过同一个 client 自动走代理。代理不参与图片缓存键；关闭代理时保留 reqwest 默认行为（环境变量代理仍可能生效）。
 - 检索与详情命令为 `search_comics(platform, query, page)` 与 `get_comic(platform, id)`。平台通过 `search_request`/`parse_search`/`detail_request`/`parse_detail` 构建 URL 并解析响应，共享的 `fetch_document` 负责请求、状态码与大小限制。
 - 搜索返回 `{ total, page_size, result: [{ id, title, thumb, platform, extra }] }`，详情返回 `{ title, thumb, extra }`；`platform` 是判别字段，`extra` 是各平台强类型扩展字段对象（camelCase），不要把公共字段塞进去。搜索的 `extra` 在 Rust 侧是 `SearchExtra` 枚举，前端在 `src/api/comics.ts` 是判别联合；卡片不要退回 `Record<string, unknown>` 或 JSON 兜底。
 - 当前 `page_size`：manhuagui 10、jm 80、nhentai 取 API 的 `per_page`（通常 25）。前端类型与调用封装在 `src/api/comics.ts`，首页已接入。
-- JM 搜索可用，但 album 详情在部分网络环境会被 Cloudflare 返回 403；这不是解析错误，后续需要 Cookie/TLS 指纹/代理支持。
+- JM 搜索可用，但 album 详情在部分网络环境会被 Cloudflare 返回 403；这不是解析错误，后续可能需要 Cookie/TLS 指纹或可用的代理出口。
 
 ## 编码约定
 
@@ -307,16 +309,18 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 - 首页快捷入口：收藏、下载、历史进入占位页，设置进入设置页；窗口标题与正文标题正确，返回首页可用。
 - 平台检索：分别用 manhuagui/nhentai 搜索关键词并取一条详情，确认 total/page_size/result 与 thumb/extras；JM 若被 Cloudflare 403，应返回本地化 httpStatus 错误而不是崩溃。
 - 设置页：切换主题立即生效并在重启后恢复；切换语言后文案、Naive UI 与窗口标题同步更新。
+- 设置页代理：启用并填写可达代理后搜索与缩略图正常；非法地址有本地化提示且不持久化；关闭并保存后恢复默认网络行为；重启后配置恢复。
 - 访问 `#/does-not-exist`：显示 404 页面与本地化标题，返回首页链接可用。
 
 ### 测试现状
 
-- Rust 测试覆盖错误契约（`src-tauri/src/error.rs`）以及图片缓存、HTTP 基础头、平台识别/请求头与三平台搜索/详情 parser fixture（`src-tauri/src/image/`），共 31 个测试。
+- Rust 测试覆盖错误契约（`src-tauri/src/error.rs`）以及图片缓存、HTTP 基础头、平台识别/请求头与三平台搜索/详情 parser fixture（`src-tauri/src/image/`），共 36 个测试。
 - 前端没有单元/E2E 测试框架（没有 Vitest、Playwright，也没有 `pnpm test`），仓库也没有 CI。不要声称存在并未运行的测试覆盖。如果新增测试体系，请在 `package.json` 中加脚本并同步更新本文件。
 
 ## 陷阱与刻意保留的现状
 
 - **`pnpm dev` 不是完整应用。** 它只提供 UI，没有 Tauri，因此 `invoke`、`convertFileSrc` 与窗口 API 都会失败。浏览器兜底逻辑已被有意移除。
+- **代理是 Rust 的运行时状态。** 不要把代理持久化到 Rust；启动和设置页保存时通过 `set_http_proxy` 同步，命令失败时保留旧 client。
 - **主题与语言只能通过设置页修改。** 偏好保存在 `comics-reader:settings`；不要在组件里绕过 `useSettingsStore`，也不要重复调用 `useTheme()`/`useLocale()`。
 - **`/search` 不携带查询参数。** 结果页依赖内存态 `search` store；刷新或直接打开 `#/search` 会被路由守卫送回首页，这是刻意取舍。首页图标固定回首页，不使用 `router.back()`。
 - **首页与结果页之间使用 View Transition。** 搜索表单、搜索按钮和首页图标通过 `view-transition-name` 跨路由衔接；不要用延迟 `router.push` 的方式等待收起动画，否则会产生卡顿感。WebView 不支持该 API 时应直接导航。
@@ -333,7 +337,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 - **`bundle.active` 为 `false`。** `pnpm tauri build` 产出可执行文件，但不会生成安装包。需要打包时请显式开启。
 - **CSP 已关闭（`csp: null`）。** webview 没有内容安全策略保护。不要在未处理该问题的前提下引入远程 HTML 或 `v-html` 渲染。
 - **缓存键包含平台与 URL 的哈希。** 同一 URL 在不同平台下会分别缓存；manhuagui/JM 的图片缓存键会忽略 query，避免签名参数造成重复文件。修改 URL 归一化或缓存目录时提升 `CACHE_VERSION`，修改某平台请提升它的 `cache_version`。当前没有自动清理策略。
-- **JM 域名经常轮换，详情页可能被 Cloudflare 拦截。** host 自动识别只是兜底；调用方应显式传 `platform: "jm"`，域名变化时只改 `src-tauri/src/image/platform/jm.rs` 中的常量。搜索可用但详情 403 时需要 Cookie/TLS 指纹/代理，不要把它当成 parser 失败。
+- **JM 域名经常轮换，详情页可能被 Cloudflare 拦截。** host 自动识别只是兜底；调用方应显式传 `platform: "jm"`，域名变化时只改 `src-tauri/src/image/platform/jm.rs` 中的常量。搜索可用但详情 403 时需要 Cookie/TLS 指纹或可用的代理出口，不要把它当成 parser 失败。
 - **平台解析依赖上游结构。** manhuagui/JM 是 HTML 抓取，nhentai 是 v2 JSON；上游改版会破坏 parser。修改 selector 时同步补 fixture 测试，并保持 `extra` 字段名稳定。
 - **`scripts/` 仅限本地。** 它被 gitignore，需要 Python 3.15+，不属于应用构建。不要把应用代码放进去。
 - **README 已过时。** 它只是上游模板；如有文档需求，请更新 README 或本文件。

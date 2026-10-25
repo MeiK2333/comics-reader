@@ -76,6 +76,22 @@
         "en": "English",
         "zh-CN": "简体中文"
       }
+    },
+    "proxy": {
+      "title": "HTTP 代理",
+      "hint": "保存并应用后，搜索、详情和图片下载都会通过该代理。",
+      "enable": "使用代理",
+      "host": "主机",
+      "hostPlaceholder": "127.0.0.1",
+      "port": "端口",
+      "save": "保存并应用",
+      "saved": "代理设置已应用。",
+      "errors": {
+        "hostRequired": "请输入代理主机。",
+        "hostInvalid": "请输入不带协议、路径和端口的主机名或 IP 地址。",
+        "portInvalid": "请输入 1 到 65535 之间的端口。",
+        "invalid": "代理地址无效，请检查主机和端口。"
+      }
     }
   },
   "shortcut": {

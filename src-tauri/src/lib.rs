@@ -9,7 +9,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             image::fetch_image,
             image::search_comics,
-            image::get_comic
+            image::get_comic,
+            image::set_http_proxy
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
