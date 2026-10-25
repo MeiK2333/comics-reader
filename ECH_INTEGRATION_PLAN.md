@@ -1,6 +1,6 @@
 # ECH 接入实施计划
 
-> 状态：进行中（ECH-0 已完成）  
+> 状态：进行中（ECH-0 ~ ECH-5 已完成）
 > 基线：`ec61310 feat(ech): add DoH ECH bootstrap and rustls handshake probe`  
 > 更新时间：2026-10-25  
 > 适用项目：`comics-reader`（Tauri 2 + Vue 3 + Rust）
@@ -63,12 +63,9 @@ cargo build                                                   passed
 
 ### 1.2 尚未完成
 
-- `HttpClient` 仍然只有普通 reqwest client，业务请求不经过 ECH。
-- ECH 开关只存在于前端 `localStorage`，Rust 不感知开关状态。
-- 没有 ECH 初始化命令、没有代理与 ECH 的互斥约束。
-- 没有 ECH 配置/DNS 缓存与刷新。
-- 没有把 `fetch_image` / `search_comics` / `get_comic` 接入 ECH。
-- 没有在真实 Tauri 窗口中做 ECH 运行时冒烟。
+- ECH 配置仍没有 TTL 刷新，Cloudflare DoH 的 A/AAAA 结果也没有缓存（ECH-6）。
+- 还没有在真实 Tauri 窗口中做 ECH 运行时冒烟（ECH-7）。
+- 启动时的 ECH 初始化是异步的，首个请求可能在 runtime 就绪前走普通 client。
 
 ---
 
@@ -283,13 +280,12 @@ struct EchRuntime {
     session: Arc<EchSession>,
     ech_client: reqwest::Client,
     plain_client: reqwest::Client,
-    created_at: Instant,
-    expires_at: Instant,
+    expires_at: SystemTime,
 }
 
 impl HttpClient {
-    pub(super) fn get(&self) -> Result<reqwest::Client>; // 保留给普通路径/兼容
-    pub(super) async fn send<F>(&self, build: F) -> Result<reqwest::Response>
+    pub(super) fn get(&self) -> Result<reqwest::Client>; // 普通 client
+    pub(super) async fn send<F>(&self, url: &Url, build: F) -> Result<reqwest::Response>
     where
         F: Fn(&reqwest::Client) -> reqwest::RequestBuilder;
 }
@@ -349,11 +345,11 @@ export async function getEchStatus(): Promise<EchStatus>;
 | ID | 任务 | 状态 | 依赖 | 可并行组 | 主要文件 |
 | --- | --- | --- | --- | --- | --- |
 | ECH-0 | reqwest + ECH + 自定义 resolver spike | 已完成 | 无 | 先做，阻塞后续 | 临时测试/`ech/` |
-| ECH-1 | `EchSession` 暴露 reqwest TLS/resolver | 待开始 | ECH-0 | Rust 组 | `ech/session.rs`、`ech/doh.rs`、`ech/tls.rs` |
-| ECH-2 | `HttpClient` ECH runtime、双 client、`send` 回退 | 待开始 | ECH-1 | Rust 组 | `image/http.rs` |
-| ECH-3 | 图片/检索/详情接入 `HttpClient::send` | 待开始 | ECH-2 | Rust 组 | `image/mod.rs`、`image/http.rs` |
-| ECH-4 | `set_ech_enabled` / 代理互斥 / 初始化失败 | 待开始 | ECH-2 | Rust 组 | `lib.rs`、`image/`、`ech/` |
-| ECH-5 | 前端启动与设置页接入 | 待开始 | ECH-4 接口确定 | 前端组 | `src/api/ech.ts`、`main.ts`、`SettingsView.vue`、i18n |
+| ECH-1 | `EchSession` 暴露 reqwest TLS/resolver | 已完成 | ECH-0 | Rust 组 | `ech/session.rs`、`ech/doh.rs`、`ech/tls.rs` |
+| ECH-2 | `HttpClient` ECH runtime、双 client、`send` 回退 | 已完成 | ECH-1 | Rust 组 | `image/http.rs` |
+| ECH-3 | 图片/检索/详情接入 `HttpClient::send` | 已完成 | ECH-2 | Rust 组 | `image/mod.rs`、`image/http.rs` |
+| ECH-4 | `set_ech_enabled` / 代理互斥 / 初始化失败 | 已完成 | ECH-2 | Rust 组 | `lib.rs`、`image/`、`ech/` |
+| ECH-5 | 前端启动与设置页接入 | 已完成 | ECH-4 接口确定 | 前端组 | `src/api/ech.ts`、`main.ts`、`SettingsView.vue`、i18n |
 | ECH-6 | TTL 缓存、刷新、状态与错误 UX | 待开始 | ECH-3/4/5 | 后续 | `ech/`、`image/http.rs`、前端 |
 | ECH-7 | 测试、文档、运行时冒烟 | 待开始 | 全部 | 收尾 | 测试、`AGENTS.md` |
 
@@ -646,6 +642,16 @@ Commit: <hash>
 - 结论/备选方案：主方案可行，不需要 hyper 自定义 connector。fallback 判断用 `is_connect() || is_timeout()`；不要把 `is_request()` 纳入，否则普通 HTTP 错误也会触发重试。注意 `is_connect()` 也会命中 `kind: Request` 的证书错误（reqwest 会遍历 source），这是 fallback 需要的行为。
 - 复现命令：`cargo test --lib -- --ignored reqwest_client_uses_ech_and_cloudflare_dns --nocapture`（约 10–15s 通过，含 4 次联网请求）。
 
+### 11.1 ECH-1 ~ ECH-5 实现结论（2026-10-25）
+
+- ECH-1：`EchSession` 新增 `reqwest_ech_tls()`（h2 + http/1.1）、`reqwest_plain_tls()`、`resolver()`；`CloudflareResolver` 返回端口 `0` 的 `SocketAddr`；`EchSession` 与 resolver 有 `Send + Sync` 测试。
+- ECH-2：`HttpClient` 增加 `normal_client` 与 `EchRuntime`；`send(url, build)` 对 HTTPS 先走 ECH client，`is_connect() || is_timeout()` 时用 plain client 重试一次；HTTP URL 始终走普通 client。
+- ECH-3：`download_image` / `fetch_document` 改为接收 `&HttpClient` 并调用 `send`；`fetch_image` / `search_comics` / `get_comic` 全部接入。
+- ECH-4：新增 `set_ech_enabled` / `get_ech_status`；默认 bootstrap 先 AliDNS、失败再 360；`enable_ech` 清空代理；`set_http_proxy(Some)` 在 ECH 开启时返回 `invalidInput`；命令已注册到 `lib.rs`。
+- ECH-5：新增 `src/api/ech.ts`；`main.ts` 启动时异步初始化并失败回滚 `settings.ech`；设置页 ECH 开关改为异步、失败回滚并显示本地化提示；ECH 开启时禁用代理控件；新增 `settings.ech.errors.update`。
+- 验证：`cargo test --lib` 57 passed / 7 ignored；`ech_client_fetches_and_falls_back` 通过（nhentai 200、qq fallback、代理互斥）；`pnpm build` 通过。
+- 未完成：ECH-6（配置 TTL 刷新、DoH A/AAAA 缓存）与 ECH-7（真实窗口冒烟、文档收尾）。
+
 ---
 
 ## 12. Definition of Done
@@ -679,6 +685,8 @@ cargo test --lib -- --ignored queries_nhentai_via_cloudflare_doh_over_ech
 cargo test --lib -- --ignored falls_back_to_plain_tls_for_non_cloudflare_site
 cargo test --lib -- --ignored queries_cloudflare_dns_over_ech
 cargo test --lib -- --ignored queries_cloudflare_ech_over_doh
+cargo test --lib -- --ignored reqwest_client_uses_ech_and_cloudflare_dns
+cargo test --lib -- --ignored ech_client_fetches_and_falls_back
 
 # 前端
 pnpm build
