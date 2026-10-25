@@ -41,8 +41,9 @@ webpki-roots = "1"
 sha2 = "0.10"
 hex = "0.4"
 # Async file I/O for the cache, plus the TCP/TLS and timers used by the ECH
-# handshake probe. `macros`/`rt` also cover the ignored DoH network test.
-tokio = { version = "1", features = ["fs", "io-util", "macros", "net", "rt", "time"] }
+# handshake probe. `sync` serializes lazy ECH config refreshes; `macros`/`rt`
+# also cover the ignored DoH network test.
+tokio = { version = "1", features = ["fs", "io-util", "macros", "net", "rt", "sync", "time"] }
 url = "2"
 # Queries the HTTPS RR of `cloudflare-ech.com` over DoH. `https-ring` enables
 # DoH with rustls (same crypto backend as reqwest); `webpki-roots` supplies a

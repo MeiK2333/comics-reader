@@ -7,7 +7,7 @@ use reqwest::header::{ACCEPT, HeaderMap, HeaderValue, USER_AGENT};
 use serde::Deserialize;
 use url::Url;
 
-use crate::ech::{EchSession, EchStatus};
+use crate::ech::{CloudflareResolver, EchSession, EchStatus};
 use crate::error::{AppError, Result};
 
 use super::cache::ImageFormat;
@@ -21,9 +21,11 @@ const MAX_IMAGE_BYTES: u64 = 32 * 1024 * 1024;
 const MAX_DOCUMENT_BYTES: u64 = 8 * 1024 * 1024;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
-/// The first ECH version reports this deadline but does not refresh the
-/// config yet; a later step will rebuild the runtime before it expires.
+/// The ECH config is refreshed lazily after this long; the deadline is also
+/// reported by `get_ech_status`.
 const ECH_CONFIG_TTL: Duration = Duration::from_secs(10 * 60);
+/// After a failed refresh, wait this long before trying the bootstrap again.
+const ECH_REFRESH_RETRY: Duration = Duration::from_secs(60);
 
 const USER_AGENT_VALUE: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36";
 const ACCEPT_VALUE: &str = "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8";
@@ -86,6 +88,9 @@ fn invalid_proxy(reason: impl Into<String>) -> AppError {
 #[derive(Default)]
 pub(crate) struct HttpClient {
     state: Mutex<ClientState>,
+    /// Serializes lazy refreshes so concurrent requests do not bootstrap the
+    /// same ECH config more than once.
+    refresh: tokio::sync::Mutex<()>,
 }
 
 #[derive(Default)]
@@ -94,6 +99,9 @@ struct ClientState {
     proxy: Option<String>,
     normal_client: Option<reqwest::Client>,
     ech: Option<EchRuntime>,
+    /// Incremented on every enable, disable and successful refresh. A refresh
+    /// that started before a state change must not resurrect the old runtime.
+    ech_generation: u64,
 }
 
 /// The two clients used while ECH is enabled. Both resolve targets through
@@ -103,6 +111,7 @@ struct EchRuntime {
     ech_client: reqwest::Client,
     plain_client: reqwest::Client,
     expires_at: SystemTime,
+    refresh_after: SystemTime,
 }
 
 impl HttpClient {
@@ -144,27 +153,119 @@ impl HttpClient {
     /// Install the ECH runtime. A previously configured proxy is cleared
     /// because both ECH clients are built with `no_proxy`.
     pub(crate) fn enable_ech(&self, session: Arc<EchSession>) -> Result<()> {
-        let ech_client = build_ech_client(&session, true)?;
-        let plain_client = build_ech_client(&session, false)?;
+        let resolver = session.resolver();
+        let ech_client = build_ech_client(&session, resolver.clone(), true)?;
+        let plain_client = build_ech_client(&session, resolver, false)?;
         let normal_client = build_client(None)?;
-        let expires_at = SystemTime::now() + ECH_CONFIG_TTL;
+        let now = SystemTime::now();
 
         let mut state = self.lock()?;
         state.proxy = None;
         state.normal_client = Some(normal_client);
+        state.ech_generation = state.ech_generation.wrapping_add(1);
         state.ech = Some(EchRuntime {
             session,
             ech_client,
             plain_client,
-            expires_at,
+            expires_at: now + ECH_CONFIG_TTL,
+            refresh_after: now + ECH_CONFIG_TTL,
         });
         Ok(())
     }
 
     /// Drop the ECH runtime; the ordinary client is reused on the next send.
     pub(crate) fn disable_ech(&self) -> Result<()> {
-        self.lock()?.ech = None;
+        let mut state = self.lock()?;
+        state.ech = None;
+        state.ech_generation = state.ech_generation.wrapping_add(1);
         Ok(())
+    }
+
+    /// Re-bootstrap the shared ECH config once its TTL has elapsed.
+    ///
+    /// The refresh is lazy and runs on the first HTTPS request after the
+    /// deadline. A failed bootstrap keeps the old runtime (it may still work)
+    /// and postpones the next attempt.
+    async fn refresh_ech_if_due(&self) {
+        if !self.refresh_is_due() {
+            return;
+        }
+
+        let _guard = self.refresh.lock().await;
+
+        let Some((generation, bootstrap_doh)) = self.refresh_target() else {
+            return;
+        };
+
+        let session = match EchSession::bootstrap(&bootstrap_doh).await {
+            Ok(session) => Arc::new(session),
+            Err(error) => {
+                eprintln!("failed to refresh the ECH config: {error}");
+                self.postpone_refresh(generation);
+                return;
+            }
+        };
+
+        if let Err(error) = self.install_refreshed_ech(generation, session) {
+            eprintln!("failed to install the refreshed ECH runtime: {error}");
+            self.postpone_refresh(generation);
+        }
+    }
+
+    fn refresh_is_due(&self) -> bool {
+        let Ok(state) = self.lock() else {
+            return false;
+        };
+        state
+            .ech
+            .as_ref()
+            .is_some_and(|runtime| runtime.refresh_after <= SystemTime::now())
+    }
+
+    fn refresh_target(&self) -> Option<(u64, String)> {
+        let state = self.lock().ok()?;
+        let runtime = state.ech.as_ref()?;
+        if runtime.refresh_after > SystemTime::now() {
+            return None;
+        }
+        Some((
+            state.ech_generation,
+            runtime.session.bootstrap_doh().to_owned(),
+        ))
+    }
+
+    fn install_refreshed_ech(&self, generation: u64, session: Arc<EchSession>) -> Result<()> {
+        let resolver = session.resolver();
+        let ech_client = build_ech_client(&session, resolver.clone(), true)?;
+        let plain_client = build_ech_client(&session, resolver, false)?;
+        let now = SystemTime::now();
+
+        let mut state = self.lock()?;
+        if state.ech_generation != generation || state.ech.is_none() {
+            return Ok(());
+        }
+
+        state.ech_generation = state.ech_generation.wrapping_add(1);
+        state.ech = Some(EchRuntime {
+            session,
+            ech_client,
+            plain_client,
+            expires_at: now + ECH_CONFIG_TTL,
+            refresh_after: now + ECH_CONFIG_TTL,
+        });
+        Ok(())
+    }
+
+    fn postpone_refresh(&self, generation: u64) {
+        let Ok(mut state) = self.lock() else {
+            return;
+        };
+        if state.ech_generation != generation {
+            return;
+        }
+        if let Some(runtime) = state.ech.as_mut() {
+            runtime.refresh_after = SystemTime::now() + ECH_REFRESH_RETRY;
+        }
     }
 
     pub(crate) fn ech_status(&self) -> Result<EchStatus> {
@@ -204,6 +305,10 @@ impl HttpClient {
     where
         F: Fn(&reqwest::Client) -> reqwest::RequestBuilder,
     {
+        if url.scheme() == "https" {
+            self.refresh_ech_if_due().await;
+        }
+
         let normal_client = self.get()?;
         let ech_clients = {
             let state = self.lock()?;
@@ -266,7 +371,11 @@ fn build_client(proxy: Option<&str>) -> Result<reqwest::Client> {
         .map_err(|error| AppError::Unexpected(format!("failed to build the HTTP client: {error}")))
 }
 
-fn build_ech_client(session: &Arc<EchSession>, ech: bool) -> Result<reqwest::Client> {
+fn build_ech_client(
+    session: &Arc<EchSession>,
+    resolver: Arc<CloudflareResolver>,
+    ech: bool,
+) -> Result<reqwest::Client> {
     let tls = if ech {
         session.reqwest_ech_tls()?
     } else {
@@ -275,7 +384,7 @@ fn build_ech_client(session: &Arc<EchSession>, ech: bool) -> Result<reqwest::Cli
 
     base_builder()
         .use_preconfigured_tls(tls)
-        .dns_resolver(session.resolver())
+        .dns_resolver(resolver)
         .no_proxy()
         .build()
         .map_err(|error| {
@@ -543,8 +652,18 @@ mod tests {
         assert!(status.expires_at.is_none());
     }
 
+    #[tokio::test]
+    async fn refresh_is_a_noop_without_ech() {
+        let client = HttpClient::default();
+
+        client.refresh_ech_if_due().await;
+
+        assert!(!client.ech_status().unwrap().enabled);
+    }
+
     /// Exercises the real runtime: ECH succeeds for nhentai, a non-Cloudflare
-    /// host falls back to plain TLS, and the proxy is rejected while ECH is on.
+    /// host falls back to plain TLS, the config refreshes on demand, and the
+    /// proxy is rejected while ECH is on.
     #[tokio::test]
     #[ignore = "performs live ECH requests"]
     async fn ech_client_fetches_and_falls_back() {
@@ -575,6 +694,20 @@ mod tests {
             .unwrap();
         assert_eq!(response.status(), reqwest::StatusCode::OK);
 
+        // Force the deadline so the next HTTPS request re-runs the bootstrap
+        // and swaps in a fresh runtime.
+        let generation = http.lock().unwrap().ech_generation;
+        {
+            let mut state = http.lock().unwrap();
+            state.ech.as_mut().unwrap().refresh_after = SystemTime::now() - Duration::from_secs(1);
+        }
+        let response = http
+            .send(&nhentai, |client| client.get(nhentai.as_str()))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        assert!(http.lock().unwrap().ech_generation > generation);
+
         let error = http.set_proxy(Some(proxy("127.0.0.1", 7890))).unwrap_err();
         assert!(matches!(
             error,
@@ -584,5 +717,35 @@ mod tests {
         http.disable_ech().unwrap();
         assert!(!http.ech_status().unwrap().enabled);
         http.set_proxy(Some(proxy("127.0.0.1", 7890))).unwrap();
+    }
+
+    /// Full business path through ECH: nhentai search, detail, and the detail
+    /// thumbnail (served from a separate Cloudflare host).
+    #[tokio::test]
+    #[ignore = "performs a live nhentai search, detail and image download"]
+    async fn nhentai_search_detail_and_image_work_with_ech() {
+        let http = HttpClient::default();
+        let session = Arc::new(
+            crate::ech::EchSession::bootstrap("https://dns.alidns.com/dns-query")
+                .await
+                .unwrap(),
+        );
+        http.enable_ech(session).unwrap();
+
+        let platform = super::super::platform::find("nhentai").unwrap();
+
+        let spec = platform.search_request("love", 1).unwrap();
+        let body = fetch_document(&http, platform, &spec).await.unwrap();
+        let search = platform.parse_search("love", 1, &body).unwrap();
+        let item = search.result.first().expect("nhentai returned no results");
+
+        let spec = platform.detail_request(&item.id).unwrap();
+        let body = fetch_document(&http, platform, &spec).await.unwrap();
+        let detail = platform.parse_detail(&item.id, &body).unwrap();
+        assert!(!detail.title.is_empty());
+
+        let thumb = Url::parse(&detail.thumb).unwrap();
+        let download = download_image(&http, platform, &thumb).await.unwrap();
+        assert!(!download.bytes.is_empty());
     }
 }

@@ -10,7 +10,7 @@ mod session;
 mod tls;
 
 pub(crate) use bootstrap::EchConfig;
-pub(crate) use session::EchSession;
+pub(crate) use session::{CloudflareResolver, EchSession};
 pub(crate) use tls::EchHandshake;
 
 use std::sync::Arc;
@@ -73,8 +73,7 @@ pub(crate) async fn set_ech_enabled(
         return Ok(());
     }
 
-    let session = bootstrap_session(bootstrap_doh).await?;
-    http.enable_ech(Arc::new(session))
+    enable_ech_with_bootstrap(http.inner(), bootstrap_doh).await
 }
 
 /// Report whether ECH is enabled and which config is in use.
@@ -100,6 +99,11 @@ async fn bootstrap_session(bootstrap_doh: Option<String>) -> Result<EchSession> 
         .unwrap_or_else(|| AppError::Unexpected("no ECH bootstrap endpoint configured".into())))
 }
 
+async fn enable_ech_with_bootstrap(http: &HttpClient, bootstrap_doh: Option<String>) -> Result<()> {
+    let session = bootstrap_session(bootstrap_doh).await?;
+    http.enable_ech(Arc::new(session))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -121,5 +125,23 @@ mod tests {
         assert_eq!(value["configDomain"], "cloudflare-ech.com");
         assert_eq!(value["bootstrapDoh"], "https://dns.alidns.com/dns-query");
         assert_eq!(value["expiresAt"], 1_234_567_890_u64);
+    }
+
+    /// Live check of the command body: the default bootstrap list must build a
+    /// usable runtime without the caller choosing an endpoint.
+    #[tokio::test]
+    #[ignore = "queries public DoH endpoints"]
+    async fn enables_ech_with_the_default_bootstrap() {
+        let http = HttpClient::default();
+
+        enable_ech_with_bootstrap(&http, None).await.unwrap();
+
+        let status = http.ech_status().unwrap();
+        assert!(status.enabled);
+        assert!(status.ready);
+        assert_eq!(status.config_domain.as_deref(), Some("cloudflare-ech.com"));
+        assert!(status.bootstrap_doh.is_some());
+
+        http.disable_ech().unwrap();
     }
 }

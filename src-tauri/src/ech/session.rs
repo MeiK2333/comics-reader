@@ -1,8 +1,10 @@
 //! Long-lived ECH state: one shared `cloudflare-ech.com` config, one
 //! Cloudflare DoH-over-ECH resolver, and per-target handshakes.
 
+use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use reqwest::dns::{Addrs, Name, Resolve, Resolving};
 
@@ -15,6 +17,12 @@ use super::tls::{self, EchHandshake};
 /// ALPN used by the reqwest clients. reqwest does not populate ALPN for a
 /// preconfigured TLS config, so both h2 and HTTP/1.1 have to be requested here.
 const REQWEST_ALPN: &[&[u8]] = &[b"h2", b"http/1.1"];
+/// Cloudflare DoH answers are reused for this long. A short TTL keeps CDN
+/// rotation working without a DoH round trip before every new connection.
+const DNS_CACHE_TTL: Duration = Duration::from_secs(60);
+/// Bound the per-process cache; target hostnames are few, but a long-running
+/// session should not grow an unbounded map.
+const DNS_CACHE_MAX_ENTRIES: usize = 256;
 
 /// The bootstrap DoH endpoint is only consulted once, while constructing this
 /// session. All target resolution afterwards goes through Cloudflare DoH.
@@ -63,9 +71,7 @@ impl EchSession {
 
     /// Resolver for the ECH and fallback clients.
     pub(crate) fn resolver(self: &Arc<Self>) -> Arc<CloudflareResolver> {
-        Arc::new(CloudflareResolver {
-            session: self.clone(),
-        })
+        Arc::new(CloudflareResolver::new(self.clone()))
     }
 
     pub(crate) fn config_domain(&self) -> &str {
@@ -80,28 +86,85 @@ impl EchSession {
 /// `reqwest::dns::Resolve` adapter over [`EchSession::resolve`].
 ///
 /// Addresses are returned with port 0 so reqwest can substitute the port from
-/// the request URL (443 for HTTPS).
+/// the request URL (443 for HTTPS). Answers are cached briefly because reqwest
+/// may otherwise query Cloudflare once per new connection.
 pub(crate) struct CloudflareResolver {
     session: Arc<EchSession>,
+    cache: Arc<Mutex<HashMap<String, CachedAddresses>>>,
+}
+
+struct CachedAddresses {
+    ips: Vec<IpAddr>,
+    expires_at: Instant,
+}
+
+impl CachedAddresses {
+    fn is_fresh(&self, now: Instant) -> bool {
+        now < self.expires_at
+    }
 }
 
 impl CloudflareResolver {
+    fn new(session: Arc<EchSession>) -> Self {
+        Self {
+            session,
+            cache: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
     fn address_list(ips: Vec<IpAddr>) -> Addrs {
         Box::new(ips.into_iter().map(|ip| SocketAddr::new(ip, 0)))
+    }
+
+    /// DNS names are case-insensitive and may arrive with a trailing dot.
+    fn cache_key(domain: &str) -> String {
+        domain.trim_end_matches('.').to_ascii_lowercase()
+    }
+
+    fn cached(&self, domain: &str) -> Option<Vec<IpAddr>> {
+        let cache = self.cache.lock().ok()?;
+        let entry = cache.get(domain)?;
+        entry.is_fresh(Instant::now()).then(|| entry.ips.clone())
+    }
+
+    fn store(cache: &Mutex<HashMap<String, CachedAddresses>>, domain: String, ips: Vec<IpAddr>) {
+        let Ok(mut cache) = cache.lock() else {
+            return;
+        };
+
+        if cache.len() >= DNS_CACHE_MAX_ENTRIES {
+            cache.clear();
+        }
+
+        cache.insert(
+            domain,
+            CachedAddresses {
+                ips,
+                expires_at: Instant::now() + DNS_CACHE_TTL,
+            },
+        );
     }
 }
 
 impl Resolve for CloudflareResolver {
     fn resolve(&self, name: Name) -> Resolving {
-        let session = self.session.clone();
         let domain = name.as_str().to_owned();
+        let key = Self::cache_key(&domain);
+
+        if let Some(ips) = self.cached(&key) {
+            return Box::pin(async move { Ok(Self::address_list(ips)) });
+        }
+
+        let session = self.session.clone();
+        let cache = self.cache.clone();
 
         Box::pin(async move {
             let ips = session
                 .resolve(&domain)
                 .await
                 .map_err(|error| -> Box<dyn std::error::Error + Send + Sync> { Box::new(error) })?;
-            Ok(CloudflareResolver::address_list(ips))
+            Self::store(&cache, key, ips.clone());
+            Ok(Self::address_list(ips))
         })
     }
 }
@@ -137,6 +200,23 @@ mod tests {
                 0
             )]
         );
+    }
+
+    #[test]
+    fn normalizes_dns_cache_keys() {
+        assert_eq!(CloudflareResolver::cache_key("Example.COM."), "example.com");
+    }
+
+    #[test]
+    fn cache_entries_expire_after_the_ttl() {
+        let now = Instant::now();
+        let entry = CachedAddresses {
+            ips: Vec::new(),
+            expires_at: now + DNS_CACHE_TTL,
+        };
+
+        assert!(entry.is_fresh(now));
+        assert!(!entry.is_fresh(now + DNS_CACHE_TTL + Duration::from_secs(1)));
     }
 
     #[test]
