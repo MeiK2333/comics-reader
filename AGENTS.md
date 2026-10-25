@@ -21,7 +21,7 @@
 ### 技术栈
 
 - **前端：** Vue 3.5（`<script setup>`）、Vue Router 4（hash 路由）、Pinia 4 + `pinia-plugin-persistedstate`、vue-i18n 11、Naive UI 2（自动导入）、Sass、TypeScript 6。
-- **后端：** Rust edition 2024、Tauri 2（启用 `protocol-asset`）、`reqwest`（rustls）负责抓取、`scraper`/`regex`/`html-escape` 解析 HTML、`serde_json` 解析 JSON、`sha2` 生成缓存键、`thiserror` 2、Tauri 插件 `opener`。
+- **后端：** Rust edition 2024、Tauri 2（启用 `protocol-asset`）、`reqwest`（rustls）负责抓取、`rustls`/`tokio-rustls`（ring + aws-lc-rs）用于 ECH 握手、`hickory-resolver`（DoH）查询 ECH 配置、`scraper`/`regex`/`html-escape` 解析 HTML、`serde_json` 解析 JSON、`sha2` 生成缓存键、`thiserror` 2、Tauri 插件 `opener`。
 - **工具链：** pnpm（单包项目，不是 monorepo）、Vite 8、`vue-tsc`。
 - **平台：** Windows/macOS/Linux 桌面端。Android 工程已在 `src-tauri/gen/android` 初始化；iOS 尚未初始化。
 
@@ -114,6 +114,12 @@
 ├─ src-tauri/
 │  ├─ src/lib.rs                 Tauri Builder、命令注册、插件初始化
 │  ├─ src/error.rs               AppError 序列化、错误码、测试
+│  ├─ src/ech/                   ECH bootstrap / DoH / TLS 模块
+│  │  ├─ mod.rs                  命令注册与模块导出
+│  │  ├─ bootstrap.rs            AliDNS/360 仅查询 cloudflare-ech.com 的 ECH
+│  │  ├─ doh.rs                  Cloudflare DoH over ECH（固定 104.16.248.249 / 104.16.249.249）
+│  │  ├─ session.rs              EchSession：一次 bootstrap，复用配置
+│  │  └─ tls.rs                  rustls ECH 握手与普通 TLS fallback
 │  ├─ src/image/                 图片抓取、缓存与平台检索
 │  │  ├─ mod.rs                  fetch_image / search_comics / get_comic / set_http_proxy
 │  │  ├─ cache.rs                缓存键、查找、原子写入、格式识别
@@ -195,7 +201,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 - 给 `SettingsState` 新增字段会自动持久化，老用户通常会回落到 store 的初始值。重命名或删除已持久化字段则需要迁移，否则旧数据会被静默忽略。
 - `useTheme()` 与 `useLocale()` 只在 shell 层调用一次。其他组件直接读 `useSettingsStore()`；重复调用 `useTheme()` 会重复注册 media query 监听器。
 - 首页提供设置快捷入口，设置页可切换主题与语言，并可保存 HTTP 代理；主题/语言立即生效。关闭代理开关会立即通过 `set_http_proxy(null)` 清除代理并写回 store，无需点击保存；开启代理或修改地址仍需点击“保存并应用”，且只有 `set_http_proxy` 成功后才写回 store，避免持久化无法应用的地址。
-- `settings.ech` 是纯前端开关，目前没有 ECH 后端。开启 ECH 时如果代理已开启，会立即清除代理并写回 store；应用启动时如果 ECH 已开启且代理仍为开启，也会在挂载和首个请求前关闭代理。不要在 ECH 上添加未经实现的网络副作用。
+- `settings.ech` 仍是纯前端开关；Rust 侧只有独立的 `fetch_ech_config` DoH 探针和 `probe_ech_handshake` ECH 握手探针，尚未接入任何请求或设置逻辑。开启 ECH 时如果代理已开启，会立即清除代理并写回 store；应用启动时如果 ECH 已开启且代理仍为开启，也会在挂载和首个请求前关闭代理。不要在 ECH 上添加未经实现的网络副作用。
 - 设置页的“网络设置”区域把 HTTP 代理与 ECH 放在一起，不再为 ECH 单独分组；区块标题用“网络设置”，代理开关文案用“HTTP 代理”，不要写回旧的“使用代理”或单独 ECH 章节。
 
 ### 远程 HTTP、图片缓存与平台检索
@@ -211,6 +217,9 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 - 图片格式优先按魔数判断，文件扩展名决定资产协议返回的 MIME；新增格式时要同时更新 `ImageFormat` 的魔数、扩展名与 MIME 映射。
 - `CACHE_VERSION` 变化会让旧缓存自然失效；当前没有自动清理或容量上限，缓存会随浏览增长。
 - 用户可在设置页启用自定义 HTTP 代理（无认证，`http://host:port`）。启动时和保存后由 `set_http_proxy` 重建共享 `reqwest::Client`；`fetch_image`、`search_comics` 与 `get_comic` 都通过同一个 client 自动走代理。代理不参与图片缓存键；关闭代理时保留 reqwest 默认行为（环境变量代理仍可能生效）。
+- `fetch_ech_config` 在 `src-tauri/src/ech/bootstrap.rs` 中用 `hickory-resolver` 的 DoH 传输查询 `cloudflare-ech.com` 的 HTTPS RR，返回全部记录与 base64 ECHConfigList；它尚未被前端或请求流程调用。端点 host 先经系统解析，DoH 连接的 TLS 由 `webpki-roots` 校验；hickory 不读取应用的 HTTP 代理设置。
+- `probe_ech_handshake(domain, dohEndpoint)` 在 `src-tauri/src/ech/session.rs` / `tls.rs` 中固定查询 `cloudflare-ech.com` 的 ECHConfigList，再把同一份配置应用到目标域名；目标 A/AAAA 通过 `src-tauri/src/ech/doh.rs` 的 Cloudflare DoH over ECH 解析，固定连接 `104.16.248.249` / `104.16.249.249`，不再使用系统 DNS 或 AliDNS/360 解析目标。握手返回 `configDomain`、`echStatus`、TLS 版本、ALPN、HTTP 状态与 `fallback`；非 Cloudflare 站点 ECH 失败后自动回退普通 TLS。该探针尚未接入设置或请求流程；由于 reqwest/hickory 使用 ring 而 ECH 使用 aws-lc-rs，`run()` 启动时会安装 ring 作为进程默认 provider。
+- `nhentai.net` 在 AliDNS/360 上的地址答案会被污染或不一致（虚假 IPv6、0.0.0.0 或错误 IPv4），但 `probe_ech_handshake` 已通过 Cloudflare DoH 解析目标，因此可直接直连：测试 `queries_nhentai_via_cloudflare_doh_over_ech` 结果为 `echStatus=accepted`、TLS1.3、HTTP 200、`fallback=false`，全程未使用本地代理。
 - 检索与详情命令为 `search_comics(platform, query, page)` 与 `get_comic(platform, id)`。平台通过 `search_request`/`parse_search`/`detail_request`/`parse_detail` 构建 URL 并解析响应，共享的 `fetch_document` 负责请求、状态码与大小限制。
 - 详情页为 `/comic/:platform/:id`，不依赖内存态搜索会话，刷新或直接打开也能请求 `get_comic`；返回按钮在搜索会话仍有效时回 `/search`，否则回首页。路由 `scrollBehavior` 让新页面从顶部开始，详情加载后用 `setWindowTitle` 把漫画标题写入原生窗口标题。
 - Nhentai 详情封面使用 `t.nhentai.net` 缩略图：`i.nhentai.net` 的封面 CDN 在部分代理网络下不可达，而详情页封面宽度只有 240px，缩略图足够。
@@ -265,6 +274,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 | 任务 | 主要文件 |
 | --- | --- |
 | 新增或修改 Rust 命令 | `src-tauri/src/lib.rs`；并在 `generate_handler!` 中注册 |
+| 修改 ECH/DoH 探针 | `src-tauri/src/ech/`、`src-tauri/src/lib.rs`（命令注册）、`src-tauri/Cargo.toml` |
 | 新增错误码 | `src-tauri/src/error.rs`、`src/errors.ts`、`useErrorMessage.ts`、两个语言包 |
 | 新增或修改界面文案 | `src/i18n/messages/en.json` 与 `zh-CN.json`；通过 `useAppI18n()` 使用 |
 | 新增路由或页面标题 | `src/router/index.ts`（`RouteTitleKey`、route meta）+ 语言包 |
@@ -336,19 +346,21 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 - 设置页：切换主题立即生效并在重启后恢复；切换语言后文案、Naive UI 与窗口标题同步更新。
 - 设置页代理：启用并填写可达代理后搜索与缩略图正常；非法地址有本地化提示且不持久化；关闭开关后立即恢复默认网络行为（无需保存）；开启或修改地址后仍需保存并应用；重启后配置恢复。
 - ECH：代理开启时打开 ECH，确认代理立即关闭且持久化；持久化为 `ech: true` + 代理开启后重启，确认启动阶段代理被自动关闭；关闭 ECH 不改变代理。
+- ECH 握手探针：调用 `probe_ech_handshake`，传 `domain: "crypto.cloudflare.com"` 与 `dohEndpoint: "https://dns.alidns.com/dns-query"`，确认返回的 `configDomain` 为 `cloudflare-ech.com`、`echStatus` 为 `accepted`、TLS 版本为 `TLSv1.3`、`fallback` 为 `false`；同一份配置对 `www.cloudflare.com`、`example.com` 等 Cloudflare 站点也应生效；对 `www.qq.com` 等非 Cloudflare 站点应返回 `fallback: true`、`echStatus: "notOffered"`。
 - 移动端安全区：在真机或 DevTools 中临时给 `.safe-area-top` 设置高度（如 32px），确认所有页面从安全区下方开始；滚动后安全区条仍固定在顶部并遮住其下内容；切换深色主题时背景色一致。
 - 详情页：从结果卡片进入三个平台详情，确认标题/封面/信息/标签；直接刷新 `#/comic/...` 可加载；返回按钮回到原搜索结果；非法 id 显示本地化未找到；窄窗口切换单列。
 - 访问 `#/does-not-exist`：显示 404 页面与本地化标题，返回首页链接可用。
 
 ### 测试现状
 
-- Rust 测试覆盖错误契约（`src-tauri/src/error.rs`）以及图片缓存、HTTP 基础头、平台识别/请求头与三平台搜索/详情 parser fixture（`src-tauri/src/image/`），共 37 个测试。
+- Rust 测试覆盖错误契约（`src-tauri/src/error.rs`）、图片缓存、HTTP 基础头、平台识别/请求头与三平台搜索/详情 parser fixture（`src-tauri/src/image/`），以及 ECH 的 URL 解析、SVCB 提取、Cloudflare DoH 查询构造、ECH/普通 TLS 配置与握手（`src-tauri/src/ech/`），共 57 个测试，其中 5 个联网测试默认 `ignored`。
+- ECH 联网测试使用 `dns.alidns.com` 与 `doh.360.cn`：`queries_cloudflare_ech` 验证 bootstrap；`performs_ech_handshake` 用同一份 `cloudflare-ech.com` 配置对 5 个 Cloudflare 站点握手；`queries_cloudflare_dns_over_ech` 验证 Cloudflare DoH over ECH 解析 `example.com`；`queries_nhentai_via_cloudflare_doh_over_ech` 验证 `nhentai.net` 直连（accepted、TLS1.3、HTTP 200、无本地代理）；`falls_back_to_plain_tls_for_non_cloudflare_site` 验证 `www.qq.com` 回退普通 TLS（`fallback=true`、`echStatus=notOffered`）。hickory DoH 查询测试要求 HTTP/2，经过只支持 HTTP/1.1 的代理时会超时。
 - 前端没有单元/E2E 测试框架（没有 Vitest、Playwright，也没有 `pnpm test`），仓库也没有 CI。不要声称存在并未运行的测试覆盖。如果新增测试体系，请在 `package.json` 中加脚本并同步更新本文件。
 
 ## 陷阱与刻意保留的现状
 
 - **`pnpm dev` 不是完整应用。** 它只提供 UI，没有 Tauri，因此 `invoke`、`convertFileSrc` 与窗口 API 都会失败。浏览器兜底逻辑已被有意移除。
-- **ECH 只是前端开关。** 当前没有 ECH 后端，开启它只会关闭/阻止自定义代理；不要把它当作真正的 ECH 实现，也不要添加未经验证的网络副作用。
+- **ECH 仍只是前端开关。** Rust 侧有独立的 `fetch_ech_config` DoH 探针和 `probe_ech_handshake` 真实握手探针，但都未接入请求或设置逻辑；握手固定使用 `cloudflare-ech.com` 的一份共享配置，目标 A/AAAA 通过 Cloudflare DoH over ECH 解析（固定 IP `104.16.248.249` / `104.16.249.249`），非 Cloudflare 站点回退普通 TLS（会暴露目标 SNI）。`probe_ech_handshake` 使用 rustls 的 `EchConfig`/`EchMode` 与 aws-lc-rs HPKE，`run()` 中安装 ring 作为进程默认 provider 供 reqwest/hickory 使用。开启 ECH 仍然只会关闭/阻止自定义代理。不要把它当作已经应用到所有请求的 ECH 实现，也不要添加未经验证的网络副作用。
 - **代理是 Rust 的运行时状态。** 不要把代理持久化到 Rust；启动和设置页保存时通过 `set_http_proxy` 同步，命令失败时保留旧 client。
 - **顶部安全区不要用页面 padding。** 页面滚动时 padding 会跟着滚走；顶部安全区由 `App.vue` 的 sticky `.safe-area-top` 统一留白，滚动内容不会显示到状态栏或刘海区域。
 - **主题与语言只能通过设置页修改。** 偏好保存在 `comics-reader:settings`；不要在组件里绕过 `useSettingsStore`，也不要重复调用 `useTheme()`/`useLocale()`。

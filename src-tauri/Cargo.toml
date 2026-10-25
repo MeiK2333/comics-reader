@@ -28,12 +28,29 @@ thiserror = "2"
 # Fetches page images in Rust. `rustls-tls` avoids a system OpenSSL dependency
 # on Linux; `http2` keeps CDN connections efficient.
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "http2"] }
+# Direct rustls access for ECH-enabled TLS. `ring` is shared with
+# reqwest/hickory; `aws-lc-rs` provides the HPKE suites rustls requires for
+# ECH. Both providers end up in the binary, so startup installs ring as the
+# process default and ECH builds use aws-lc-rs explicitly.
+rustls = { version = "0.23", default-features = false, features = ["ring", "aws-lc-rs", "std", "tls12", "logging"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "aws-lc-rs", "tls12", "logging"] }
+# Root store for the direct rustls ECH handshake; matches the webpki roots
+# already used by reqwest and hickory.
+webpki-roots = "1"
 # Cache filenames are SHA-256 of the URL; `hex` renders the digest.
 sha2 = "0.10"
 hex = "0.4"
-# Async file I/O for reading and writing the on-disk cache.
-tokio = { version = "1", features = ["fs"] }
+# Async file I/O for the cache, plus the TCP/TLS and timers used by the ECH
+# handshake probe. `macros`/`rt` also cover the ignored DoH network test.
+tokio = { version = "1", features = ["fs", "io-util", "macros", "net", "rt", "time"] }
 url = "2"
+# Queries the HTTPS RR of `cloudflare-ech.com` over DoH. `https-ring` enables
+# DoH with rustls (same crypto backend as reqwest); `webpki-roots` supplies a
+# fixed trust store so the query does not depend on the OS certificate store.
+hickory-resolver = { version = "0.26", default-features = false, features = ["https-ring", "webpki-roots"] }
+# Encodes the raw ECHConfigList bytes as the base64 presentation format.
+# hickory's own Display wraps the value in SVCB presentation quotes.
+data-encoding = "2"
 # HTML/JSON parsing for platform search and detail pages.
 scraper = "0.29"
 regex = "1"
