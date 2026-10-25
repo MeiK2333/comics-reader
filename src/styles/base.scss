@@ -1,13 +1,15 @@
 :root {
+  --app-background: #f6f6f6;
   color-scheme: light;
   color: #0f0f0f;
-  background-color: #f6f6f6;
+  background-color: var(--app-background);
 }
 
 :root[data-theme="dark"] {
+  --app-background: #2f2f2f;
   color-scheme: dark;
   color: #f6f6f6;
-  background-color: #2f2f2f;
+  background-color: var(--app-background);
 }
 
 html,
@@ -17,11 +19,22 @@ body {
 
 body {
   margin: 0;
-  background-color: inherit;
+  background-color: var(--app-background);
 }
 
 #app {
   min-height: 100%;
+}
+
+/* Reserve the platform's top safe area as real layout space. Staying sticky
+   keeps the strip above scrolling content, so nothing paints under the status
+   bar or notch; the height collapses to zero where no inset is exposed. */
+.safe-area-top {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  height: env(safe-area-inset-top, 0px);
+  background-color: var(--app-background);
 }
 
 /* The search button and home control keep their view-transition-name across

@@ -20,6 +20,9 @@ const naiveTheme = computed(() => (isDark.value ? darkTheme : null));
     :date-locale="naiveDateLocale"
   >
     <NMessageProvider>
+      <!-- Shared by every route: the strip occupies the top safe area and
+           stays above content while the page scrolls. -->
+      <div class="safe-area-top" aria-hidden="true"></div>
       <RouterView />
     </NMessageProvider>
   </NConfigProvider>
