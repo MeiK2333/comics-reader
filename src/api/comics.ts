@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { waitForEchStartup } from "./ech";
 
 /** Platforms that implement keyword search and exact-id detail lookups. */
 export type ComicPlatform = "manhuagui" | "jm" | "nhentai";
@@ -143,20 +144,22 @@ export function isComicPlatform(value: unknown): value is ComicPlatform {
 /**
  * Search a platform by keyword. `page` is 1-based.
  */
-export function searchComics(
+export async function searchComics(
   platform: ComicPlatform,
   query: string,
   page = 1,
 ): Promise<ComicSearchResult> {
+  await waitForEchStartup();
   return invoke<ComicSearchResult>("search_comics", { platform, query, page });
 }
 
 /**
  * Fetch exact comic metadata by the id returned from search.
  */
-export function getComic(
+export async function getComic(
   platform: ComicPlatform,
   id: string,
 ): Promise<ComicDetail> {
+  await waitForEchStartup();
   return invoke<ComicDetail>("get_comic", { platform, id });
 }

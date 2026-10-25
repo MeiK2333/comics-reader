@@ -4,7 +4,7 @@ import { useRouter } from "vue-router";
 import { useMessage } from "naive-ui";
 import type { SelectOption } from "naive-ui";
 import HomeIcon from "../components/HomeIcon.vue";
-import { setEchEnabled } from "../api/ech";
+import { beginEchStartup, setEchEnabled } from "../api/ech";
 import {
   applyProxy,
   validateProxy,
@@ -105,10 +105,14 @@ async function onEchToggle(enabled: boolean) {
         }
       }
 
-      await setEchEnabled(true);
+      const pending = setEchEnabled(true);
+      beginEchStartup(pending);
+      await pending;
       settings.ech = true;
     } else {
-      await setEchEnabled(false);
+      const pending = setEchEnabled(false);
+      beginEchStartup(pending);
+      await pending;
       settings.ech = false;
     }
   } catch (cause) {

@@ -4,7 +4,7 @@ import App from "./App.vue";
 import "./styles/base.scss";
 import router from "./router";
 import pinia from "./stores";
-import { setEchEnabled } from "./api/ech";
+import { beginEchStartup, setEchEnabled } from "./api/ech";
 import { applyProxy } from "./api/proxy";
 import { applyTheme } from "./composables/useTheme";
 import { i18n, resolveLocale, setLocale } from "./i18n";
@@ -43,14 +43,14 @@ async function bootstrap() {
       // settles so the first search cannot fall back to the ordinary client.
       // A failed initialization rolls the persisted switch back.
       runtime.echStarting = true;
-      void setEchEnabled(true)
-        .catch((error) => {
-          console.error("failed to initialize ECH", error);
-          settings.ech = false;
-        })
-        .finally(() => {
-          runtime.echStarting = false;
-        });
+      const startup = setEchEnabled(true).catch((error) => {
+        console.error("failed to initialize ECH", error);
+        settings.ech = false;
+      });
+      beginEchStartup(startup);
+      void startup.finally(() => {
+        runtime.echStarting = false;
+      });
     }
   }
 

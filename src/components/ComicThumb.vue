@@ -2,6 +2,7 @@
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import type { ComicPlatform } from "../api/comics";
+import { waitForEchStartup } from "../api/ech";
 
 const props = defineProps<{
   platform: ComicPlatform;
@@ -27,6 +28,7 @@ async function loadThumb() {
 
   const id = ++requestId;
   try {
+    await waitForEchStartup();
     // The platform headers and on-disk cache live in Rust, so thumbnails use
     // the same path as full-page images instead of hotlinking the CDN.
     const cached = await invoke<CachedImage>("fetch_image", {

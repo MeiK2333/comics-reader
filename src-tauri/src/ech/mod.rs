@@ -147,4 +147,22 @@ mod tests {
 
         http.disable_ech().unwrap();
     }
+
+    /// A failed bootstrap must leave the client on the ordinary path; the
+    /// frontend then rolls the persisted switch back.
+    #[tokio::test]
+    #[ignore = "attempts a localhost DoH connection"]
+    async fn failed_bootstrap_leaves_ech_disabled() {
+        let http = HttpClient::default();
+
+        let error = enable_ech_with_bootstrap(&http, Some("https://127.0.0.1:1/dns-query".into()))
+            .await
+            .unwrap_err();
+
+        assert!(
+            matches!(error, AppError::Network { .. } | AppError::Unexpected(_)),
+            "unexpected error: {error}"
+        );
+        assert!(!http.ech_status().unwrap().enabled);
+    }
 }
