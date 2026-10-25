@@ -9,7 +9,8 @@
 当前界面仍是脚手架，还不是完整的阅读器：
 
 - 首页是 Google 风格搜索页：选择平台、输入关键词后进入独立的 `/search` 结果页；结果页负责分页与错误/空态，缩略图由 Rust `fetch_image` 缓存后通过资产协议显示；
-- `search_comics` / `get_comic` 为 manhuagui、jm、nhentai 提供统一的关键词搜索与精确 id 详情，返回公共字段和平台扩展字段；
+- 结果卡片进入 `/comic/:platform/:id` 详情页，manhuagui/JM/nhentai 各自渲染封面、元数据和标签；详情页可直接刷新或通过深链接打开；
+- `search_comics` / `get_comic` 为 manhuagui、jm、nhentai 提供统一的关键词搜索与精确 id 详情，搜索与详情分别返回带 `platform` 判别的强类型扩展字段；
 - 首页搜索框下方有收藏、下载、历史、设置快捷入口；前三个目前指向占位页，设置页已提供主题、语言与 HTTP 代理配置。
 - 主题、语言与 HTTP 代理偏好从 webview 本地恢复，并可在设置页修改；代理配置会同步到 Rust 的 HTTP client。
 
@@ -71,19 +72,27 @@
 │  │  ├─ PlatformPicker.vue      平台下拉菜单与图标
 │  │  ├─ ComicSearchResults.vue  结果区：错误/加载/空态、网格、分页
 │  │  ├─ ComicResultCard.vue     结果卡片分发器：按 item.platform 选择平台卡片
-│  │  └─ result-cards/
-│  │     ├─ ResultCardShell.vue  平台卡片共用外壳：封面、标题、内容插槽
-│  │     ├─ ManhuaguiResultCard.vue
-│  │     ├─ JmResultCard.vue
-│  │     └─ NhentaiResultCard.vue
+│  │  ├─ result-cards/
+│  │  │  ├─ ResultCardShell.vue  平台卡片共用外壳：封面、标题、内容插槽
+│  │  │  ├─ ManhuaguiResultCard.vue
+│  │  │  ├─ JmResultCard.vue
+│  │  │  └─ NhentaiResultCard.vue
+│  │  └─ comic-detail/
+│  │     ├─ DetailShell.vue      详情页共用封面、标题与摘要外壳
+│  │     ├─ DetailSection.vue    详情分节容器
+│  │     ├─ DetailTagGroup.vue   详情标签组
+│  │     ├─ ManhuaguiDetail.vue
+│  │     ├─ JmDetail.vue
+│  │     └─ NhentaiDetail.vue
 │  ├─ assets/platforms/          平台真实图标（favicon/logo；PNG 或按像素重绘的 SVG）
 │  ├─ views/
 │  │  ├─ HomeView.vue            首页：搜索入口
 │  │  ├─ SearchView.vue          结果页：首页图标、搜索栏与结果区
+│  │  ├─ ComicDetailView.vue     详情页：加载/错误/重试与平台内容分发
 │  │  ├─ ShortcutPlaceholderView.vue  收藏/下载/历史的占位页
 │  │  ├─ SettingsView.vue        设置页：主题、语言与代理
 │  │  └─ NotFoundView.vue        404 页面
-│  ├─ router/index.ts            Hash 路由、路由守卫、路由元数据、原生窗口标题
+│  ├─ router/index.ts            Hash 路由、守卫、详情路由、滚动行为与原生窗口标题
 │  ├─ stores/
 │  │  ├─ index.ts                Pinia + 持久化命名空间
 │  │  ├─ search.ts               内存态搜索会话：平台、关键词、分页与请求竞态
@@ -201,7 +210,9 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 - `CACHE_VERSION` 变化会让旧缓存自然失效；当前没有自动清理或容量上限，缓存会随浏览增长。
 - 用户可在设置页启用自定义 HTTP 代理（无认证，`http://host:port`）。启动时和保存后由 `set_http_proxy` 重建共享 `reqwest::Client`；`fetch_image`、`search_comics` 与 `get_comic` 都通过同一个 client 自动走代理。代理不参与图片缓存键；关闭代理时保留 reqwest 默认行为（环境变量代理仍可能生效）。
 - 检索与详情命令为 `search_comics(platform, query, page)` 与 `get_comic(platform, id)`。平台通过 `search_request`/`parse_search`/`detail_request`/`parse_detail` 构建 URL 并解析响应，共享的 `fetch_document` 负责请求、状态码与大小限制。
-- 搜索返回 `{ total, page_size, result: [{ id, title, thumb, platform, extra }] }`，详情返回 `{ title, thumb, extra }`；`platform` 是判别字段，`extra` 是各平台强类型扩展字段对象（camelCase），不要把公共字段塞进去。搜索的 `extra` 在 Rust 侧是 `SearchExtra` 枚举，前端在 `src/api/comics.ts` 是判别联合；卡片不要退回 `Record<string, unknown>` 或 JSON 兜底。
+- 详情页为 `/comic/:platform/:id`，不依赖内存态搜索会话，刷新或直接打开也能请求 `get_comic`；返回按钮在搜索会话仍有效时回 `/search`，否则回首页。路由 `scrollBehavior` 让新页面从顶部开始，详情加载后用 `setWindowTitle` 把漫画标题写入原生窗口标题。
+- Nhentai 详情封面使用 `t.nhentai.net` 缩略图：`i.nhentai.net` 的封面 CDN 在部分代理网络下不可达，而详情页封面宽度只有 240px，缩略图足够。
+- 搜索返回 `{ total, page_size, result: [{ id, title, thumb, platform, extra }] }`，详情返回 `{ platform, title, thumb, extra }`；`platform` 是判别字段，`extra` 是各平台强类型扩展字段对象（camelCase），不要把公共字段塞进去。搜索与详情的 `extra` 在 Rust 侧分别是 `SearchExtra` / `DetailExtra` 枚举，前端在 `src/api/comics.ts` 是判别联合；卡片和详情页都不要退回 `Record<string, unknown>` 或 JSON 兜底。
 - 当前 `page_size`：manhuagui 10、jm 80、nhentai 取 API 的 `per_page`（通常 25）。前端类型与调用封装在 `src/api/comics.ts`，首页已接入。
 - JM 搜索可用，但 album 详情在部分网络环境会被 Cloudflare 返回 403；这不是解析错误，后续可能需要 Cookie/TLS 指纹或可用的代理出口。
 
@@ -253,6 +264,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 | 修改远程抓取的站点、请求头或缓存策略 | `src-tauri/src/image/`、`src-tauri/tauri.conf.json`（资产协议 scope） |
 | 新增图片平台 | `src-tauri/src/image/platform/`（实现 trait、注册、host/header 与测试） |
 | 新增/修改平台搜索或详情 | `src-tauri/src/image/platform/`、`src-tauri/src/image/model.rs`、`src/api/comics.ts` |
+| 新增/修改详情页 | `src/views/ComicDetailView.vue`、`src/components/comic-detail/`、`src/router/index.ts`、`src-tauri/src/image/model.rs` |
 | 修改首页或设置 UI | `src/views/HomeView.vue`、`src/views/SearchView.vue`、`src/views/SettingsView.vue`、`src/views/ShortcutPlaceholderView.vue`、`src/components/HomeShortcuts.vue`、`src/components/ShortcutIcon.vue`、`src/shortcuts.ts`、`src/stores/search.ts`、`src/composables/useRouteTransition.ts`、`src/components/ComicSearchBar.vue`、`src/components/ComicSearchResults.vue`、`src/components/ComicResultCard.vue`、`src/components/result-cards/`、`src/components/PlatformPicker.vue`、`src/components/ComicThumb.vue`、`src/assets/platforms/`、`src/api/comics.ts` |
 | 修改全局样式 | `src/styles/base.scss`；组件样式保持在组件内 |
 | 修改 Android 原生配置 | `src-tauri/gen/android/`（已跟踪，但大部分是生成内容，修改前要确认） |
@@ -284,6 +296,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 4. 平台请求头或缓存语义变化时递增该平台的 `cache_version()`；id、公共字段名和 `extra` 结构保持稳定。若 URL query 只是签名/过期参数，实现 `cache_key_url` 在缓存键中去掉 query。
 5. 补 parser fixture 测试：真实 HTML/JSON 片段、URL 编码、total/page_size、thumb 绝对化、`extra` 字段。
 6. 前端同步更新 `src/api/comics.ts` 的 `ComicPlatform` 与各平台 `Extra`/`SearchItem` 类型，在 `PlatformPicker.vue` 的平台列表中注册新平台，在 `ComicResultCard.vue` 中增加分发分支，并在 `src/components/result-cards/` 新增该平台卡片；图标放到 `src/assets/platforms/`，优先使用平台站点资源；可按官方 favicon 的像素网格重绘 SVG，但不要凭空绘制。
+7. 若平台支持详情，再实现 `DetailExtra` 与前端详情联合类型，在 `src/components/comic-detail/` 新增内容组件，并在 `ComicDetailView.vue` 中分发。
 
 ### 新增路由
 
@@ -310,11 +323,12 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 - 平台检索：分别用 manhuagui/nhentai 搜索关键词并取一条详情，确认 total/page_size/result 与 thumb/extras；JM 若被 Cloudflare 403，应返回本地化 httpStatus 错误而不是崩溃。
 - 设置页：切换主题立即生效并在重启后恢复；切换语言后文案、Naive UI 与窗口标题同步更新。
 - 设置页代理：启用并填写可达代理后搜索与缩略图正常；非法地址有本地化提示且不持久化；关闭并保存后恢复默认网络行为；重启后配置恢复。
+- 详情页：从结果卡片进入三个平台详情，确认标题/封面/信息/标签；直接刷新 `#/comic/...` 可加载；返回按钮回到原搜索结果；非法 id 显示本地化未找到；窄窗口切换单列。
 - 访问 `#/does-not-exist`：显示 404 页面与本地化标题，返回首页链接可用。
 
 ### 测试现状
 
-- Rust 测试覆盖错误契约（`src-tauri/src/error.rs`）以及图片缓存、HTTP 基础头、平台识别/请求头与三平台搜索/详情 parser fixture（`src-tauri/src/image/`），共 36 个测试。
+- Rust 测试覆盖错误契约（`src-tauri/src/error.rs`）以及图片缓存、HTTP 基础头、平台识别/请求头与三平台搜索/详情 parser fixture（`src-tauri/src/image/`），共 37 个测试。
 - 前端没有单元/E2E 测试框架（没有 Vitest、Playwright，也没有 `pnpm test`），仓库也没有 CI。不要声称存在并未运行的测试覆盖。如果新增测试体系，请在 `package.json` 中加脚本并同步更新本文件。
 
 ## 陷阱与刻意保留的现状
@@ -323,6 +337,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 - **代理是 Rust 的运行时状态。** 不要把代理持久化到 Rust；启动和设置页保存时通过 `set_http_proxy` 同步，命令失败时保留旧 client。
 - **主题与语言只能通过设置页修改。** 偏好保存在 `comics-reader:settings`；不要在组件里绕过 `useSettingsStore`，也不要重复调用 `useTheme()`/`useLocale()`。
 - **`/search` 不携带查询参数。** 结果页依赖内存态 `search` store；刷新或直接打开 `#/search` 会被路由守卫送回首页，这是刻意取舍。首页图标固定回首页，不使用 `router.back()`。
+- **详情页与搜索会话解耦。** `/comic/:platform/:id` 直接请求 `get_comic`，刷新/深链接可用；只有搜索会话仍存在时，返回按钮才回 `/search`，否则回首页。
 - **首页与结果页之间使用 View Transition。** 搜索表单、搜索按钮和首页图标通过 `view-transition-name` 跨路由衔接；不要用延迟 `router.push` 的方式等待收起动画，否则会产生卡顿感。WebView 不支持该 API 时应直接导航。
 - **缩略图不要直接使用远程 URL。** 搜索结果缩略图必须走 `ComicThumb` → `fetch_image` → 资产协议，否则防盗链站点会 403。
 - **Rust 与前端构建是分开的。** Vite 不监听 `src-tauri/**`；修改 Rust 后请用 `pnpm tauri dev` / `pnpm tauri build`。`pnpm build` 永远不会编译 Rust。

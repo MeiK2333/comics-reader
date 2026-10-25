@@ -1,11 +1,12 @@
 use reqwest::RequestBuilder;
 use reqwest::header::{ACCEPT_LANGUAGE, REFERER};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use url::Url;
 
 use crate::error::Result;
 use crate::image::model::{
-    ComicDetail, NhentaiSearchExtra, SearchExtra, SearchItem, SearchResponse,
+    ComicDetail, DetailExtra, NhentaiDetailExtra, NhentaiSearchExtra, NhentaiTag, SearchExtra,
+    SearchItem, SearchResponse,
 };
 
 use super::{Platform, RequestSpec, host_matches, numeric_id};
@@ -138,11 +139,11 @@ impl Platform for Nhentai {
             tags,
         };
 
-        Ok(ComicDetail {
-            title: display_title,
+        Ok(ComicDetail::new(
+            display_title,
             thumb,
-            extra: serde_json::to_value(extra)?,
-        })
+            DetailExtra::Nhentai(extra),
+        ))
     }
 }
 
@@ -190,7 +191,7 @@ struct ApiDetail {
     #[serde(default)]
     upload_date: Option<u64>,
     #[serde(default)]
-    tags: Vec<ApiTag>,
+    tags: Vec<NhentaiTag>,
     #[serde(default)]
     num_pages: Option<u32>,
     #[serde(default)]
@@ -214,33 +215,6 @@ struct ApiImage {
     width: Option<u32>,
     #[serde(default)]
     height: Option<u32>,
-}
-
-#[derive(Deserialize, Serialize)]
-struct ApiTag {
-    id: u64,
-    #[serde(rename = "type")]
-    kind: String,
-    name: String,
-    slug: String,
-    #[serde(default)]
-    count: Option<u64>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct NhentaiDetailExtra {
-    media_id: String,
-    japanese_title: Option<String>,
-    pretty_title: Option<String>,
-    num_pages: Option<u32>,
-    num_favorites: Option<u32>,
-    scanlator: Option<String>,
-    upload_date: Option<u64>,
-    cover: Option<String>,
-    cover_width: Option<u32>,
-    cover_height: Option<u32>,
-    tags: Vec<ApiTag>,
 }
 
 fn non_empty(value: Option<String>) -> Option<String> {
@@ -351,19 +325,26 @@ mod tests {
     #[test]
     fn parses_detail() {
         let detail = Nhentai.parse_detail("42", DETAIL_JSON.as_bytes()).unwrap();
+        assert_eq!(detail.platform, SearchPlatform::Nhentai);
         assert_eq!(detail.title, "Example Gallery");
         assert_eq!(
             detail.thumb,
             "https://t.nhentai.net/galleries/100/thumb.webp"
         );
+
+        let DetailExtra::Nhentai(extra) = detail.extra else {
+            panic!("expected nhentai detail extra");
+        };
         assert_eq!(
-            detail.extra["cover"],
-            "https://i.nhentai.net/galleries/100/cover.webp"
+            extra.cover.as_deref(),
+            Some("https://i.nhentai.net/galleries/100/cover.webp")
         );
-        assert_eq!(detail.extra["coverWidth"], 350);
-        assert_eq!(detail.extra["coverHeight"], 500);
-        assert_eq!(detail.extra["scanlator"], "Example Scans");
-        assert_eq!(detail.extra["tags"][0]["type"], "tag");
-        assert_eq!(detail.extra["tags"][0]["name"], "example");
+        assert_eq!(extra.cover_width, Some(350));
+        assert_eq!(extra.cover_height, Some(500));
+        assert_eq!(extra.scanlator.as_deref(), Some("Example Scans"));
+        assert_eq!(extra.tags.len(), 1);
+        assert_eq!(extra.tags[0].kind, "tag");
+        assert_eq!(extra.tags[0].name, "example");
+        assert_eq!(extra.tags[0].count, Some(10));
     }
 }

@@ -34,6 +34,45 @@ export interface NhentaiExtra {
   blacklisted: boolean | null;
 }
 
+/** Detail fields for jm albums, which search results do not expose. */
+export interface JmDetailExtra {
+  authors: string[];
+  tags: string[];
+  works: string[];
+  actors: string[];
+  pageCount: number | null;
+  pubDate: string | null;
+  updateDate: string | null;
+  likes: string | null;
+  views: string | null;
+  commentCount: number | null;
+}
+
+export interface NhentaiTag {
+  id: number;
+  /** API `type`: tag, language, artist, character, parody, group or category. */
+  type: string;
+  name: string;
+  slug: string;
+  count: number | null;
+}
+
+/** Detail fields for nhentai galleries, grouped by tag type in the UI. */
+export interface NhentaiDetailExtra {
+  mediaId: string;
+  japaneseTitle: string | null;
+  prettyTitle: string | null;
+  numPages: number | null;
+  numFavorites: number | null;
+  scanlator: string | null;
+  /** Unix timestamp in seconds. */
+  uploadDate: number | null;
+  cover: string | null;
+  coverWidth: number | null;
+  coverHeight: number | null;
+  tags: NhentaiTag[];
+}
+
 interface SearchItemBase {
   id: string;
   title: string;
@@ -70,11 +109,35 @@ export interface ComicSearchResult {
   result: ComicSearchItem[];
 }
 
-export interface ComicDetail {
+interface ComicDetailBase {
   title: string;
   thumb: string;
-  /** Platform-specific fields; narrow this at the call site. */
-  extra: Record<string, unknown>;
+}
+
+export type ManhuaguiDetail = ComicDetailBase & {
+  platform: "manhuagui";
+  extra: ManhuaguiExtra;
+};
+
+export type JmDetail = ComicDetailBase & {
+  platform: "jm";
+  extra: JmDetailExtra;
+};
+
+export type NhentaiDetail = ComicDetailBase & {
+  platform: "nhentai";
+  extra: NhentaiDetailExtra;
+};
+
+/**
+ * `platform` is the discriminant: each detail branch carries the exact fields
+ * its parser produced, so detail views never read an unstructured JSON bag.
+ */
+export type ComicDetail = ManhuaguiDetail | JmDetail | NhentaiDetail;
+
+/** Runtime guard for route params and persisted/navigated platform values. */
+export function isComicPlatform(value: unknown): value is ComicPlatform {
+  return value === "manhuagui" || value === "jm" || value === "nhentai";
 }
 
 /**

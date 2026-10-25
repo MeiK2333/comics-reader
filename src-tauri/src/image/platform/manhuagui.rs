@@ -7,7 +7,9 @@ use scraper::{ElementRef, Html, Selector};
 use url::Url;
 
 use crate::error::{AppError, Result};
-use crate::image::model::{ComicDetail, ManhuaguiExtra, SearchExtra, SearchItem, SearchResponse};
+use crate::image::model::{
+    ComicDetail, DetailExtra, ManhuaguiExtra, SearchExtra, SearchItem, SearchResponse,
+};
 
 use super::{Platform, RequestSpec, absolute_url, collapse_whitespace, host_matches, numeric_id};
 
@@ -151,11 +153,11 @@ impl Platform for Manhuagui {
             rating_count: None,
         };
 
-        Ok(ComicDetail {
+        Ok(ComicDetail::new(
             title,
             thumb,
-            extra: serde_json::to_value(extra)?,
-        })
+            DetailExtra::Manhuagui(extra),
+        ))
     }
 }
 
@@ -358,18 +360,20 @@ mod tests {
     #[test]
     fn parses_detail() {
         let detail = Manhuagui.parse_detail("1", DETAIL_HTML.as_bytes()).unwrap();
+        assert_eq!(detail.platform, SearchPlatform::Manhuagui);
         assert_eq!(detail.title, "示例漫画");
         assert_eq!(detail.thumb, "https://cf.mhgui.com/cpic/h/1.jpg");
-        assert_eq!(detail.extra["originalTitle"], "Original Title");
-        assert_eq!(detail.extra["authors"], serde_json::json!(["作者A"]));
-        assert_eq!(detail.extra["status"], "已完结");
-        assert_eq!(detail.extra["latestChapter"], "第12话");
-        assert_eq!(detail.extra["updatedAt"], "2026-01-02");
-        assert_eq!(
-            detail.extra["categories"],
-            serde_json::json!(["冒险", "奇幻"])
-        );
-        assert_eq!(detail.extra["description"], "简介文本");
+
+        let DetailExtra::Manhuagui(extra) = detail.extra else {
+            panic!("expected manhuagui detail extra");
+        };
+        assert_eq!(extra.original_title.as_deref(), Some("Original Title"));
+        assert_eq!(extra.authors, ["作者A"]);
+        assert_eq!(extra.status.as_deref(), Some("已完结"));
+        assert_eq!(extra.latest_chapter.as_deref(), Some("第12话"));
+        assert_eq!(extra.updated_at.as_deref(), Some("2026-01-02"));
+        assert_eq!(extra.categories, ["冒险", "奇幻"]);
+        assert_eq!(extra.description.as_deref(), Some("简介文本"));
     }
 
     #[test]

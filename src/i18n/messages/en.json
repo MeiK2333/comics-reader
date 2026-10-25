@@ -4,6 +4,7 @@
   },
   "meta": {
     "search": "Search · {app}",
+    "comic": "Comic · {app}",
     "favorites": "Favorites · {app}",
     "downloads": "Downloads · {app}",
     "history": "History · {app}",
@@ -57,6 +58,49 @@
   },
   "search": {
     "home": "Home"
+  },
+  "detail": {
+    "backToSearch": "Back to results",
+    "backHome": "Back to home",
+    "retry": "Retry",
+    "notFound": "Comic not found",
+    "notFoundDescription": "This comic may have been removed, or the link is invalid.",
+    "loadFailed": "Could not load this comic",
+    "sections": {
+      "info": "Details",
+      "description": "Description",
+      "tags": "Tags",
+      "works": "Works",
+      "actors": "Characters",
+      "categories": "Categories",
+      "aliases": "Also known as"
+    },
+    "fields": {
+      "authors": "Authors",
+      "latestChapter": "Latest chapter",
+      "updatedAt": "Updated",
+      "year": "Year",
+      "region": "Region",
+      "pages": "Pages",
+      "favorites": "Favorites",
+      "likes": "Likes",
+      "views": "Views",
+      "comments": "Comments",
+      "publishedAt": "Published",
+      "updatedOn": "Updated",
+      "scanlator": "Scanlator",
+      "uploadedAt": "Uploaded"
+    },
+    "tagGroups": {
+      "language": "Languages",
+      "artist": "Artists",
+      "tag": "Tags",
+      "parody": "Parodies",
+      "character": "Characters",
+      "group": "Groups",
+      "category": "Categories",
+      "other": "Other"
+    }
   },
   "settings": {
     "title": "Settings",

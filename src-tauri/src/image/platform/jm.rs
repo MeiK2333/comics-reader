@@ -5,11 +5,12 @@ use regex::Regex;
 use reqwest::RequestBuilder;
 use reqwest::header::{ACCEPT_LANGUAGE, REFERER};
 use scraper::{ElementRef, Html, Selector};
-use serde::Serialize;
 use url::Url;
 
 use crate::error::{AppError, Result};
-use crate::image::model::{ComicDetail, JmExtra, SearchExtra, SearchItem, SearchResponse};
+use crate::image::model::{
+    ComicDetail, DetailExtra, JmDetailExtra, JmExtra, SearchExtra, SearchItem, SearchResponse,
+};
 
 use super::{Platform, RequestSpec, absolute_url, collapse_whitespace, host_matches, jm_id};
 
@@ -222,27 +223,8 @@ impl Platform for Jm {
                 .and_then(|captures| captures[1].parse::<u64>().ok()),
         };
 
-        Ok(ComicDetail {
-            title,
-            thumb,
-            extra: serde_json::to_value(extra)?,
-        })
+        Ok(ComicDetail::new(title, thumb, DetailExtra::Jm(extra)))
     }
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct JmDetailExtra {
-    authors: Vec<String>,
-    tags: Vec<String>,
-    works: Vec<String>,
-    actors: Vec<String>,
-    page_count: Option<u32>,
-    pub_date: Option<String>,
-    update_date: Option<String>,
-    likes: Option<String>,
-    views: Option<String>,
-    comment_count: Option<u64>,
 }
 
 fn extract_thumb(block: &str) -> Option<String> {
@@ -375,18 +357,23 @@ mod tests {
     #[test]
     fn parses_detail() {
         let detail = Jm.parse_detail("123", DETAIL_HTML.as_bytes()).unwrap();
+        assert_eq!(detail.platform, SearchPlatform::Jm);
         assert_eq!(detail.title, "示例漫画");
         assert_eq!(detail.thumb, "https://cdn.example/cover.jpg");
-        assert_eq!(detail.extra["authors"], serde_json::json!(["作者A"]));
-        assert_eq!(detail.extra["tags"], serde_json::json!(["标签A"]));
-        assert_eq!(detail.extra["works"], serde_json::json!(["作品A"]));
-        assert_eq!(detail.extra["actors"], serde_json::json!(["角色A"]));
-        assert_eq!(detail.extra["pageCount"], 42);
-        assert_eq!(detail.extra["pubDate"], "2020-01-02");
-        assert_eq!(detail.extra["updateDate"], "2020-02-03");
-        assert_eq!(detail.extra["likes"], "1K");
-        assert_eq!(detail.extra["views"], "12K");
-        assert_eq!(detail.extra["commentCount"], 7);
+
+        let DetailExtra::Jm(extra) = detail.extra else {
+            panic!("expected jm detail extra");
+        };
+        assert_eq!(extra.authors, ["作者A"]);
+        assert_eq!(extra.tags, ["标签A"]);
+        assert_eq!(extra.works, ["作品A"]);
+        assert_eq!(extra.actors, ["角色A"]);
+        assert_eq!(extra.page_count, Some(42));
+        assert_eq!(extra.pub_date.as_deref(), Some("2020-01-02"));
+        assert_eq!(extra.update_date.as_deref(), Some("2020-02-03"));
+        assert_eq!(extra.likes.as_deref(), Some("1K"));
+        assert_eq!(extra.views.as_deref(), Some("12K"));
+        assert_eq!(extra.comment_count, Some(7));
     }
 
     #[test]

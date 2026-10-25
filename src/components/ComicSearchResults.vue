@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import { RouterLink } from "vue-router";
 import type { ComicSearchResult } from "../api/comics";
 import { useErrorMessage } from "../composables/useErrorMessage";
 import type { AppError } from "../errors";
@@ -68,11 +69,17 @@ function changePage(next: number) {
 
         <template v-else>
           <div class="result-grid">
-            <ComicResultCard
+            <RouterLink
               v-for="item in response.result"
               :key="item.id"
-              :item="item"
-            />
+              class="result-link"
+              :to="{
+                name: 'comic-detail',
+                params: { platform: item.platform, id: item.id },
+              }"
+            >
+              <ComicResultCard :item="item" />
+            </RouterLink>
           </div>
 
           <!-- Fewer slots keep the control row inside the result grid on
@@ -117,6 +124,19 @@ function changePage(next: number) {
   /* Covers now keep their intrinsic height, so let cards end with their
      content instead of stretching to the tallest card in the row. */
   align-items: start;
+}
+
+.result-link {
+  display: block;
+  min-width: 0;
+  border-radius: 8px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.result-link:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
 }
 
 .pagination {

@@ -4,6 +4,7 @@
   },
   "meta": {
     "search": "搜索 · {app}",
+    "comic": "漫画详情 · {app}",
     "favorites": "收藏 · {app}",
     "downloads": "下载 · {app}",
     "history": "历史 · {app}",
@@ -57,6 +58,49 @@
   },
   "search": {
     "home": "首页"
+  },
+  "detail": {
+    "backToSearch": "返回搜索结果",
+    "backHome": "返回首页",
+    "retry": "重试",
+    "notFound": "未找到漫画",
+    "notFoundDescription": "该漫画可能已被删除，或链接无效。",
+    "loadFailed": "漫画详情加载失败",
+    "sections": {
+      "info": "作品信息",
+      "description": "简介",
+      "tags": "标签",
+      "works": "作品",
+      "actors": "角色",
+      "categories": "分类",
+      "aliases": "别名"
+    },
+    "fields": {
+      "authors": "作者",
+      "latestChapter": "最新话",
+      "updatedAt": "更新时间",
+      "year": "年份",
+      "region": "地区",
+      "pages": "页数",
+      "favorites": "收藏",
+      "likes": "点赞",
+      "views": "观看",
+      "comments": "评论",
+      "publishedAt": "上架日期",
+      "updatedOn": "更新日期",
+      "scanlator": "汉化组",
+      "uploadedAt": "上传日期"
+    },
+    "tagGroups": {
+      "language": "语言",
+      "artist": "画师",
+      "tag": "标签",
+      "parody": "原作",
+      "character": "角色",
+      "group": "社团",
+      "category": "分类",
+      "other": "其他"
+    }
   },
   "settings": {
     "title": "设置",

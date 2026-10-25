@@ -1,6 +1,6 @@
 //! Wire types for platform search and comic detail commands.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Paginated search response. `extra` on each item is platform-specific.
 #[derive(Debug, Serialize)]
@@ -106,12 +106,92 @@ pub(crate) struct NhentaiSearchExtra {
     pub blacklisted: Option<bool>,
 }
 
-/// Detail response. `extra` carries platform-specific metadata.
+/// Detail response. `platform` is the discriminant the frontend narrows on;
+/// `extra` carries only that platform's detail fields.
 #[derive(Debug, Serialize)]
 pub(crate) struct ComicDetail {
     pub title: String,
     pub thumb: String,
-    pub extra: serde_json::Value,
+    pub platform: SearchPlatform,
+    pub extra: DetailExtra,
+}
+
+impl ComicDetail {
+    /// Derive the wire platform from `extra` so the two can never disagree.
+    pub(crate) fn new(
+        title: impl Into<String>,
+        thumb: impl Into<String>,
+        extra: DetailExtra,
+    ) -> Self {
+        Self {
+            title: title.into(),
+            thumb: thumb.into(),
+            platform: extra.platform(),
+            extra,
+        }
+    }
+}
+
+/// Platform-specific detail fields. Serialized untagged, so the detail payload
+/// keeps its `{ platform, title, thumb, extra: {...} }` shape.
+#[derive(Debug, Serialize)]
+#[serde(untagged)]
+pub(crate) enum DetailExtra {
+    Manhuagui(ManhuaguiExtra),
+    Jm(JmDetailExtra),
+    Nhentai(NhentaiDetailExtra),
+}
+
+impl DetailExtra {
+    fn platform(&self) -> SearchPlatform {
+        match self {
+            Self::Manhuagui(_) => SearchPlatform::Manhuagui,
+            Self::Jm(_) => SearchPlatform::Jm,
+            Self::Nhentai(_) => SearchPlatform::Nhentai,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct JmDetailExtra {
+    pub authors: Vec<String>,
+    pub tags: Vec<String>,
+    pub works: Vec<String>,
+    pub actors: Vec<String>,
+    pub page_count: Option<u32>,
+    pub pub_date: Option<String>,
+    pub update_date: Option<String>,
+    pub likes: Option<String>,
+    pub views: Option<String>,
+    pub comment_count: Option<u64>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub(crate) struct NhentaiTag {
+    pub id: u64,
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub name: String,
+    pub slug: String,
+    #[serde(default)]
+    pub count: Option<u64>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct NhentaiDetailExtra {
+    pub media_id: String,
+    pub japanese_title: Option<String>,
+    pub pretty_title: Option<String>,
+    pub num_pages: Option<u32>,
+    pub num_favorites: Option<u32>,
+    pub scanlator: Option<String>,
+    pub upload_date: Option<u64>,
+    pub cover: Option<String>,
+    pub cover_width: Option<u32>,
+    pub cover_height: Option<u32>,
+    pub tags: Vec<NhentaiTag>,
 }
 
 #[cfg(test)]
@@ -147,6 +227,34 @@ mod tests {
         assert_eq!(value["platform"], "jm");
         assert_eq!(value["extra"]["tags"], json!(["tag-a", "tag-b"]));
         // The discriminant lives on the item, not inside the platform fields.
+        assert!(value["extra"].get("platform").is_none());
+    }
+
+    #[test]
+    fn comic_detail_serializes_platform_and_typed_extra() {
+        let detail = ComicDetail::new(
+            "Example",
+            "https://cdn.example/1.jpg",
+            DetailExtra::Jm(JmDetailExtra {
+                authors: vec!["Author".into()],
+                tags: vec!["tag-a".into()],
+                works: Vec::new(),
+                actors: Vec::new(),
+                page_count: Some(20),
+                pub_date: None,
+                update_date: None,
+                likes: None,
+                views: None,
+                comment_count: None,
+            }),
+        );
+
+        let value = serde_json::to_value(detail).unwrap();
+        assert_eq!(value["platform"], "jm");
+        assert_eq!(value["title"], "Example");
+        assert_eq!(value["extra"]["authors"], json!(["Author"]));
+        assert_eq!(value["extra"]["pageCount"], 20);
+        // The discriminant is a sibling of `extra`, not a duplicate inside it.
         assert!(value["extra"].get("platform").is_none());
     }
 }

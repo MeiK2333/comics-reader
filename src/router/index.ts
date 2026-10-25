@@ -9,6 +9,7 @@ import HomeView from "../views/HomeView.vue";
 type RouteTitleKey =
   | "app.name"
   | "meta.search"
+  | "meta.comic"
   | "meta.favorites"
   | "meta.downloads"
   | "meta.history"
@@ -60,6 +61,12 @@ const router = createRouter({
       meta: { titleKey: "meta.settings" },
     },
     {
+      path: "/comic/:platform(manhuagui|jm|nhentai)/:id",
+      name: "comic-detail",
+      component: () => import("../views/ComicDetailView.vue"),
+      meta: { titleKey: "meta.comic" },
+    },
+    {
       path: "/search",
       name: "search",
       component: () => import("../views/SearchView.vue"),
@@ -78,6 +85,10 @@ const router = createRouter({
       meta: { titleKey: "meta.notFound" },
     },
   ],
+  // New pages start at the top; browser back/forward keeps the previous
+  // position instead of dropping the user at a stale scroll offset.
+  scrollBehavior: (_to, _from, savedPosition) =>
+    savedPosition ?? { top: 0 },
 });
 
 function translateTitleKey(key: RouteTitleKey) {
@@ -85,6 +96,7 @@ function translateTitleKey(key: RouteTitleKey) {
     case "meta.notFound":
       return translate("meta.notFound", { app: translate("app.name") });
     case "meta.search":
+    case "meta.comic":
     case "meta.favorites":
     case "meta.downloads":
     case "meta.history":
@@ -96,13 +108,10 @@ function translateTitleKey(key: RouteTitleKey) {
 }
 
 /**
- * Set the document and native window title for a route. Called on every
- * navigation and again when the locale changes.
+ * Set the document and native window title. Exported for views whose title is
+ * data-driven (comic details) and cannot come from static route metadata.
  */
-export function updateWindowTitle(
-  meta: RouteMeta = router.currentRoute.value.meta,
-) {
-  const title = translateTitleKey(meta.titleKey ?? "app.name");
+export function setWindowTitle(title: string) {
   document.title = title;
 
   // The document title is not mirrored to the native window, so set it
@@ -111,6 +120,16 @@ export function updateWindowTitle(
   void getCurrentWindow()
     .setTitle(title)
     .catch(() => undefined);
+}
+
+/**
+ * Set the title for a route. Called on every navigation and again when the
+ * locale changes.
+ */
+export function updateWindowTitle(
+  meta: RouteMeta = router.currentRoute.value.meta,
+) {
+  setWindowTitle(translateTitleKey(meta.titleKey ?? "app.name"));
 }
 
 router.afterEach((to) => updateWindowTitle(to.meta));
