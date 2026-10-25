@@ -141,10 +141,6 @@
       "enable": "Enable ECH",
       "errors": {
         "update": "Could not update ECH."
-      },
-      "status": {
-        "enabled": "ECH enabled",
-        "disabled": "ECH off"
       }
     }
   },

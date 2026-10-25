@@ -650,7 +650,7 @@ Commit: <hash>
 - ECH-3：`download_image` / `fetch_document` 改为接收 `&HttpClient` 并调用 `send`；`fetch_image` / `search_comics` / `get_comic` 全部接入。
 - ECH-4：新增 `set_ech_enabled` / `get_ech_status`；默认 bootstrap 先 AliDNS、失败再 360；`enable_ech` 清空代理；`set_http_proxy(Some)` 在 ECH 开启时返回 `invalidInput`；命令已注册到 `lib.rs`。
 - ECH-5：新增 `src/api/ech.ts`；`main.ts` 启动时异步初始化并失败回滚 `settings.ech`；新增非持久化 `src/stores/runtime.ts`，首页在 `runtime.echStarting` 期间显示等待、不渲染搜索栏；设置页 ECH 开关改为异步、失败回滚并显示本地化提示；ECH 开启时禁用代理控件；新增 `settings.ech.errors.update`。
-- ECH-6：ECH 配置 TTL 10 分钟，到期后的首个 HTTPS 请求懒刷新；`tokio::sync::Mutex` 串行化，刷新成功原子替换 runtime，失败保留旧 runtime 并在 60 秒后重试；`CloudflareResolver` 增加 60 秒 A/AAAA 缓存（上限 256 条），ECH/plain client 共享同一个 resolver；设置页通过 `get_ech_status` 显示后端实际状态；新增 `ech_control_generation`，启动或命令的 bootstrap 晚于用户关闭时会被丢弃。
+- ECH-6：ECH 配置 TTL 10 分钟，到期后的首个 HTTPS 请求懒刷新；`tokio::sync::Mutex` 串行化，刷新成功原子替换 runtime，失败保留旧 runtime 并在 60 秒后重试；`CloudflareResolver` 增加 60 秒 A/AAAA 缓存（上限 256 条），ECH/plain client 共享同一个 resolver；`get_ech_status` 仅保留为诊断命令，设置页不展示状态；新增 `ech_control_generation`，启动或命令的 bootstrap 晚于用户关闭时会被丢弃。
 - 验证：`cargo test --lib` 61 passed / 9 ignored；`ech_client_fetches_and_falls_back` 通过（nhentai 200、qq fallback、TTL 强制刷新、代理互斥）；`enables_ech_with_the_default_bootstrap` 通过；`nhentai_search_detail_and_image_work_with_ech` 通过（搜索/详情/缩略图）；`pnpm build` 通过。
 - 未完成：ECH-7（真实 Tauri 窗口 UI 冒烟、设置页开关与启动恢复的手动验证）。
 
