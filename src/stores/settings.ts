@@ -14,7 +14,7 @@ export interface SettingsState {
   locale: LocalePreference;
   /** Applied to the Rust HTTP client on startup and after saving the form. */
   proxy: ProxySettings;
-  /** Frontend-only preference; enabling it clears any configured proxy. */
+  /** Mirrored to Rust through set_ech_enabled; enabling clears any proxy. */
   ech: boolean;
 }
 

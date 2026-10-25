@@ -137,7 +137,10 @@
       }
     },
     "ech": {
-      "enable": "启用 ECH"
+      "enable": "启用 ECH",
+      "errors": {
+        "update": "无法更新 ECH，请检查网络后重试。"
+      }
     }
   },
   "shortcut": {

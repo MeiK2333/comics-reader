@@ -137,7 +137,10 @@
       }
     },
     "ech": {
-      "enable": "Enable ECH"
+      "enable": "Enable ECH",
+      "errors": {
+        "update": "Could not update ECH. Check your network and try again."
+      }
     }
   },
   "shortcut": {
