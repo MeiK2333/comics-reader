@@ -100,8 +100,11 @@ async fn bootstrap_session(bootstrap_doh: Option<String>) -> Result<EchSession> 
 }
 
 async fn enable_ech_with_bootstrap(http: &HttpClient, bootstrap_doh: Option<String>) -> Result<()> {
+    // Claim the control generation before the slow bootstrap so a disable
+    // issued while it runs wins, even if this future completes afterwards.
+    let control = http.begin_ech_control()?;
     let session = bootstrap_session(bootstrap_doh).await?;
-    http.enable_ech(Arc::new(session))
+    http.enable_ech_if_current(control, Arc::new(session))
 }
 
 #[cfg(test)]

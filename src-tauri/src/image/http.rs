@@ -102,6 +102,9 @@ struct ClientState {
     /// Incremented on every enable, disable and successful refresh. A refresh
     /// that started before a state change must not resurrect the old runtime.
     ech_generation: u64,
+    /// Incremented when a command starts changing the ECH state. A bootstrap
+    /// that finishes after a newer command must be discarded.
+    ech_control_generation: u64,
 }
 
 /// The two clients used while ECH is enabled. Both resolve targets through
@@ -150,9 +153,32 @@ impl HttpClient {
         Ok(())
     }
 
-    /// Install the ECH runtime. A previously configured proxy is cleared
-    /// because both ECH clients are built with `no_proxy`.
-    pub(crate) fn enable_ech(&self, session: Arc<EchSession>) -> Result<()> {
+    /// Start a user-visible ECH state change. The returned generation must be
+    /// passed to [`Self::enable_ech_if_current`] after the (slow) bootstrap so
+    /// a newer disable/enable can win the race.
+    pub(crate) fn begin_ech_control(&self) -> Result<u64> {
+        let mut state = self.lock()?;
+        state.ech_control_generation = state.ech_control_generation.wrapping_add(1);
+        Ok(state.ech_control_generation)
+    }
+
+    fn ech_control_is_current(&self, control: u64) -> Result<bool> {
+        Ok(self.lock()?.ech_control_generation == control)
+    }
+
+    /// Install the ECH runtime if no newer control command has been issued.
+    ///
+    /// A previously configured proxy is cleared because both ECH clients are
+    /// built with `no_proxy`.
+    pub(crate) fn enable_ech_if_current(
+        &self,
+        control: u64,
+        session: Arc<EchSession>,
+    ) -> Result<()> {
+        if !self.ech_control_is_current(control)? {
+            return Ok(());
+        }
+
         let resolver = session.resolver();
         let ech_client = build_ech_client(&session, resolver.clone(), true)?;
         let plain_client = build_ech_client(&session, resolver, false)?;
@@ -160,6 +186,9 @@ impl HttpClient {
         let now = SystemTime::now();
 
         let mut state = self.lock()?;
+        if state.ech_control_generation != control {
+            return Ok(());
+        }
         state.proxy = None;
         state.normal_client = Some(normal_client);
         state.ech_generation = state.ech_generation.wrapping_add(1);
@@ -174,10 +203,14 @@ impl HttpClient {
     }
 
     /// Drop the ECH runtime; the ordinary client is reused on the next send.
+    ///
+    /// Bumping the control generation also makes any in-flight bootstrap
+    /// discard its result instead of resurrecting ECH.
     pub(crate) fn disable_ech(&self) -> Result<()> {
         let mut state = self.lock()?;
         state.ech = None;
         state.ech_generation = state.ech_generation.wrapping_add(1);
+        state.ech_control_generation = state.ech_control_generation.wrapping_add(1);
         Ok(())
     }
 
@@ -652,6 +685,16 @@ mod tests {
         assert!(status.expires_at.is_none());
     }
 
+    #[test]
+    fn disabling_ech_invalidates_an_in_flight_enable() {
+        let client = HttpClient::default();
+        let control = client.begin_ech_control().unwrap();
+
+        client.disable_ech().unwrap();
+
+        assert!(!client.ech_control_is_current(control).unwrap());
+    }
+
     #[tokio::test]
     async fn refresh_is_a_noop_without_ech() {
         let client = HttpClient::default();
@@ -673,7 +716,8 @@ mod tests {
                 .await
                 .unwrap(),
         );
-        http.enable_ech(session).unwrap();
+        let control = http.begin_ech_control().unwrap();
+        http.enable_ech_if_current(control, session).unwrap();
 
         let status = http.ech_status().unwrap();
         assert!(status.enabled);
@@ -730,7 +774,8 @@ mod tests {
                 .await
                 .unwrap(),
         );
-        http.enable_ech(session).unwrap();
+        let control = http.begin_ech_control().unwrap();
+        http.enable_ech_if_current(control, session).unwrap();
 
         let platform = super::super::platform::find("nhentai").unwrap();
 
