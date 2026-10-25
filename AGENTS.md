@@ -17,6 +17,8 @@
 
 不要假设项目里已经有漫画库、通用章节列表、下载器、数据库或完整阅读器引擎；除 nhentai 单章阅读外，manhuagui/JM 的章节页源仍属于待实现功能。
 
+后续规划（JM 加载优化、收藏/下载、manhuagui/JM 阅读、更多平台）汇总在本文件的“后续规划（尚未实现）”一节；这些能力尚未实现，不要按已存在处理。
+
 `README.md` 仍是上游 Tauri/Vue 模板，不能可靠描述本项目。请以本文件、`package.json`、`src-tauri/Cargo.toml` 和 `src-tauri/tauri.conf.json` 为准。
 
 ECH 接入已完成；当前实现与约束见本文件的“远程 HTTP、图片缓存与平台检索”和“陷阱与刻意保留的现状”两节。
@@ -445,6 +447,49 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 - **平台解析依赖上游结构。** manhuagui/JM 是 HTML 抓取，nhentai 是 v2 JSON；上游改版会破坏 parser。修改 selector 时同步补 fixture 测试，并保持 `extra` 字段名稳定。
 - **`scripts/` 仅限本地。** 它被 gitignore，需要 Python 3.15+，不属于应用构建。不要把应用代码放进去。
 - **README 已过时。** 它只是上游模板；如有文档需求，请更新 README 或本文件。
+
+## 后续规划（尚未实现）
+
+以下方向**尚未实现**；不要因为本节存在就按已具备处理。实现前先核对代码，完成后更新本节状态与相关契约。
+
+| # | 规划 | 当前状态 | 主要落点 |
+| --- | --- | --- | --- |
+| 1 | 参考 JMComic-Crawler-Python 优化 JM 加载 | JM 搜索可用；详情常 403，仅网页 HTML 解析 | `src-tauri/src/image/platform/jm.rs`、`http.rs`、`src/api/comics.ts` |
+| 2 | 实现收藏与下载 | `/favorites`、`/downloads` 仍是占位页 | Rust 持久化/下载模块、`src/views/`、`src/shortcuts.ts` |
+| 3 | 实现 manhuagui 与 JM 阅读 | 页源只有 nhentai | `image/platform/`、`ComicReaderView.vue`、`ComicDetailView.vue` |
+| 4 | 接入更多平台 | 仅 manhuagui、jm、nhentai | `image/platform/`、`model.rs`、`src/api/comics.ts`、平台 UI 组件 |
+
+### 1. 优化 JM 加载
+
+- 参考 [JMComic-Crawler-Python](https://github.com/hect0x7/JMComic-Crawler-Python) 的客户端、域名切换、重试与图片解码思路；不要把 Python 依赖、登录/收藏夹或整套下载框架搬进来。
+- 其 README 指出移动端接口 IP/地区兼容性更好、网页端效率更高。先选定客户端实现，再设计域名顺序、超时/重试/退避与必需 header；请求继续走 `HttpClient`（代理/ECH），不要另建 client。
+- 403 是 IP/地区限制而非 parser 失败。目标是在可用网络下稳定加载并返回可诊断的本地化错误；接口/header/解析变化时提升 `jm.rs` 的 `cache_version()` 并补 fixture。
+- APP 加解密或图片解码只放 Rust；图片先解码再写缓存，不把原始分片交给 `<img>`。若引入，先确认许可与合规。
+
+### 2. 实现收藏与下载
+
+- 先定产品边界：收藏是否只存本地；下载按作品/章节；目录；暂停/取消/删除；是否离线阅读。未确认前不要动占位页。
+- 收藏是应用数据，由 Rust 持久化到 `app_data_dir()`（规模大再评估 SQLite），不要放进 `settings`/localStorage。下载文件放用户目录或 `app_data_dir()`，不要放 `app_cache_dir()`。
+- 复用 `HttpClient`、图片校验与平台 header；补并发/限速、重试、取消、磁盘检查与进度上报。命令返回 `Result<T, AppError>`，展示文案只在前端。
+- 离线阅读用 Rust 返回本地路径 + 资产协议；新增目录要同步 `tauri.conf.json` 的 scope。替换 `/favorites`、`/downloads` 时同步 `shortcuts.ts`、route meta、两个语言包与 `AGENTS.md`。
+
+### 3. 实现 manhuagui 与 JM 阅读
+
+- 在对应 `Platform` 实现 `reader_chapter_request`/`parse_reader_chapter`：manhuagui 要章节列表/章节页解析，JM 要 album 图片列表及必要解码；补真实 fixture。
+- 详情页把 `platform === "nhentai"` 的硬编码入口改为能力判断；未实现页源的平台继续隐藏入口并返回本地化 unsupported。
+- 复用阅读路由、`?page=`、阅读方向、上下章与历史记录（`chapterId` 已建模），不要复制 `ComicViewer.vue`。页源只返回 URL/尺寸，图片仍走 `fetch_image`；Referer/解码在 Rust。
+- 完成后删除“阅读器目前只支持 nhentai”的陷阱描述，更新测试与冒烟清单。
+
+### 4. 接入更多平台
+
+- 按“新增平台”配方：在 `platform/` 实现 trait 与 parser、注册 `PLATFORMS`、扩展 `SearchPlatform`/`SearchExtra`/`DetailExtra`、前端 `ComicPlatform` 判别联合、`PlatformPicker`、结果卡片、详情组件、阅读能力判断、图标、fixture 与 `cache_version()`。
+- 先确认平台接口、登录/付费/地区限制与抓取许可；不要引入远程 HTML 执行、`v-html` 或放宽 CSP。
+- 每平台至少补搜索/详情 fixture，保持分页字段、id 归一化与缩略图绝对化约定；平台更多时再评估配置驱动注册表，之前保持判别联合的编译期安全。
+
+### 跨规划约束
+
+- 每项完成后同步“架构与数据流”“修改位置速查”“测试现状”“陷阱”和“最终检查清单”。
+- 新增持久化数据先分归属：偏好 → `settings`；收藏/历史等应用数据 → Rust 文件；可丢弃图片 → 缓存目录。新增命令必须注册；网络请求复用 `HttpClient`；涉及 IPC/下载/阅读/路由必须用 `pnpm tauri dev` 真实冒烟。
 
 ## Git 与提交规范
 
