@@ -1,6 +1,6 @@
 # ECH 接入实施计划
 
-> 状态：待执行  
+> 状态：进行中（ECH-0 已完成）  
 > 基线：`ec61310 feat(ech): add DoH ECH bootstrap and rustls handshake probe`  
 > 更新时间：2026-10-25  
 > 适用项目：`comics-reader`（Tauri 2 + Vue 3 + Rust）
@@ -163,13 +163,14 @@ Rust set_ech_enabled(true, bootstrapDoh)
 
 ### 4.2 ALPN
 
-- 探针的 `ech/tls.rs` 当前给 ECH config 设置了 `http/1.1` ALPN，适合手动 `TlsStream` 探针。
-- 给 reqwest 用的 ECH TLS config **不要预设 ALPN**，让 reqwest/hyper 根据 `http2` 特性协商 `h2` / `http/1.1`。
+- 探针的 `ech/tls.rs` 给 ECH config 设置 `http/1.1` ALPN，适合手动 `TlsStream` 探针。
+- **Phase 0 实测结论（reqwest 0.12.28）**：`use_preconfigured_tls` 走 `TlsBackend::BuiltRustls`，reqwest 原样使用传入的 `ClientConfig`，不会覆盖 `alpn_protocols`。因此“空 ALPN 让 reqwest 协商”不成立：空列表只会走 HTTP/1.1。
+- 给 reqwest 用的 ECH TLS config 必须显式设置 `["h2", "http/1.1"]`；探针继续用 `["http/1.1"]`。
 - 因此 `EchSession` 需要提供两套 TLS config：
   - probe config（`http/1.1`）
-  - reqwest config（空 ALPN 或由 reqwest 控制）
+  - reqwest config（`h2` + `http/1.1`）
 
-Phase 0 必须验证 reqwest 不会因 preconfigured ALPN 报错或强制降级。
+Phase 0 已确认：显式 ALPN 下 reqwest 与 ECH 配置可以正常协商 HTTP/2，不会报错或强制降级。
 
 ### 4.3 回退语义
 
@@ -347,7 +348,7 @@ export async function getEchStatus(): Promise<EchStatus>;
 
 | ID | 任务 | 状态 | 依赖 | 可并行组 | 主要文件 |
 | --- | --- | --- | --- | --- | --- |
-| ECH-0 | reqwest + ECH + 自定义 resolver spike | 待开始 | 无 | 先做，阻塞后续 | 临时测试/`ech/` |
+| ECH-0 | reqwest + ECH + 自定义 resolver spike | 已完成 | 无 | 先做，阻塞后续 | 临时测试/`ech/` |
 | ECH-1 | `EchSession` 暴露 reqwest TLS/resolver | 待开始 | ECH-0 | Rust 组 | `ech/session.rs`、`ech/doh.rs`、`ech/tls.rs` |
 | ECH-2 | `HttpClient` ECH runtime、双 client、`send` 回退 | 待开始 | ECH-1 | Rust 组 | `image/http.rs` |
 | ECH-3 | 图片/检索/详情接入 `HttpClient::send` | 待开始 | ECH-2 | Rust 组 | `image/mod.rs`、`image/http.rs` |
@@ -632,17 +633,18 @@ Commit: <hash>
 
 ---
 
-## 11. 当前 Phase 0 结论（待填写）
+## 11. 当前 Phase 0 结论
 
-> 由执行 ECH-0 的 agent 填写。
+> 由执行 ECH-0 的 agent 填写，2026-10-25。
 
-- reqwest 版本：
-- ECH preconfigured TLS 是否可用：
-- ALPN 行为：
-- 自定义 resolver 是否可用：
-- nhentai 请求结果：
-- 非 Cloudflare 错误类型：
-- 结论/备选方案：
+- reqwest 版本：0.12.28；rustls 0.23.46。
+- ECH preconfigured TLS 是否可用：可用。`use_preconfigured_tls(rustls::ClientConfig)` 走 `TlsBackend::BuiltRustls`，同一 rustls 版本下 downcast 成功。
+- ALPN 行为：reqwest 不覆盖 preconfigured config 的 `alpn_protocols`。显式设置 `["h2", "http/1.1"]` 后，`https://nhentai.net/` 协商到 HTTP/2.0 并返回 200；空 ALPN 的对照请求协商为 HTTP/1.1（nhentai 返回 403，测试只断言版本）。
+- 自定义 resolver 是否可用：可用。`reqwest::dns::Resolve` + `Arc` + 端口 `0` 的 `SocketAddr` 工作正常，目标 A/AAAA 全部走 `EchSession::resolve` 的 Cloudflare DoH。
+- nhentai 请求结果：`https://nhentai.net/` 返回 200、HTTP/2.0；现有 `queries_nhentai_via_cloudflare_doh_over_ech` 测试用同一份 `cloudflare-ech.com` 配置返回 `echStatus=accepted`、TLS1.3、`fallback=false`。
+- 非 Cloudflare 错误类型：`https://www.qq.com/` 的 ECH 请求失败，`is_connect()=true`、`is_timeout()=false`、`is_request()=true`；source 链是 hyper-util connect error → rustls `InvalidCertificate(NotValidForName)`（期望 `cloudflare-ech.com`，服务端出示 qq CDN 证书）。用普通 TLS + 同一 Cloudflare DoH resolver 重试返回 200（HTTP/1.1）。
+- 结论/备选方案：主方案可行，不需要 hyper 自定义 connector。fallback 判断用 `is_connect() || is_timeout()`；不要把 `is_request()` 纳入，否则普通 HTTP 错误也会触发重试。注意 `is_connect()` 也会命中 `kind: Request` 的证书错误（reqwest 会遍历 source），这是 fallback 需要的行为。
+- 复现命令：`cargo test --lib -- --ignored reqwest_client_uses_ech_and_cloudflare_dns --nocapture`（约 10–15s 通过，含 4 次联网请求）。
 
 ---
 
