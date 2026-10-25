@@ -63,7 +63,7 @@
 .
 ├─ src/                          Vue 应用
 │  ├─ main.ts                    启动：Pinia、i18n、router；挂载前应用主题/语言/代理
-│  ├─ App.vue                    Naive UI Provider 与 RouterView 外壳
+│  ├─ App.vue                    Naive UI Provider、顶部安全区与 RouterView 外壳
 │  ├─ components/
 │  │  ├─ ComicThumb.vue          结果缩略图：Rust 缓存 + 资产协议
 │  │  ├─ ComicSearchBar.vue      搜索表单：平台选择、关键词输入、提交
@@ -109,7 +109,7 @@
 │  ├─ api/comics.ts              平台检索/详情的前端类型与 invoke 封装
 │  ├─ api/proxy.ts               代理配置的前端校验与 set_http_proxy 封装
 │  ├─ errors.ts                  前端错误契约与 AppError
-│  ├─ styles/base.scss           全局 reset/基础样式
+│  ├─ styles/base.scss           全局 reset/基础样式与安全区留白
 │  └─ components.d.ts            由 unplugin-vue-components 生成；不要手改
 ├─ src-tauri/
 │  ├─ src/lib.rs                 Tauri Builder、命令注册、插件初始化
@@ -194,7 +194,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 - 只持久化用户偏好或小型持久状态。不要持久化大对象、瞬态加载标记或密钥。
 - 给 `SettingsState` 新增字段会自动持久化，老用户通常会回落到 store 的初始值。重命名或删除已持久化字段则需要迁移，否则旧数据会被静默忽略。
 - `useTheme()` 与 `useLocale()` 只在 shell 层调用一次。其他组件直接读 `useSettingsStore()`；重复调用 `useTheme()` 会重复注册 media query 监听器。
-- 首页提供设置快捷入口，设置页可切换主题与语言，并可保存 HTTP 代理；主题/语言立即生效，代理只有在 `set_http_proxy` 成功后才会写回 store，避免持久化无法应用的地址。
+- 首页提供设置快捷入口，设置页可切换主题与语言，并可保存 HTTP 代理；主题/语言立即生效。关闭代理开关会立即通过 `set_http_proxy(null)` 清除代理并写回 store，无需点击保存；开启代理或修改地址仍需点击“保存并应用”，且只有 `set_http_proxy` 成功后才写回 store，避免持久化无法应用的地址。
 
 ### 远程 HTTP、图片缓存与平台检索
 
@@ -245,6 +245,15 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 - 调用 `useMessage()` 的组件必须位于 `NMessageProvider` 之下，`App.vue` 已提供。若需要 dialog、notification 等 Provider，也在 `App.vue` 中添加。
 - 优先使用现有 Naive UI 主题机制（`NConfigProvider`、`darkTheme`），不要零散地写 CSS 变量或内联颜色。
 
+### 移动端安全区
+
+- 所有路由共享 `App.vue` 中、`RouterView` 之外的 `.safe-area-top`。`base.scss` 将它实现为 `position: sticky; top: 0; height: env(safe-area-inset-top, 0px)` 的色块：它参与首屏布局，把内容推到安全区下方；滚动时保持吸顶并遮住其下内容，避免内容显示到状态栏或刘海区域。
+- 安全区留白只能由这个全局元素负责。不要在页面或组件上写 `env(safe-area-inset-top)` 的 `margin`/`padding`，也不要用 `max-width`、`pointer: coarse` 模拟固定顶部边距；平台不提供安全区信息时，`env()` 自然为 0，按普通页面处理。
+- `.safe-area-top` 的背景必须使用 `base.scss` 的 `--app-background`，与 `body` 的明暗主题背景保持一致；不要给它写死颜色。
+- 页面自己的 `padding-top` 只负责视觉留白，不能当作安全区使用。新增路由只要放在现有 `RouterView` 内，就自动位于安全区下方。
+- 如果新增 fixed/sticky 的顶部控件，必须放在安全区条下方或显式避开它，不能覆盖 `.safe-area-top`。
+- 当前只处理顶部安全区；以后需要底部或左右安全区时，按同样方式增加独立占位元素，不要复用或扩大顶部条。
+
 ### 注释
 
 本仓库的注释解释**为什么**，而不是复述代码在做什么。请沿用这种风格：在不易理解的决定旁写简短、完整的句子（例如 hydration 顺序、缓存失效、资产协议 scope、capability 原因）。不要给显而易见的代码加旁白。
@@ -266,7 +275,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 | 新增/修改平台搜索或详情 | `src-tauri/src/image/platform/`、`src-tauri/src/image/model.rs`、`src/api/comics.ts` |
 | 新增/修改详情页 | `src/views/ComicDetailView.vue`、`src/components/comic-detail/`、`src/router/index.ts`、`src-tauri/src/image/model.rs` |
 | 修改首页或设置 UI | `src/views/HomeView.vue`、`src/views/SearchView.vue`、`src/views/SettingsView.vue`、`src/views/ShortcutPlaceholderView.vue`、`src/components/HomeShortcuts.vue`、`src/components/ShortcutIcon.vue`、`src/shortcuts.ts`、`src/stores/search.ts`、`src/composables/useRouteTransition.ts`、`src/components/ComicSearchBar.vue`、`src/components/ComicSearchResults.vue`、`src/components/ComicResultCard.vue`、`src/components/result-cards/`、`src/components/PlatformPicker.vue`、`src/components/ComicThumb.vue`、`src/assets/platforms/`、`src/api/comics.ts` |
-| 修改全局样式 | `src/styles/base.scss`；组件样式保持在组件内 |
+| 修改全局样式或顶部安全区 | `src/styles/base.scss`、`src/App.vue`；组件样式保持在组件内 |
 | 修改 Android 原生配置 | `src-tauri/gen/android/`（已跟踪，但大部分是生成内容，修改前要确认） |
 | 重新生成应用图标 | `src-tauri/icons/`，通过 `pnpm tauri icon <source>` 生成；不要手改 |
 
@@ -304,6 +313,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 2. 添加路由并设置 `meta.titleKey`，同时扩展 `RouteTitleKey` 与 `translateTitleKey()`。
 3. 在两个语言包中添加标题 key。
 4. 验证原生窗口标题会变化，并确认 404 兜底仍然正常。
+5. 新路由放在现有 `RouterView` 内即可继承顶部安全区，不要在新页面重复添加安全区 padding/margin。
 
 ## 验证
 
@@ -322,7 +332,8 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 - 首页快捷入口：收藏、下载、历史进入占位页，设置进入设置页；窗口标题与正文标题正确，返回首页可用。
 - 平台检索：分别用 manhuagui/nhentai 搜索关键词并取一条详情，确认 total/page_size/result 与 thumb/extras；JM 若被 Cloudflare 403，应返回本地化 httpStatus 错误而不是崩溃。
 - 设置页：切换主题立即生效并在重启后恢复；切换语言后文案、Naive UI 与窗口标题同步更新。
-- 设置页代理：启用并填写可达代理后搜索与缩略图正常；非法地址有本地化提示且不持久化；关闭并保存后恢复默认网络行为；重启后配置恢复。
+- 设置页代理：启用并填写可达代理后搜索与缩略图正常；非法地址有本地化提示且不持久化；关闭开关后立即恢复默认网络行为（无需保存）；开启或修改地址后仍需保存并应用；重启后配置恢复。
+- 移动端安全区：在真机或 DevTools 中临时给 `.safe-area-top` 设置高度（如 32px），确认所有页面从安全区下方开始；滚动后安全区条仍固定在顶部并遮住其下内容；切换深色主题时背景色一致。
 - 详情页：从结果卡片进入三个平台详情，确认标题/封面/信息/标签；直接刷新 `#/comic/...` 可加载；返回按钮回到原搜索结果；非法 id 显示本地化未找到；窄窗口切换单列。
 - 访问 `#/does-not-exist`：显示 404 页面与本地化标题，返回首页链接可用。
 
@@ -335,6 +346,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 
 - **`pnpm dev` 不是完整应用。** 它只提供 UI，没有 Tauri，因此 `invoke`、`convertFileSrc` 与窗口 API 都会失败。浏览器兜底逻辑已被有意移除。
 - **代理是 Rust 的运行时状态。** 不要把代理持久化到 Rust；启动和设置页保存时通过 `set_http_proxy` 同步，命令失败时保留旧 client。
+- **顶部安全区不要用页面 padding。** 页面滚动时 padding 会跟着滚走；顶部安全区由 `App.vue` 的 sticky `.safe-area-top` 统一留白，滚动内容不会显示到状态栏或刘海区域。
 - **主题与语言只能通过设置页修改。** 偏好保存在 `comics-reader:settings`；不要在组件里绕过 `useSettingsStore`，也不要重复调用 `useTheme()`/`useLocale()`。
 - **`/search` 不携带查询参数。** 结果页依赖内存态 `search` store；刷新或直接打开 `#/search` 会被路由守卫送回首页，这是刻意取舍。首页图标固定回首页，不使用 `router.back()`。
 - **详情页与搜索会话解耦。** `/comic/:platform/:id` 直接请求 `get_comic`，刷新/深链接可用；只有搜索会话仍存在时，返回按钮才回 `/search`，否则回首页。
@@ -380,5 +392,6 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 - [ ] 新增或修改的错误码已贯通 Rust、`errors.ts`、`useErrorMessage.ts` 与两个语言包。
 - [ ] Tauri 命令已注册，所需 capability 已添加。
 - [ ] 当改动涉及 IPC、图片缓存、平台检索、搜索 UI、主题、i18n 或路由时，已用 `pnpm tauri dev` 做运行时冒烟测试。
+- [ ] 移动端安全区改动已验证：所有页面从安全区下方开始，滚动时内容不会显示在状态栏/刘海区域。
 - [ ] 没有修改或暂存生成文件与构建产物。
 - [ ] 如果命令、架构或契约发生变化，本文件已同步更新。
