@@ -26,6 +26,7 @@
     "unknown": "发生意外错误：{message}"
   },
   "home": {
+    "echStarting": "正在初始化 ECH…",
     "shortcuts": {
       "label": "快捷入口",
       "favorites": "收藏",

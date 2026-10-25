@@ -26,6 +26,7 @@
     "unknown": "Unexpected error: {message}"
   },
   "home": {
+    "echStarting": "Initializing ECH…",
     "shortcuts": {
       "label": "Quick links",
       "favorites": "Favorites",

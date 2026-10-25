@@ -9,6 +9,7 @@ import { applyProxy } from "./api/proxy";
 import { applyTheme } from "./composables/useTheme";
 import { i18n, resolveLocale, setLocale } from "./i18n";
 import { useSettingsStore } from "./stores/settings";
+import { useRuntimeStore } from "./stores/runtime";
 
 const app = createApp(App).use(pinia).use(i18n).use(router);
 
@@ -16,6 +17,7 @@ async function bootstrap() {
   // Reading the store hydrates persisted settings synchronously, so the saved
   // theme and language are known before the first render.
   const settings = useSettingsStore(pinia);
+  const runtime = useRuntimeStore(pinia);
   applyTheme(settings.theme);
   setLocale(resolveLocale(settings.locale));
 
@@ -37,13 +39,18 @@ async function bootstrap() {
     }
 
     if (settings.ech) {
-      // Bootstrap performs network I/O. Start it before mounting so the first
-      // request usually finds the runtime ready, but do not delay the window:
-      // a failed initialization rolls the persisted switch back.
-      void setEchEnabled(true).catch((error) => {
-        console.error("failed to initialize ECH", error);
-        settings.ech = false;
-      });
+      // Bootstrap performs network I/O. Keep the home page waiting until this
+      // settles so the first search cannot fall back to the ordinary client.
+      // A failed initialization rolls the persisted switch back.
+      runtime.echStarting = true;
+      void setEchEnabled(true)
+        .catch((error) => {
+          console.error("failed to initialize ECH", error);
+          settings.ech = false;
+        })
+        .finally(() => {
+          runtime.echStarting = false;
+        });
     }
   }
 
