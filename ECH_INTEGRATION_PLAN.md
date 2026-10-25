@@ -1,6 +1,6 @@
 # ECH 接入实施计划
 
-> 状态：进行中（ECH-0 ~ ECH-5 已完成）
+> 状态：进行中（ECH-0 ~ ECH-6 已完成，ECH-7 手动冒烟待完成）
 > 基线：`ec61310 feat(ech): add DoH ECH bootstrap and rustls handshake probe`  
 > 更新时间：2026-10-25  
 > 适用项目：`comics-reader`（Tauri 2 + Vue 3 + Rust）
@@ -63,8 +63,7 @@ cargo build                                                   passed
 
 ### 1.2 尚未完成
 
-- ECH 配置仍没有 TTL 刷新，Cloudflare DoH 的 A/AAAA 结果也没有缓存（ECH-6）。
-- 还没有在真实 Tauri 窗口中做 ECH 运行时冒烟（ECH-7）。
+- 还没有在真实 Tauri 窗口中做 ECH UI 冒烟（设置页开关、启动恢复、代理控件）；nhentai 搜索/详情/图片链路由 ignored live test 覆盖。
 - 启动时的 ECH 初始化是异步的，首个请求可能在 runtime 就绪前走普通 client。
 
 ---
@@ -198,6 +197,8 @@ Phase 0 已确认：显式 ALPN 下 reqwest 与 ECH 配置可以正常协商 HTT
 - Cloudflare DoH 的 A/AAAA 结果做带 TTL 的内存缓存。
 - 刷新失败保留旧 runtime；连续失败再关闭 ECH。
 - 不在请求热路径上重复 bootstrap。
+
+实现（2026-10-25）：TTL 固定 10 分钟；到期后的首个 HTTPS 请求懒刷新，`tokio::sync::Mutex` 串行化；刷新成功原子替换 runtime，失败保留旧 runtime 并在 60 秒后重试；DoH A/AAAA 缓存 60 秒，ECH/plain client 共享同一个 resolver。
 
 后续可加：
 
@@ -350,8 +351,8 @@ export async function getEchStatus(): Promise<EchStatus>;
 | ECH-3 | 图片/检索/详情接入 `HttpClient::send` | 已完成 | ECH-2 | Rust 组 | `image/mod.rs`、`image/http.rs` |
 | ECH-4 | `set_ech_enabled` / 代理互斥 / 初始化失败 | 已完成 | ECH-2 | Rust 组 | `lib.rs`、`image/`、`ech/` |
 | ECH-5 | 前端启动与设置页接入 | 已完成 | ECH-4 接口确定 | 前端组 | `src/api/ech.ts`、`main.ts`、`SettingsView.vue`、i18n |
-| ECH-6 | TTL 缓存、刷新、状态与错误 UX | 待开始 | ECH-3/4/5 | 后续 | `ech/`、`image/http.rs`、前端 |
-| ECH-7 | 测试、文档、运行时冒烟 | 待开始 | 全部 | 收尾 | 测试、`AGENTS.md` |
+| ECH-6 | TTL 缓存、刷新、状态与错误 UX | 已完成 | ECH-3/4/5 | 后续 | `ech/`、`image/http.rs`、前端 |
+| ECH-7 | 测试、文档、运行时冒烟 | 进行中 | 全部 | 收尾 | 测试、`AGENTS.md` |
 
 > 状态由 Coordinator 维护：`待开始` → `进行中` → `已完成` / `阻塞`。执行 agent 只在交接消息中报告，不并发编辑本表。
 
@@ -507,11 +508,11 @@ export async function getEchStatus(): Promise<EchStatus>;
 
 ### 7.1 单元
 
-- `CloudflareResolver` 端口/空地址处理。
-- `is_fallback_error` 分类。
-- ECH client / plain client 选择。
-- 代理与 ECH 互斥。
-- 缓存 TTL（如实现）。
+- `CloudflareResolver` 端口映射、cache key 归一化与 60 秒 TTL（`maps_resolved_addresses_to_port_zero`、`normalizes_dns_cache_keys`、`cache_entries_expire_after_the_ttl`）。
+- `is_fallback_error` 分类（由 `ech_client_fetches_and_falls_back` 的 qq fallback 覆盖）。
+- ECH client / plain client 选择与共享 resolver（由 live runtime 测试覆盖）。
+- 代理与 ECH 互斥（`ech_client_fetches_and_falls_back`）。
+- 配置刷新与 generation guard（由同一 live 测试强制到期触发）。
 
 ### 7.2 联网 `#[ignore]`
 
@@ -642,30 +643,32 @@ Commit: <hash>
 - 结论/备选方案：主方案可行，不需要 hyper 自定义 connector。fallback 判断用 `is_connect() || is_timeout()`；不要把 `is_request()` 纳入，否则普通 HTTP 错误也会触发重试。注意 `is_connect()` 也会命中 `kind: Request` 的证书错误（reqwest 会遍历 source），这是 fallback 需要的行为。
 - 复现命令：`cargo test --lib -- --ignored reqwest_client_uses_ech_and_cloudflare_dns --nocapture`（约 10–15s 通过，含 4 次联网请求）。
 
-### 11.1 ECH-1 ~ ECH-5 实现结论（2026-10-25）
+### 11.1 ECH-1 ~ ECH-6 实现结论（2026-10-25）
 
 - ECH-1：`EchSession` 新增 `reqwest_ech_tls()`（h2 + http/1.1）、`reqwest_plain_tls()`、`resolver()`；`CloudflareResolver` 返回端口 `0` 的 `SocketAddr`；`EchSession` 与 resolver 有 `Send + Sync` 测试。
 - ECH-2：`HttpClient` 增加 `normal_client` 与 `EchRuntime`；`send(url, build)` 对 HTTPS 先走 ECH client，`is_connect() || is_timeout()` 时用 plain client 重试一次；HTTP URL 始终走普通 client。
 - ECH-3：`download_image` / `fetch_document` 改为接收 `&HttpClient` 并调用 `send`；`fetch_image` / `search_comics` / `get_comic` 全部接入。
 - ECH-4：新增 `set_ech_enabled` / `get_ech_status`；默认 bootstrap 先 AliDNS、失败再 360；`enable_ech` 清空代理；`set_http_proxy(Some)` 在 ECH 开启时返回 `invalidInput`；命令已注册到 `lib.rs`。
 - ECH-5：新增 `src/api/ech.ts`；`main.ts` 启动时异步初始化并失败回滚 `settings.ech`；设置页 ECH 开关改为异步、失败回滚并显示本地化提示；ECH 开启时禁用代理控件；新增 `settings.ech.errors.update`。
-- 验证：`cargo test --lib` 57 passed / 7 ignored；`ech_client_fetches_and_falls_back` 通过（nhentai 200、qq fallback、代理互斥）；`pnpm build` 通过。
-- 未完成：ECH-6（配置 TTL 刷新、DoH A/AAAA 缓存）与 ECH-7（真实窗口冒烟、文档收尾）。
+- ECH-6：ECH 配置 TTL 10 分钟，到期后的首个 HTTPS 请求懒刷新；`tokio::sync::Mutex` 串行化，刷新成功原子替换 runtime，失败保留旧 runtime 并在 60 秒后重试；`CloudflareResolver` 增加 60 秒 A/AAAA 缓存（上限 256 条），ECH/plain client 共享同一个 resolver。
+- 验证：`cargo test --lib` 60 passed / 9 ignored；`ech_client_fetches_and_falls_back` 通过（nhentai 200、qq fallback、TTL 强制刷新、代理互斥）；`enables_ech_with_the_default_bootstrap` 通过；`nhentai_search_detail_and_image_work_with_ech` 通过（搜索/详情/缩略图）；`pnpm build` 通过。
+- 未完成：ECH-7（真实 Tauri 窗口 UI 冒烟、设置页开关与启动恢复的手动验证）。
 
 ---
 
 ## 12. Definition of Done
 
-- [ ] ECH 开启时，nhentai 的搜索、详情、图片全部成功，且 ECH 探针仍为 accepted。
-- [ ] 非 Cloudflare 平台请求能 fallback 普通 TLS，不出现不可恢复错误。
-- [ ] ECH 关闭时，原有普通请求/代理行为不变。
-- [ ] 代理与 ECH 不能同时生效。
-- [ ] ECH 配置失败有可理解提示，且可回滚。
-- [ ] `cargo test --lib`、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo build` 通过。
-- [ ] 前端改动时 `pnpm build` 通过。
+- [x] ECH 开启时，nhentai 的搜索、详情、图片全部成功（`nhentai_search_detail_and_image_work_with_ech`）；ECH 探针仍为 accepted（`probe_ech_handshake`）。
+- [x] 非 Cloudflare 平台请求能 fallback 普通 TLS，不出现不可恢复错误。
+- [ ] ECH 关闭时，原有普通请求/代理行为不变（待真实窗口冒烟）。
+- [x] ECH 配置 10 分钟 TTL 懒刷新与 60 秒 DoH A/AAAA 缓存已实现并有测试。
+- [x] 代理与 ECH 不能同时生效。
+- [ ] ECH 配置失败有可理解提示，且可回滚（待真实窗口冒烟）。
+- [x] `cargo test --lib`、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo build` 通过。
+- [x] 前端改动时 `pnpm build` 通过。
 - [ ] `pnpm tauri dev` 冒烟通过。
-- [ ] `AGENTS.md` 已更新，测试数量准确。
-- [ ] 无生成文件或无关改动。
+- [x] `AGENTS.md` 已更新，测试数量准确。
+- [x] 无生成文件或无关改动。
 
 ---
 
@@ -687,6 +690,8 @@ cargo test --lib -- --ignored queries_cloudflare_dns_over_ech
 cargo test --lib -- --ignored queries_cloudflare_ech_over_doh
 cargo test --lib -- --ignored reqwest_client_uses_ech_and_cloudflare_dns
 cargo test --lib -- --ignored ech_client_fetches_and_falls_back
+cargo test --lib -- --ignored enables_ech_with_the_default_bootstrap
+cargo test --lib -- --ignored nhentai_search_detail_and_image_work_with_ech
 
 # 前端
 pnpm build

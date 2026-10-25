@@ -121,12 +121,12 @@
 │  │  ├─ mod.rs                  命令、EchStatus 与模块导出
 │  │  ├─ bootstrap.rs            AliDNS/360 仅查询 cloudflare-ech.com 的 ECH
 │  │  ├─ doh.rs                  Cloudflare DoH over ECH（固定 104.16.248.249 / 104.16.249.249）
-│  │  ├─ session.rs              EchSession、CloudflareResolver 与 reqwest TLS 配置
+│  │  ├─ session.rs              EchSession、CloudflareResolver（60 秒 DoH 缓存）与 reqwest TLS 配置
 │  │  └─ tls.rs                  rustls ECH 握手与普通 TLS fallback
 │  ├─ src/image/                 图片抓取、缓存与平台检索
 │  │  ├─ mod.rs                  fetch_image / search_comics / get_comic / set_http_proxy
 │  │  ├─ cache.rs                缓存键、查找、原子写入、格式识别
-│  │  ├─ http.rs                 共享 client、代理、ECH runtime、图片下载与文档抓取
+│  │  ├─ http.rs                 共享 client、代理、ECH runtime（10 分钟懒刷新）、图片下载与文档抓取
 │  │  ├─ model.rs                搜索/详情 wire 类型
 │  │  └─ platform/               平台 trait、请求头与 HTML/JSON 解析
 │  ├─ src/main.rs                桌面端二进制入口
@@ -222,6 +222,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 - 用户可在设置页启用自定义 HTTP 代理（无认证，`http://host:port`）。启动时和保存后由 `set_http_proxy` 重建共享 `reqwest::Client`；`fetch_image`、`search_comics` 与 `get_comic` 都通过 `HttpClient::send`：ECH 关闭时走普通 client（可走代理），ECH 开启时走 `no_proxy` 的 ECH/plain client。代理不参与图片缓存键；关闭代理时保留 reqwest 默认行为（环境变量代理仍可能生效）。
 - `fetch_ech_config` 在 `src-tauri/src/ech/bootstrap.rs` 中用 `hickory-resolver` 的 DoH 传输查询 `cloudflare-ech.com` 的 HTTPS RR，返回全部记录与 base64 ECHConfigList；它仍是诊断命令，不参与业务请求，业务请求使用 `set_ech_enabled` 构建的 runtime。端点 host 先经系统解析，DoH 连接的 TLS 由 `webpki-roots` 校验；hickory 不读取应用的 HTTP 代理设置。
 - `probe_ech_handshake(domain, dohEndpoint)` 在 `src-tauri/src/ech/session.rs` / `tls.rs` 中固定查询 `cloudflare-ech.com` 的 ECHConfigList，再把同一份配置应用到目标域名；目标 A/AAAA 通过 `src-tauri/src/ech/doh.rs` 的 Cloudflare DoH over ECH 解析，固定连接 `104.16.248.249` / `104.16.249.249`，不再使用系统 DNS 或 AliDNS/360 解析目标。握手返回 `configDomain`、`echStatus`、TLS 版本、ALPN、HTTP 状态与 `fallback`；非 Cloudflare 站点 ECH 失败后自动回退普通 TLS。该探针仍独立于业务请求；由于 reqwest/hickory 使用 ring 而 ECH 使用 aws-lc-rs，`run()` 启动时会安装 ring 作为进程默认 provider。
+- ECH runtime 的配置 TTL 为 10 分钟；到期后的首个 HTTPS 请求会重新 bootstrap 并替换 runtime，失败时保留旧 runtime 并在 60 秒后重试。Cloudflare DoH 的 A/AAAA 结果按 60 秒缓存，ECH 与 plain client 共享同一个 `CloudflareResolver`，避免回退时重复查询。
 - `nhentai.net` 在 AliDNS/360 上的地址答案会被污染或不一致（虚假 IPv6、0.0.0.0 或错误 IPv4），但 `probe_ech_handshake` 已通过 Cloudflare DoH 解析目标，因此可直接直连：测试 `queries_nhentai_via_cloudflare_doh_over_ech` 结果为 `echStatus=accepted`、TLS1.3、HTTP 200、`fallback=false`，全程未使用本地代理。
 - 检索与详情命令为 `search_comics(platform, query, page)` 与 `get_comic(platform, id)`。平台通过 `search_request`/`parse_search`/`detail_request`/`parse_detail` 构建 URL 并解析响应，共享的 `fetch_document` 负责请求、状态码与大小限制。
 - 详情页为 `/comic/:platform/:id`，不依赖内存态搜索会话，刷新或直接打开也能请求 `get_comic`；返回按钮在搜索会话仍有效时回 `/search`，否则回首页。路由 `scrollBehavior` 让新页面从顶部开始，详情加载后用 `setWindowTitle` 把漫画标题写入原生窗口标题。
@@ -356,14 +357,14 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 
 ### 测试现状
 
-- Rust 测试覆盖错误契约（`src-tauri/src/error.rs`）、图片缓存、HTTP 基础头、平台识别/请求头与三平台搜索/详情 parser fixture（`src-tauri/src/image/`），以及 ECH 的 URL 解析、SVCB 提取、Cloudflare DoH 查询构造、ECH/普通 TLS 配置、resolver 端口映射与 reqwest ECH client（`src-tauri/src/ech/`、`src-tauri/src/image/http.rs`），共 64 个测试，其中 7 个联网测试默认 `ignored`。
-- ECH 联网测试使用 `dns.alidns.com` 与 `doh.360.cn`：`queries_cloudflare_ech_over_doh` 验证 bootstrap；`performs_ech_handshake` 用同一份 `cloudflare-ech.com` 配置对 5 个 Cloudflare 站点握手；`queries_cloudflare_dns_over_ech` 验证 Cloudflare DoH over ECH 解析 `example.com`；`queries_nhentai_via_cloudflare_doh_over_ech` 验证 `nhentai.net` 直连（accepted、TLS1.3、HTTP 200、无本地代理）；`falls_back_to_plain_tls_for_non_cloudflare_site` 验证 `www.qq.com` 回退普通 TLS（`fallback=true`、`echStatus=notOffered`）；`reqwest_client_uses_ech_and_cloudflare_dns` 验证 reqwest ECH client（nhentai 200/HTTP2、qq ECH 失败分类、plain 回退）；`ech_client_fetches_and_falls_back` 验证 `HttpClient` runtime、代理互斥与禁用恢复。hickory DoH 查询测试要求 HTTP/2，经过只支持 HTTP/1.1 的代理时会超时。
+- Rust 测试覆盖错误契约（`src-tauri/src/error.rs`）、图片缓存、HTTP 基础头、平台识别/请求头与三平台搜索/详情 parser fixture（`src-tauri/src/image/`），以及 ECH 的 URL 解析、SVCB 提取、Cloudflare DoH 查询构造、ECH/普通 TLS 配置、resolver 端口映射与 60 秒缓存 TTL、reqwest ECH client（`src-tauri/src/ech/`、`src-tauri/src/image/http.rs`），共 69 个测试，其中 9 个联网测试默认 `ignored`。
+- ECH 联网测试使用 `dns.alidns.com` 与 `doh.360.cn`：`queries_cloudflare_ech_over_doh` 验证 bootstrap；`performs_ech_handshake` 用同一份 `cloudflare-ech.com` 配置对 5 个 Cloudflare 站点握手；`queries_cloudflare_dns_over_ech` 验证 Cloudflare DoH over ECH 解析 `example.com`；`queries_nhentai_via_cloudflare_doh_over_ech` 验证 `nhentai.net` 直连（accepted、TLS1.3、HTTP 200、无本地代理）；`falls_back_to_plain_tls_for_non_cloudflare_site` 验证 `www.qq.com` 回退普通 TLS（`fallback=true`、`echStatus=notOffered`）；`reqwest_client_uses_ech_and_cloudflare_dns` 验证 reqwest ECH client（nhentai 200/HTTP2、qq ECH 失败分类、plain 回退）；`ech_client_fetches_and_falls_back` 验证 `HttpClient` runtime、TTL 懒刷新、代理互斥与禁用恢复；`enables_ech_with_the_default_bootstrap` 验证默认 AliDNS/360 bootstrap；`nhentai_search_detail_and_image_work_with_ech` 验证 nhentai 搜索、详情和详情缩略图的完整 ECH 链路。hickory DoH 查询测试要求 HTTP/2，经过只支持 HTTP/1.1 的代理时会超时。
 - 前端没有单元/E2E 测试框架（没有 Vitest、Playwright，也没有 `pnpm test`），仓库也没有 CI。不要声称存在并未运行的测试覆盖。如果新增测试体系，请在 `package.json` 中加脚本并同步更新本文件。
 
 ## 陷阱与刻意保留的现状
 
 - **`pnpm dev` 不是完整应用。** 它只提供 UI，没有 Tauri，因此 `invoke`、`convertFileSrc` 与窗口 API 都会失败。浏览器兜底逻辑已被有意移除。
-- **ECH 已接入 HTTPS 请求，但还不是完整实现。** `settings.ech` 经 `set_ech_enabled` 同步到 Rust；`HttpClient::send` 对 HTTPS 使用 ECH runtime，HTTP 保持普通 client。ECH client 使用 `cloudflare-ech.com` 的共享配置，目标 A/AAAA 通过 Cloudflare DoH over ECH（固定 IP `104.16.248.249` / `104.16.249.249`），非 Cloudflare 站点在 `is_connect()/is_timeout()` 时回退 plain TLS（会暴露目标 SNI）。代理与 ECH 互斥；`set_http_proxy(Some)` 在 ECH 开启时返回 `invalidInput`。配置 TTL 只报告不刷新、DoH 结果无缓存，这两项留给 ECH-6。
+- **ECH 已接入 HTTPS 请求。** `settings.ech` 经 `set_ech_enabled` 同步到 Rust；`HttpClient::send` 对 HTTPS 使用 ECH runtime，HTTP 保持普通 client。ECH client 使用 `cloudflare-ech.com` 的共享配置，目标 A/AAAA 通过 Cloudflare DoH over ECH（固定 IP `104.16.248.249` / `104.16.249.249`），非 Cloudflare 站点在 `is_connect()/is_timeout()` 时回退 plain TLS（会暴露目标 SNI）。代理与 ECH 互斥；`set_http_proxy(Some)` 在 ECH 开启时返回 `invalidInput`。配置 TTL 为 10 分钟，到期后的首个 HTTPS 请求会懒刷新；DoH A/AAAA 按 60 秒缓存，ECH 与 plain client 共享 resolver；刷新失败保留旧 runtime 并在 60 秒后重试。
 - **启动 ECH 是异步的。** `main.ts` 不等待 `set_ech_enabled(true)` 就挂载；初始化完成前的首个请求可能走普通 client（系统 DNS、无代理）。如果要求“ECH 开启即不泄漏”，应改为等待初始化或给请求加门槛。
 - **代理是 Rust 的运行时状态。** 不要把代理持久化到 Rust；启动和设置页保存时通过 `set_http_proxy` 同步，命令失败时保留旧 client。
 - **顶部安全区不要用页面 padding。** 页面滚动时 padding 会跟着滚走；顶部安全区由 `App.vue` 的 sticky `.safe-area-top` 统一留白，滚动内容不会显示到状态栏或刘海区域。
