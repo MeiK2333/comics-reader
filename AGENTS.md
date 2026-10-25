@@ -97,6 +97,7 @@
 │  ├─ router/index.ts            Hash 路由、守卫、详情路由、滚动行为与原生窗口标题
 │  ├─ stores/
 │  │  ├─ index.ts                Pinia + 持久化命名空间
+│  │  ├─ runtime.ts              非持久化启动状态：ECH 初始化等待
 │  │  ├─ search.ts               内存态搜索会话：平台、关键词、分页与请求竞态
 │  │  └─ settings.ts             持久化的主题、语言、代理与 ECH 偏好
 │  ├─ composables/
@@ -149,7 +150,7 @@
 ### 启动顺序
 
 1. `src/main.ts` 创建 Vue 应用，并注册 Pinia、i18n 与 router。
-2. 同步读取 `useSettingsStore(pinia)`（持久化状态会从 `localStorage` 恢复），在挂载前应用已保存的主题、语言与 HTTP 代理（代理通过 `set_http_proxy` 写入 Rust）；若持久化 ECH 为 true，同时启动异步 `set_ech_enabled(true)`，不等待它完成。
+2. 同步读取 `useSettingsStore(pinia)`（持久化状态会从 `localStorage` 恢复），在挂载前应用已保存的主题、语言与 HTTP 代理（代理通过 `set_http_proxy` 写入 Rust）；若持久化 ECH 为 true，同时启动异步 `set_ech_enabled(true)`，并把 `runtime.echStarting` 置为 true；首页在该标志为 true 时显示等待，不渲染搜索栏，初始化完成/失败后再允许搜索。
 3. 应用挂载到 `#app`。
 4. `App.vue` 通过 `NConfigProvider` 提供 Naive UI 的主题与语言，并用 `NMessageProvider` 包裹路由视图。`useTheme()` 与 `useLocale()` 负责保持运行时状态同步，且只在这个外壳中调用一次。
 
@@ -204,7 +205,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 - 给 `SettingsState` 新增字段会自动持久化，老用户通常会回落到 store 的初始值。重命名或删除已持久化字段则需要迁移，否则旧数据会被静默忽略。
 - `useTheme()` 与 `useLocale()` 只在 shell 层调用一次。其他组件直接读 `useSettingsStore()`；重复调用 `useTheme()` 会重复注册 media query 监听器。
 - 首页提供设置快捷入口，设置页可切换主题与语言，并可保存 HTTP 代理；主题/语言立即生效。关闭代理开关会立即通过 `set_http_proxy(null)` 清除代理并写回 store，无需点击保存；开启代理或修改地址仍需点击“保存并应用”，且只有 `set_http_proxy` 成功后才写回 store，避免持久化无法应用的地址。
-- `settings.ech` 通过 `set_ech_enabled` 同步到 Rust。开启时设置页先关闭代理，后端 `enable_ech` 也会清空代理；关闭时 `disable_ech` 丢弃 runtime，普通 client 恢复。启动时若持久化 ECH 为 true，`main.ts` 在挂载前异步初始化，失败会回滚 `settings.ech`。`set_http_proxy(Some)` 在 ECH 开启时返回 `invalidInput`，设置页在 ECH 开启时禁用代理控件。设置页还会通过 `get_ech_status` 显示后端实际状态（启用/关闭与配置域名），用于区分持久化开关和 Rust runtime。
+- `settings.ech` 通过 `set_ech_enabled` 同步到 Rust。开启时设置页先关闭代理，后端 `enable_ech` 也会清空代理；关闭时 `disable_ech` 丢弃 runtime，普通 client 恢复。启动时若持久化 ECH 为 true，`main.ts` 在挂载前异步初始化，失败会回滚 `settings.ech`。`set_http_proxy(Some)` 在 ECH 开启时返回 `invalidInput`，设置页在 ECH 开启时禁用代理控件。设置页还会通过 `get_ech_status` 显示后端实际状态（启用/关闭与配置域名），用于区分持久化开关和 Rust runtime。启动阶段若 ECH 正在初始化，首页显示等待状态并隐藏搜索栏。
 - 设置页的“网络设置”区域把 HTTP 代理与 ECH 放在一起，不再为 ECH 单独分组；区块标题用“网络设置”，代理开关文案用“HTTP 代理”，不要写回旧的“使用代理”或单独 ECH 章节。
 
 ### 远程 HTTP、图片缓存与平台检索
@@ -290,7 +291,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 | 新增图片平台 | `src-tauri/src/image/platform/`（实现 trait、注册、host/header 与测试） |
 | 新增/修改平台搜索或详情 | `src-tauri/src/image/platform/`、`src-tauri/src/image/model.rs`、`src/api/comics.ts` |
 | 新增/修改详情页 | `src/views/ComicDetailView.vue`、`src/components/comic-detail/`、`src/router/index.ts`、`src-tauri/src/image/model.rs` |
-| 修改首页或设置 UI | `src/views/HomeView.vue`、`src/views/SearchView.vue`、`src/views/SettingsView.vue`、`src/views/ShortcutPlaceholderView.vue`、`src/components/HomeShortcuts.vue`、`src/components/ShortcutIcon.vue`、`src/shortcuts.ts`、`src/stores/search.ts`、`src/composables/useRouteTransition.ts`、`src/components/ComicSearchBar.vue`、`src/components/ComicSearchResults.vue`、`src/components/ComicResultCard.vue`、`src/components/result-cards/`、`src/components/PlatformPicker.vue`、`src/components/ComicThumb.vue`、`src/assets/platforms/`、`src/api/comics.ts` |
+| 修改首页或设置 UI | `src/views/HomeView.vue`、`src/views/SearchView.vue`、`src/views/SettingsView.vue`、`src/views/ShortcutPlaceholderView.vue`、`src/components/HomeShortcuts.vue`、`src/components/ShortcutIcon.vue`、`src/shortcuts.ts`、`src/stores/search.ts`、`src/stores/runtime.ts`、`src/composables/useRouteTransition.ts`、`src/components/ComicSearchBar.vue`、`src/components/ComicSearchResults.vue`、`src/components/ComicResultCard.vue`、`src/components/result-cards/`、`src/components/PlatformPicker.vue`、`src/components/ComicThumb.vue`、`src/assets/platforms/`、`src/api/comics.ts` |
 | 修改全局样式或顶部安全区 | `src/styles/base.scss`、`src/App.vue`；组件样式保持在组件内 |
 | 修改 Android 原生配置 | `src-tauri/gen/android/`（已跟踪，但大部分是生成内容，修改前要确认） |
 | 重新生成应用图标 | `src-tauri/icons/`，通过 `pnpm tauri icon <source>` 生成；不要手改 |
@@ -365,7 +366,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 
 - **`pnpm dev` 不是完整应用。** 它只提供 UI，没有 Tauri，因此 `invoke`、`convertFileSrc` 与窗口 API 都会失败。浏览器兜底逻辑已被有意移除。
 - **ECH 已接入 HTTPS 请求。** `settings.ech` 经 `set_ech_enabled` 同步到 Rust；`HttpClient::send` 对 HTTPS 使用 ECH runtime，HTTP 保持普通 client。ECH client 使用 `cloudflare-ech.com` 的共享配置，目标 A/AAAA 通过 Cloudflare DoH over ECH（固定 IP `104.16.248.249` / `104.16.249.249`），非 Cloudflare 站点在 `is_connect()/is_timeout()` 时回退 plain TLS（会暴露目标 SNI）。代理与 ECH 互斥；`set_http_proxy(Some)` 在 ECH 开启时返回 `invalidInput`。配置 TTL 为 10 分钟，到期后的首个 HTTPS 请求会懒刷新；DoH A/AAAA 按 60 秒缓存，ECH 与 plain client 共享 resolver；刷新失败保留旧 runtime 并在 60 秒后重试。
-- **启动 ECH 是异步的。** `main.ts` 不等待 `set_ech_enabled(true)` 就挂载；初始化完成前的首个请求可能走普通 client（系统 DNS、无代理）。后端用 `ech_control_generation` 保证迟到的 bootstrap 不会覆盖用户之后的关闭；如果要求“ECH 开启即不泄漏”，仍需等待初始化或给请求加门槛。
+- **启动 ECH 是异步的，首页会等待。** `main.ts` 不等待 `set_ech_enabled(true)` 就挂载，但 `HomeView` 在 `runtime.echStarting` 为 true 时只显示等待、不渲染搜索栏；初始化完成/失败后恢复。后端用 `ech_control_generation` 保证迟到的 bootstrap 不会覆盖用户之后的关闭。直接打开详情深链接仍可能在初始化完成前请求；要严格“ECH 开启即不泄漏”，还需给请求加门槛。
 - **代理是 Rust 的运行时状态。** 不要把代理持久化到 Rust；启动和设置页保存时通过 `set_http_proxy` 同步，命令失败时保留旧 client。
 - **顶部安全区不要用页面 padding。** 页面滚动时 padding 会跟着滚走；顶部安全区由 `App.vue` 的 sticky `.safe-area-top` 统一留白，滚动内容不会显示到状态栏或刘海区域。
 - **主题与语言只能通过设置页修改。** 偏好保存在 `comics-reader:settings`；不要在组件里绕过 `useSettingsStore`，也不要重复调用 `useTheme()`/`useLocale()`。
