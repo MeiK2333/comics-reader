@@ -64,8 +64,8 @@ cargo build                                                   passed
 ### 1.2 已知限制与后续可选
 
 - ECH-7 已完成：自动化链路、`pnpm tauri dev` 本地冒烟和文档更新均通过（2026-10-26）。
-- 直接打开详情深链接仍可能在 ECH 初始化完成前请求；要严格“ECH 开启即不泄漏”，需要给所有业务请求加启动门槛。
-- 断网模拟 ECH 初始化失败未单独演练；前端 catch 回滚与后端不污染 state 的实现已存在。
+- 所有业务请求（搜索、详情、缩略图）都通过 `waitForEchStartup` 等待启动 bootstrap；直接打开详情深链接也不会提前走普通 client。
+- 失败 bootstrap 由 `failed_bootstrap_leaves_ech_disabled` 覆盖；前端 catch 回滚未单独断网演练。
 
 ---
 
@@ -644,7 +644,7 @@ Commit: <hash>
 - 结论/备选方案：主方案可行，不需要 hyper 自定义 connector。fallback 判断用 `is_connect() || is_timeout()`；不要把 `is_request()` 纳入，否则普通 HTTP 错误也会触发重试。注意 `is_connect()` 也会命中 `kind: Request` 的证书错误（reqwest 会遍历 source），这是 fallback 需要的行为。
 - 复现命令：`cargo test --lib -- --ignored reqwest_client_uses_ech_and_cloudflare_dns --nocapture`（约 10–15s 通过，含 4 次联网请求）。
 
-### 11.1 ECH-1 ~ ECH-6 实现结论（2026-10-25）
+### 11.1 ECH-1 ~ ECH-7 实现结论（2026-10-26）
 
 - ECH-1：`EchSession` 新增 `reqwest_ech_tls()`（h2 + http/1.1）、`reqwest_plain_tls()`、`resolver()`；`CloudflareResolver` 返回端口 `0` 的 `SocketAddr`；`EchSession` 与 resolver 有 `Send + Sync` 测试。
 - ECH-2：`HttpClient` 增加 `normal_client` 与 `EchRuntime`；`send(url, build)` 对 HTTPS 先走 ECH client，`is_connect() || is_timeout()` 时用 plain client 重试一次；HTTP URL 始终走普通 client。
@@ -652,9 +652,9 @@ Commit: <hash>
 - ECH-4：新增 `set_ech_enabled` / `get_ech_status`；默认 bootstrap 先 AliDNS、失败再 360；`enable_ech` 清空代理；`set_http_proxy(Some)` 在 ECH 开启时返回 `invalidInput`；命令已注册到 `lib.rs`。
 - ECH-5：新增 `src/api/ech.ts`；`main.ts` 启动时异步初始化并失败回滚 `settings.ech`；新增非持久化 `src/stores/runtime.ts`，首页在 `runtime.echStarting` 期间显示等待、不渲染搜索栏；设置页 ECH 开关改为异步、失败回滚并显示本地化提示；ECH 开启时禁用代理控件；新增 `settings.ech.errors.update`。
 - ECH-6：ECH 配置 TTL 10 分钟，到期后的首个 HTTPS 请求懒刷新；`tokio::sync::Mutex` 串行化，刷新成功原子替换 runtime，失败保留旧 runtime 并在 60 秒后重试；`CloudflareResolver` 增加 60 秒 A/AAAA 缓存（上限 256 条），ECH/plain client 共享同一个 resolver；`get_ech_status` 仅保留为诊断命令，设置页不展示状态；新增 `ech_control_generation`，启动或命令的 bootstrap 晚于用户关闭时会被丢弃。
-- 验证：`cargo test --lib` 61 passed / 9 ignored；`ech_client_fetches_and_falls_back` 通过（nhentai 200、qq fallback、TTL 强制刷新、代理互斥）；`enables_ech_with_the_default_bootstrap` 通过；`nhentai_search_detail_and_image_work_with_ech` 通过（搜索/详情/缩略图）；`pnpm build` 通过。
+- 验证：`cargo test --lib` 61 passed / 10 ignored；`ech_client_fetches_and_falls_back` 通过（nhentai 200、qq fallback、TTL 强制刷新、代理互斥）；`enables_ech_with_the_default_bootstrap` 通过；`failed_bootstrap_leaves_ech_disabled` 通过；`nhentai_search_detail_and_image_work_with_ech` 通过（搜索/详情/缩略图）；`pnpm build` 通过。
 - ECH-7 预检：`www.manhuagui.com` 在本机为 `notOffered`/TLS1.2/`fallback=true`/HTTP 200；JM 的失败是 IP/地域锁定，ECH 不能绕过。
-- ECH-7：2026-10-26 本地手动冒烟通过（首页等待、ECH 开关、代理互斥、nhentai/manhuagui/JM 行为）；断网失败场景未单独演练。
+- ECH-7：2026-10-26 本地手动冒烟通过（首页等待、ECH 开关、代理互斥、nhentai/manhuagui/JM 行为）；所有业务请求共享启动门槛；失败 bootstrap 有自动化测试，前端失败回滚未单独断网演练。
 
 ---
 
@@ -665,7 +665,7 @@ Commit: <hash>
 - [x] ECH 关闭时，原有普通请求/代理行为不变（本地冒烟通过）。
 - [x] ECH 配置 10 分钟 TTL 懒刷新与 60 秒 DoH A/AAAA 缓存已实现并有测试。
 - [x] 代理与 ECH 不能同时生效。
-- [x] ECH 配置失败有可理解提示，且可回滚（前端 catch 回滚；未单独断网演练）。
+- [x] ECH 配置失败有可理解提示，且可回滚（`failed_bootstrap_leaves_ech_disabled`；前端 catch 回滚未单独断网演练）。
 - [x] `cargo test --lib`、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo build` 通过。
 - [x] 前端改动时 `pnpm build` 通过。
 - [x] `pnpm tauri dev` 冒烟通过（本地冒烟）。
@@ -693,6 +693,7 @@ cargo test --lib -- --ignored queries_cloudflare_ech_over_doh
 cargo test --lib -- --ignored reqwest_client_uses_ech_and_cloudflare_dns
 cargo test --lib -- --ignored ech_client_fetches_and_falls_back
 cargo test --lib -- --ignored enables_ech_with_the_default_bootstrap
+cargo test --lib -- --ignored failed_bootstrap_leaves_ech_disabled
 cargo test --lib -- --ignored nhentai_search_detail_and_image_work_with_ech
 
 # 前端
