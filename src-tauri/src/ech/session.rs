@@ -61,6 +61,32 @@ fn validate_domain(domain: &str) -> Result<&str> {
 mod tests {
     use super::*;
 
+    use std::net::SocketAddr;
+    use std::time::Duration;
+
+    use reqwest::dns::{Addrs, Name, Resolve, Resolving};
+
+    /// Resolve every reqwest connection through the session's Cloudflare DoH
+    /// resolver. This mirrors the resolver the real ECH client will use.
+    struct TestResolver {
+        session: Arc<EchSession>,
+    }
+
+    impl Resolve for TestResolver {
+        fn resolve(&self, name: Name) -> Resolving {
+            let session = self.session.clone();
+            let domain = name.as_str().to_owned();
+
+            Box::pin(async move {
+                let ips = session.resolve(&domain).await.map_err(
+                    |error| -> Box<dyn std::error::Error + Send + Sync> { Box::new(error) },
+                )?;
+                let addresses: Addrs = Box::new(ips.into_iter().map(|ip| SocketAddr::new(ip, 0)));
+                Ok(addresses)
+            })
+        }
+    }
+
     /// Live verification of the whole ECH path. Run manually:
     /// `cargo test --lib -- --ignored performs_ech_handshake`.
     ///
@@ -142,5 +168,127 @@ mod tests {
         assert!(result.fallback);
         assert_eq!(result.ech_status, "notOffered");
         assert_eq!(result.tls_version, "TLSv1.3");
+    }
+
+    /// Phase 0 spike: prove reqwest can carry the rustls ECH config, resolve
+    /// every host through Cloudflare DoH, and fall back to ordinary TLS.
+    ///
+    /// Run manually:
+    /// `cargo test --lib -- --ignored reqwest_client_uses_ech_and_cloudflare_dns --nocapture`.
+    #[tokio::test]
+    #[ignore = "performs live ECH requests through reqwest"]
+    async fn reqwest_client_uses_ech_and_cloudflare_dns() {
+        const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36";
+
+        let session = Arc::new(
+            EchSession::bootstrap("https://dns.alidns.com/dns-query")
+                .await
+                .unwrap(),
+        );
+
+        let ech_tls = tls::build_ech_tls_config_with_alpn(
+            &session.config.ech_config_list,
+            &[b"h2", b"http/1.1"],
+        )
+        .unwrap();
+        let resolver = Arc::new(TestResolver {
+            session: session.clone(),
+        });
+
+        let ech_client = reqwest::Client::builder()
+            .use_preconfigured_tls(ech_tls)
+            .dns_resolver(resolver.clone())
+            .no_proxy()
+            .connect_timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(30))
+            .build()
+            .unwrap();
+
+        let response = ech_client
+            .get("https://nhentai.net/")
+            .header(reqwest::header::USER_AGENT, USER_AGENT)
+            .send()
+            .await
+            .unwrap();
+        println!(
+            "nhentai.net: status={} version={:?}",
+            response.status(),
+            response.version()
+        );
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+
+        // An empty ALPN list is not "let reqwest decide": it leaves the
+        // connection on HTTP/1.1, which is why the reqwest config must name h2.
+        let empty_alpn_tls =
+            tls::build_ech_tls_config_with_alpn(&session.config.ech_config_list, &[]).unwrap();
+        let http1_client = reqwest::Client::builder()
+            .use_preconfigured_tls(empty_alpn_tls)
+            .dns_resolver(resolver.clone())
+            .no_proxy()
+            .connect_timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(30))
+            .build()
+            .unwrap();
+        let response = http1_client
+            .get("https://nhentai.net/")
+            .header(reqwest::header::USER_AGENT, USER_AGENT)
+            .send()
+            .await
+            .unwrap();
+        println!(
+            "nhentai.net without ALPN: status={} version={:?}",
+            response.status(),
+            response.version()
+        );
+        // The status is not asserted: nhentai's bot protection answers this
+        // HTTP/1.1 request with 403, but the negotiated version proves the
+        // empty list never reaches h2.
+        assert_eq!(response.version(), reqwest::Version::HTTP_11);
+
+        let error = ech_client
+            .get("https://www.qq.com/")
+            .header(reqwest::header::USER_AGENT, USER_AGENT)
+            .send()
+            .await
+            .expect_err("a non-Cloudflare host must reject the shared ECH config");
+        println!(
+            "www.qq.com ECH failure: is_connect={} is_timeout={} is_request={} error={error}",
+            error.is_connect(),
+            error.is_timeout(),
+            error.is_request()
+        );
+        let mut source = std::error::Error::source(&error);
+        while let Some(cause) = source {
+            println!("  caused by: {cause}");
+            source = cause.source();
+        }
+        // reqwest reports this as `kind: Request` but `is_connect()` still
+        // walks the source chain to the hyper connect error. Keep the fallback
+        // predicate narrow: `is_request()` alone would retry ordinary HTTP
+        // failures too.
+        assert!(
+            error.is_connect() || error.is_timeout(),
+            "ECH rejection must be fallback-safe: {error:?}"
+        );
+
+        let plain_client = reqwest::Client::builder()
+            .dns_resolver(resolver)
+            .no_proxy()
+            .connect_timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(30))
+            .build()
+            .unwrap();
+        let response = plain_client
+            .get("https://www.qq.com/")
+            .header(reqwest::header::USER_AGENT, USER_AGENT)
+            .send()
+            .await
+            .unwrap();
+        println!(
+            "www.qq.com plain TLS: status={} version={:?}",
+            response.status(),
+            response.version()
+        );
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
     }
 }

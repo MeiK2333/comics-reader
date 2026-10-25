@@ -114,6 +114,18 @@ pub(crate) async fn handshake(
 }
 
 pub(crate) fn build_ech_tls_config(base64_ech_config: &str) -> Result<rustls::ClientConfig> {
+    build_ech_tls_config_with_alpn(base64_ech_config, &[b"http/1.1"])
+}
+
+/// Build the ECH TLS config with an explicit ALPN list.
+///
+/// reqwest's `use_preconfigured_tls` keeps the supplied rustls config as-is
+/// and never fills in `alpn_protocols`, so the reqwest client has to request
+/// `h2` here; an empty list would silently pin the connection to HTTP/1.1.
+pub(crate) fn build_ech_tls_config_with_alpn(
+    base64_ech_config: &str,
+    alpn: &[&[u8]],
+) -> Result<rustls::ClientConfig> {
     let ech_bytes = decode_ech_config_list(base64_ech_config)?;
     let ech = EchConfig::new(
         EchConfigListBytes::from(ech_bytes),
@@ -129,7 +141,7 @@ pub(crate) fn build_ech_tls_config(base64_ech_config: &str) -> Result<rustls::Cl
     .with_root_certificates(root_store())
     .with_no_client_auth();
 
-    config.alpn_protocols = vec![b"http/1.1".to_vec()];
+    config.alpn_protocols = alpn.iter().map(|protocol| protocol.to_vec()).collect();
     Ok(config)
 }
 
@@ -299,6 +311,16 @@ mod tests {
     #[test]
     fn builds_a_plain_tls_fallback_config() {
         build_plain_tls_config().unwrap();
+    }
+
+    #[test]
+    fn builds_a_reqwest_ech_config_with_h2_alpn() {
+        let config = build_ech_tls_config_with_alpn(ECH_FIXTURE, &[b"h2", b"http/1.1"]).unwrap();
+
+        assert_eq!(
+            config.alpn_protocols,
+            vec![b"h2".to_vec(), b"http/1.1".to_vec()]
+        );
     }
 
     #[test]
