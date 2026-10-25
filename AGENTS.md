@@ -230,7 +230,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 - Nhentai 详情封面使用 `t.nhentai.net` 缩略图：`i.nhentai.net` 的封面 CDN 在部分代理网络下不可达，而详情页封面宽度只有 240px，缩略图足够。
 - 搜索返回 `{ total, page_size, result: [{ id, title, thumb, platform, extra }] }`，详情返回 `{ platform, title, thumb, extra }`；`platform` 是判别字段，`extra` 是各平台强类型扩展字段对象（camelCase），不要把公共字段塞进去。搜索与详情的 `extra` 在 Rust 侧分别是 `SearchExtra` / `DetailExtra` 枚举，前端在 `src/api/comics.ts` 是判别联合；卡片和详情页都不要退回 `Record<string, unknown>` 或 JSON 兜底。
 - 当前 `page_size`：manhuagui 10、jm 80、nhentai 取 API 的 `per_page`（通常 25）。前端类型与调用封装在 `src/api/comics.ts`，首页已接入。
-- JM 搜索可用，但 album 详情在部分网络环境会被 Cloudflare 返回 403；这不是解析错误，后续可能需要 Cookie/TLS 指纹或可用的代理出口。
+- JM 搜索可用，但 album 详情会被 Cloudflare 按 IP/地域拦截（常见 403）；这不是解析或 ECH 失败，Cookie/TLS 指纹通常无效，需要可用的代理出口或换网络。
 
 ## 编码约定
 
@@ -350,7 +350,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 - 平台检索：分别用 manhuagui/nhentai 搜索关键词并取一条详情，确认 total/page_size/result 与 thumb/extras；JM 若被 Cloudflare 403，应返回本地化 httpStatus 错误而不是崩溃。
 - 设置页：切换主题立即生效并在重启后恢复；切换语言后文案、Naive UI 与窗口标题同步更新。
 - 设置页代理：启用并填写可达代理后搜索与缩略图正常；非法地址有本地化提示且不持久化；关闭开关后立即恢复默认网络行为（无需保存）；开启或修改地址后仍需保存并应用；重启后配置恢复。
-- ECH：代理开启时打开 ECH，确认代理立即关闭且持久化；启用后搜索 nhentai 成功、缩略图正常；搜索 manhuagui/JM 走 fallback；关闭 ECH 后代理控件恢复可用；持久化为 `ech: true` + 代理开启后重启，确认启动阶段代理被自动关闭且 ECH 初始化成功；禁用后再启用，确认 runtime 重建且没有残留代理。
+- ECH：代理开启时打开 ECH，确认代理立即关闭且持久化；启用后搜索 nhentai 成功、缩略图正常；manhuagui 走 plain fallback（本机实测 `www.manhuagui.com` 为 `notOffered`/TLS1.2、HTTP 200，不能当作 ECH accepted）；JM 的 403/IP 锁定返回本地化 httpStatus；关闭 ECH 后代理控件恢复可用；持久化为 `ech: true` + 代理开启后重启，确认启动阶段代理被自动关闭且 ECH 初始化成功；禁用后再启用，确认 runtime 重建且没有残留代理。
 - ECH 握手探针：调用 `probe_ech_handshake`，传 `domain: "crypto.cloudflare.com"` 与 `dohEndpoint: "https://dns.alidns.com/dns-query"`，确认返回的 `configDomain` 为 `cloudflare-ech.com`、`echStatus` 为 `accepted`、TLS 版本为 `TLSv1.3`、`fallback` 为 `false`；同一份配置对 `www.cloudflare.com`、`example.com` 等 Cloudflare 站点也应生效；对 `www.qq.com` 等非 Cloudflare 站点应返回 `fallback: true`、`echStatus: "notOffered"`。
 - 移动端安全区：在真机或 DevTools 中临时给 `.safe-area-top` 设置高度（如 32px），确认所有页面从安全区下方开始；滚动后安全区条仍固定在顶部并遮住其下内容；切换深色主题时背景色一致。
 - 详情页：从结果卡片进入三个平台详情，确认标题/封面/信息/标签；直接刷新 `#/comic/...` 可加载；返回按钮回到原搜索结果；非法 id 显示本地化未找到；窄窗口切换单列。
@@ -365,7 +365,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 ## 陷阱与刻意保留的现状
 
 - **`pnpm dev` 不是完整应用。** 它只提供 UI，没有 Tauri，因此 `invoke`、`convertFileSrc` 与窗口 API 都会失败。浏览器兜底逻辑已被有意移除。
-- **ECH 已接入 HTTPS 请求。** `settings.ech` 经 `set_ech_enabled` 同步到 Rust；`HttpClient::send` 对 HTTPS 使用 ECH runtime，HTTP 保持普通 client。ECH client 使用 `cloudflare-ech.com` 的共享配置，目标 A/AAAA 通过 Cloudflare DoH over ECH（固定 IP `104.16.248.249` / `104.16.249.249`），非 Cloudflare 站点在 `is_connect()/is_timeout()` 时回退 plain TLS（会暴露目标 SNI）。代理与 ECH 互斥；`set_http_proxy(Some)` 在 ECH 开启时返回 `invalidInput`。配置 TTL 为 10 分钟，到期后的首个 HTTPS 请求会懒刷新；DoH A/AAAA 按 60 秒缓存，ECH 与 plain client 共享 resolver；刷新失败保留旧 runtime 并在 60 秒后重试。
+- **ECH 已接入 HTTPS 请求。** `settings.ech` 经 `set_ech_enabled` 同步到 Rust；`HttpClient::send` 对 HTTPS 使用 ECH runtime，HTTP 保持普通 client。ECH client 使用 `cloudflare-ech.com` 的共享配置，目标 A/AAAA 通过 Cloudflare DoH over ECH（固定 IP `104.16.248.249` / `104.16.249.249`），非 Cloudflare 站点在 `is_connect()/is_timeout()` 时回退 plain TLS（会暴露目标 SNI）；`www.manhuagui.com` 本机实测也是 `notOffered`/TLS1.2 回退，“能访问”不等于 ECH accepted。JM 的失败是 IP/地域锁定，ECH 不能绕过。代理与 ECH 互斥；`set_http_proxy(Some)` 在 ECH 开启时返回 `invalidInput`。配置 TTL 为 10 分钟，到期后的首个 HTTPS 请求会懒刷新；DoH A/AAAA 按 60 秒缓存，ECH 与 plain client 共享 resolver；刷新失败保留旧 runtime 并在 60 秒后重试。
 - **启动 ECH 是异步的，首页会等待。** `main.ts` 不等待 `set_ech_enabled(true)` 就挂载，但 `HomeView` 在 `runtime.echStarting` 为 true 时只显示等待、不渲染搜索栏；初始化完成/失败后恢复。后端用 `ech_control_generation` 保证迟到的 bootstrap 不会覆盖用户之后的关闭。直接打开详情深链接仍可能在初始化完成前请求；要严格“ECH 开启即不泄漏”，还需给请求加门槛。
 - **代理是 Rust 的运行时状态。** 不要把代理持久化到 Rust；启动和设置页保存时通过 `set_http_proxy` 同步，命令失败时保留旧 client。
 - **顶部安全区不要用页面 padding。** 页面滚动时 padding 会跟着滚走；顶部安全区由 `App.vue` 的 sticky `.safe-area-top` 统一留白，滚动内容不会显示到状态栏或刘海区域。
@@ -386,7 +386,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 - **`bundle.active` 为 `false`。** `pnpm tauri build` 产出可执行文件，但不会生成安装包。需要打包时请显式开启。
 - **CSP 已关闭（`csp: null`）。** webview 没有内容安全策略保护。不要在未处理该问题的前提下引入远程 HTML 或 `v-html` 渲染。
 - **缓存键包含平台与 URL 的哈希。** 同一 URL 在不同平台下会分别缓存；manhuagui/JM 的图片缓存键会忽略 query，避免签名参数造成重复文件。修改 URL 归一化或缓存目录时提升 `CACHE_VERSION`，修改某平台请提升它的 `cache_version`。当前没有自动清理策略。
-- **JM 域名经常轮换，详情页可能被 Cloudflare 拦截。** host 自动识别只是兜底；调用方应显式传 `platform: "jm"`，域名变化时只改 `src-tauri/src/image/platform/jm.rs` 中的常量。搜索可用但详情 403 时需要 Cookie/TLS 指纹或可用的代理出口，不要把它当成 parser 失败。
+- **JM 域名经常轮换，详情页可能被 Cloudflare 拦截。** host 自动识别只是兜底；调用方应显式传 `platform: "jm"`，域名变化时只改 `src-tauri/src/image/platform/jm.rs` 中的常量。搜索可用但详情 403 是 IP/地域限制，Cookie/TLS 指纹通常无效，需要可用的代理出口或换网络；不要把它当成 parser 失败。
 - **平台解析依赖上游结构。** manhuagui/JM 是 HTML 抓取，nhentai 是 v2 JSON；上游改版会破坏 parser。修改 selector 时同步补 fixture 测试，并保持 `extra` 字段名稳定。
 - **`scripts/` 仅限本地。** 它被 gitignore，需要 Python 3.15+，不属于应用构建。不要把应用代码放进去。
 - **README 已过时。** 它只是上游模板；如有文档需求，请更新 README 或本文件。

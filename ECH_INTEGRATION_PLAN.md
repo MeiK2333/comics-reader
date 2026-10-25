@@ -492,7 +492,7 @@ export async function getEchStatus(): Promise<EchStatus>;
 3. 运行 `pnpm build`（若前端改动）。
 4. `pnpm tauri dev` 冒烟：
    - 开启 ECH，搜索 nhentai，打开详情，加载图片。
-   - 搜索 manhuagui/JM，确认 fallback。
+   - 搜索 manhuagui，确认 plain fallback 后仍可用；JM 的 403/IP 锁定确认是本地化 httpStatus，不是 parser/ECH 崩溃。
    - 关闭 ECH，确认普通路径。
 5. 更新 `AGENTS.md` 的 ECH 段落、测试数量、命令说明。
 6. 更新本计划状态。
@@ -528,7 +528,7 @@ export async function getEchStatus(): Promise<EchStatus>;
 
 1. 设置页开启 ECH，确认代理关闭。
 2. 搜索 nhentai，打开详情，确认封面/缩略图。
-3. 搜索 manhuagui/JM，确认回退可用。
+3. 搜索 manhuagui，确认回退可用；JM 的 403/IP 锁定返回本地化 httpStatus。
 4. 关闭 ECH，确认恢复普通网络/代理设置。
 5. 重启，确认持久化 ECH 初始化。
 
@@ -652,6 +652,7 @@ Commit: <hash>
 - ECH-5：新增 `src/api/ech.ts`；`main.ts` 启动时异步初始化并失败回滚 `settings.ech`；新增非持久化 `src/stores/runtime.ts`，首页在 `runtime.echStarting` 期间显示等待、不渲染搜索栏；设置页 ECH 开关改为异步、失败回滚并显示本地化提示；ECH 开启时禁用代理控件；新增 `settings.ech.errors.update`。
 - ECH-6：ECH 配置 TTL 10 分钟，到期后的首个 HTTPS 请求懒刷新；`tokio::sync::Mutex` 串行化，刷新成功原子替换 runtime，失败保留旧 runtime 并在 60 秒后重试；`CloudflareResolver` 增加 60 秒 A/AAAA 缓存（上限 256 条），ECH/plain client 共享同一个 resolver；`get_ech_status` 仅保留为诊断命令，设置页不展示状态；新增 `ech_control_generation`，启动或命令的 bootstrap 晚于用户关闭时会被丢弃。
 - 验证：`cargo test --lib` 61 passed / 9 ignored；`ech_client_fetches_and_falls_back` 通过（nhentai 200、qq fallback、TTL 强制刷新、代理互斥）；`enables_ech_with_the_default_bootstrap` 通过；`nhentai_search_detail_and_image_work_with_ech` 通过（搜索/详情/缩略图）；`pnpm build` 通过。
+- ECH-7 预检：`www.manhuagui.com` 在本机为 `notOffered`/TLS1.2/`fallback=true`/HTTP 200；JM 的失败是 IP/地域锁定，ECH 不能绕过。
 - 未完成：ECH-7（真实 Tauri 窗口 UI 冒烟、设置页开关与启动恢复的手动验证）。
 
 ---
@@ -659,7 +660,7 @@ Commit: <hash>
 ## 12. Definition of Done
 
 - [x] ECH 开启时，nhentai 的搜索、详情、图片全部成功（`nhentai_search_detail_and_image_work_with_ech`）；ECH 探针仍为 accepted（`probe_ech_handshake`）。
-- [x] 非 Cloudflare 平台请求能 fallback 普通 TLS，不出现不可恢复错误。
+- [x] 非 Cloudflare 目标（`www.qq.com`、`www.manhuagui.com`）能 fallback 普通 TLS；JM 的 403/IP 锁定不视为 fallback 失败。
 - [ ] ECH 关闭时，原有普通请求/代理行为不变（待真实窗口冒烟）。
 - [x] ECH 配置 10 分钟 TTL 懒刷新与 60 秒 DoH A/AAAA 缓存已实现并有测试。
 - [x] 代理与 ECH 不能同时生效。
