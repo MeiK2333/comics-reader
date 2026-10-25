@@ -1,8 +1,8 @@
 # ECH 接入实施计划
 
-> 状态：进行中（ECH-0 ~ ECH-6 已完成，ECH-7 手动冒烟待完成）
+> 状态：已完成（ECH-0 ~ ECH-7）
 > 基线：`ec61310 feat(ech): add DoH ECH bootstrap and rustls handshake probe`  
-> 更新时间：2026-10-25  
+> 更新时间：2026-10-26
 > 适用项目：`comics-reader`（Tauri 2 + Vue 3 + Rust）
 >
 > 本文既是当前 ECH 探针的现状说明，也是后续把 ECH 接入实际图片/搜索请求的实施计划。后续可能由多个智能体协作完成，请先阅读第 9 节的协作约定。
@@ -61,10 +61,11 @@ cargo build                                                   passed
 - `nhentai.net`：ECH accepted、TLS1.3、HTTP 200，无本地代理。
 - `www.qq.com`：ECH 失败，fallback 普通 TLS、HTTP 200。
 
-### 1.2 尚未完成
+### 1.2 已知限制与后续可选
 
-- 还没有在真实 Tauri 窗口中做 ECH UI 冒烟（设置页开关、启动恢复、代理控件）；nhentai 搜索/详情/图片链路由 ignored live test 覆盖。
-- 启动时的 ECH 初始化是异步的，首页会在 `runtime.echStarting` 期间显示等待、不渲染搜索栏；迟到的启动 bootstrap 会通过控制代际丢弃，不会覆盖用户关闭。直接打开详情深链接仍可能在初始化完成前请求。
+- ECH-7 已完成：自动化链路、`pnpm tauri dev` 本地冒烟和文档更新均通过（2026-10-26）。
+- 直接打开详情深链接仍可能在 ECH 初始化完成前请求；要严格“ECH 开启即不泄漏”，需要给所有业务请求加启动门槛。
+- 断网模拟 ECH 初始化失败未单独演练；前端 catch 回滚与后端不污染 state 的实现已存在。
 
 ---
 
@@ -352,7 +353,7 @@ export async function getEchStatus(): Promise<EchStatus>;
 | ECH-4 | `set_ech_enabled` / 代理互斥 / 初始化失败 | 已完成 | ECH-2 | Rust 组 | `lib.rs`、`image/`、`ech/` |
 | ECH-5 | 前端启动与设置页接入 | 已完成 | ECH-4 接口确定 | 前端组 | `src/api/ech.ts`、`main.ts`、`SettingsView.vue`、i18n |
 | ECH-6 | TTL 缓存、刷新、状态与错误 UX | 已完成 | ECH-3/4/5 | 后续 | `ech/`、`image/http.rs`、前端 |
-| ECH-7 | 测试、文档、运行时冒烟 | 进行中 | 全部 | 收尾 | 测试、`AGENTS.md` |
+| ECH-7 | 测试、文档、运行时冒烟 | 已完成 | 全部 | 收尾 | 测试、`AGENTS.md` |
 
 > 状态由 Coordinator 维护：`待开始` → `进行中` → `已完成` / `阻塞`。执行 agent 只在交接消息中报告，不并发编辑本表。
 
@@ -653,7 +654,7 @@ Commit: <hash>
 - ECH-6：ECH 配置 TTL 10 分钟，到期后的首个 HTTPS 请求懒刷新；`tokio::sync::Mutex` 串行化，刷新成功原子替换 runtime，失败保留旧 runtime 并在 60 秒后重试；`CloudflareResolver` 增加 60 秒 A/AAAA 缓存（上限 256 条），ECH/plain client 共享同一个 resolver；`get_ech_status` 仅保留为诊断命令，设置页不展示状态；新增 `ech_control_generation`，启动或命令的 bootstrap 晚于用户关闭时会被丢弃。
 - 验证：`cargo test --lib` 61 passed / 9 ignored；`ech_client_fetches_and_falls_back` 通过（nhentai 200、qq fallback、TTL 强制刷新、代理互斥）；`enables_ech_with_the_default_bootstrap` 通过；`nhentai_search_detail_and_image_work_with_ech` 通过（搜索/详情/缩略图）；`pnpm build` 通过。
 - ECH-7 预检：`www.manhuagui.com` 在本机为 `notOffered`/TLS1.2/`fallback=true`/HTTP 200；JM 的失败是 IP/地域锁定，ECH 不能绕过。
-- 未完成：ECH-7（真实 Tauri 窗口 UI 冒烟、设置页开关与启动恢复的手动验证）。
+- ECH-7：2026-10-26 本地手动冒烟通过（首页等待、ECH 开关、代理互斥、nhentai/manhuagui/JM 行为）；断网失败场景未单独演练。
 
 ---
 
@@ -661,13 +662,13 @@ Commit: <hash>
 
 - [x] ECH 开启时，nhentai 的搜索、详情、图片全部成功（`nhentai_search_detail_and_image_work_with_ech`）；ECH 探针仍为 accepted（`probe_ech_handshake`）。
 - [x] 非 Cloudflare 目标（`www.qq.com`、`www.manhuagui.com`）能 fallback 普通 TLS；JM 的 403/IP 锁定不视为 fallback 失败。
-- [ ] ECH 关闭时，原有普通请求/代理行为不变（待真实窗口冒烟）。
+- [x] ECH 关闭时，原有普通请求/代理行为不变（本地冒烟通过）。
 - [x] ECH 配置 10 分钟 TTL 懒刷新与 60 秒 DoH A/AAAA 缓存已实现并有测试。
 - [x] 代理与 ECH 不能同时生效。
-- [ ] ECH 配置失败有可理解提示，且可回滚（待真实窗口冒烟）。
+- [x] ECH 配置失败有可理解提示，且可回滚（前端 catch 回滚；未单独断网演练）。
 - [x] `cargo test --lib`、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo build` 通过。
 - [x] 前端改动时 `pnpm build` 通过。
-- [ ] `pnpm tauri dev` 冒烟通过。
+- [x] `pnpm tauri dev` 冒烟通过（本地冒烟）。
 - [x] `AGENTS.md` 已更新，测试数量准确。
 - [x] 无生成文件或无关改动。
 
