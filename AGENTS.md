@@ -17,6 +17,8 @@
 
 不要假设项目里已经有漫画库、通用章节列表、下载器、数据库或完整阅读器引擎；除 nhentai 单章阅读外，manhuagui/JM 的章节页源仍属于待实现功能。
 
+本项目同时面向桌面端和移动端，编码、引入依赖和 UI 设计必须始终考虑移动端；桌面端可用的 API、插件与样式不代表 Android/iOS 可用。
+
 后续规划（JM 加载优化、收藏/下载、manhuagui/JM 阅读、更多平台）汇总在本文件的“后续规划（尚未实现）”一节；这些能力尚未实现，不要按已存在处理。
 
 `README.md` 仍是上游 Tauri/Vue 模板，不能可靠描述本项目。请以本文件、`package.json`、`src-tauri/Cargo.toml` 和 `src-tauri/tauri.conf.json` 为准。
@@ -28,7 +30,7 @@ ECH 接入已完成；当前实现与约束见本文件的“远程 HTTP、图�
 - **前端：** Vue 3.5（`<script setup>`）、Vue Router 4（hash 路由）、Pinia 4 + `pinia-plugin-persistedstate`、vue-i18n 11、Naive UI 2（自动导入）、Sass、TypeScript 6。
 - **后端：** Rust edition 2024、Tauri 2（启用 `protocol-asset`）、`reqwest`（rustls）负责抓取、`rustls`/`tokio-rustls`（ring + aws-lc-rs）用于 ECH 握手、`hickory-resolver`（DoH）查询 ECH 配置、`scraper`/`regex`/`html-escape` 解析 HTML、`serde_json` 解析 JSON、`sha2` 生成缓存键、`thiserror` 2、Tauri 插件 `opener` 与 `dialog`（日志导出的原生保存对话框）。
 - **工具链：** pnpm（单包项目，不是 monorepo）、Vite 8、`vue-tsc`。
-- **平台：** Windows/macOS/Linux 桌面端。Android 工程已在 `src-tauri/gen/android` 初始化；iOS 尚未初始化。
+- **平台：** 同时开发桌面端（Windows/macOS/Linux）与移动端（Android 工程已初始化，iOS 尚未初始化）。
 
 ## 环境与命令
 
