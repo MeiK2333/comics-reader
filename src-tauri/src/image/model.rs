@@ -201,6 +201,8 @@ pub(crate) struct NhentaiDetailExtra {
 pub(crate) struct ReaderChapter {
     /// Display title of the work, used for the native window title.
     pub title: String,
+    /// Cover thumbnail, reused by the reading-history list.
+    pub thumb: String,
     pub chapter_id: Option<String>,
     pub chapter_title: Option<String>,
     pub pages: Vec<ReaderPage>,
@@ -290,6 +292,7 @@ mod tests {
     fn reader_chapter_uses_camel_case_on_the_wire() {
         let chapter = ReaderChapter {
             title: "Example".into(),
+            thumb: "https://cdn.example/cover.jpg".into(),
             chapter_id: Some("12".into()),
             chapter_title: Some("Chapter 12".into()),
             pages: vec![ReaderPage {
@@ -306,6 +309,7 @@ mod tests {
 
         let value = serde_json::to_value(chapter).unwrap();
         assert_eq!(value["title"], "Example");
+        assert_eq!(value["thumb"], "https://cdn.example/cover.jpg");
         assert_eq!(value["chapterId"], "12");
         assert_eq!(value["chapterTitle"], "Chapter 12");
         assert_eq!(value["pages"][0]["width"], 800);

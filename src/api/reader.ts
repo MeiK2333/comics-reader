@@ -17,6 +17,8 @@ export interface ReaderChapterRef {
 export interface ReaderChapter {
   /** Display title of the work, used for the native window title. */
   title: string;
+  /** Cover thumbnail, reused by the reading-history list. */
+  thumb: string;
   chapterId: string | null;
   chapterTitle: string | null;
   pages: ReaderPage[];

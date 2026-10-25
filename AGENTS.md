@@ -12,7 +12,7 @@
 - 结果卡片进入 `/comic/:platform/:id` 详情页，manhuagui/JM/nhentai 各自渲染封面、元数据和标签；详情页可直接刷新或通过深链接打开；
 - `search_comics` / `get_comic` 为 manhuagui、jm、nhentai 提供统一的关键词搜索与精确 id 详情，搜索与详情分别返回带 `platform` 判别的强类型扩展字段；
 - nhentai 详情页提供“开始阅读”，进入 `/comic/nhentai/:id/read`；阅读器为单页模式，当前页与上/下页无间隙拼接，翻页时整条轨道滑动。设置页可选择从左到右、从右到左或从上到下三种方向，轨道与滑动/方向键映射随之切换。支持滚轮、方向键、Ctrl+滚轮局部缩放与全屏；页图片仍走 Rust 缓存和资产协议；
-- 首页搜索框下方有收藏、下载、历史、设置快捷入口；前三个目前指向占位页，设置页已提供主题、语言、阅读方向、HTTP 代理、ECH 开关，以及日志开关与日志查看入口。
+- 首页搜索框下方有收藏、下载、历史、设置快捷入口；收藏与下载目前指向占位页，历史进入阅读历史页，设置页已提供主题、语言、阅读方向、HTTP 代理、ECH 开关，以及日志开关与日志查看入口。
 - 主题、语言、阅读方向、HTTP 代理、ECH 与日志偏好从 webview 本地恢复，并可在设置页修改；代理配置、ECH 开关与日志开关会同步到 Rust。日志开启后写入应用日志目录，可在 `/settings/logs` 页面查看、导出或清空。
 
 不要假设项目里已经有漫画库、通用章节列表、下载器、数据库或完整阅读器引擎；除 nhentai 单章阅读外，manhuagui/JM 的章节页源仍属于待实现功能。
@@ -97,7 +97,8 @@ ECH 接入已完成；当前实现与约束见本文件的“远程 HTTP、图�
 │  │  ├─ SearchView.vue          结果页：首页图标、搜索栏与结果区
 │  │  ├─ ComicDetailView.vue     详情页：加载/错误/重试与平台内容分发
 │  │  ├─ ComicReaderView.vue     阅读路由：加载页源、页码 query、返回详情与错误态
-│  │  ├─ ShortcutPlaceholderView.vue  收藏/下载/历史的占位页
+│  │  ├─ HistoryView.vue         阅读历史：分页列表、续读、删除与清空
+│  │  ├─ ShortcutPlaceholderView.vue  收藏/下载的占位页
 │  │  ├─ SettingsView.vue        设置页：主题、语言、阅读方向、代理、ECH 与日志
 │  │  ├─ LogsView.vue            日志页：状态、条目、图标操作与返回
 │  │  └─ NotFoundView.vue        404 页面
@@ -113,13 +114,15 @@ ECH 接入已完成；当前实现与约束见本文件的“远程 HTTP、图�
 │  │  ├─ useLocale.ts            语言、Naive UI locale 对象、窗口标题同步
 │  │  ├─ useErrorMessage.ts      错误码 → 本地化消息
 │  │  ├─ useCachedImage.ts       图片 fetch_image + 资产协议 URL 的共用加载
-│  │  └─ useReaderZoom.ts        阅读器缩放、光标焦点与平移边界
+│  │  ├─ useReaderZoom.ts        阅读器缩放、光标焦点与平移边界
+│  │  └─ useReadingHistory.ts    阅读进度防抖写入、串行提交与离页 flush
 │  ├─ i18n/
 │  │  ├─ index.ts                类型化 i18n 实例、语言检测、translate()
 │  │  └─ messages/               en.json（主 schema）与 zh-CN.json
 │  ├─ shortcuts.ts               首页快捷入口的 feature/path/label 映射
 │  ├─ api/comics.ts              平台检索/详情的前端类型与 invoke 封装
 │  ├─ api/reader.ts              阅读章节/页源的前端类型与 invoke 封装
+│  ├─ api/history.ts             阅读历史的分页、记录、删除与清空封装
 │  ├─ api/proxy.ts               代理配置的前端校验与 set_http_proxy 封装
 │  ├─ api/ech.ts                 ECH 开关、启动门槛与状态命令的 invoke 封装
 │  ├─ api/logs.ts                日志开关、读取、导出与清空命令的 invoke 封装
@@ -130,6 +133,7 @@ ECH 接入已完成；当前实现与约束见本文件的“远程 HTTP、图�
 │  ├─ src/lib.rs                 Tauri Builder、日志初始化、命令注册、插件初始化
 │  ├─ src/error.rs               AppError 序列化、错误码、测试
 │  ├─ src/logging.rs             可选 JSONL 文件日志、开关/读取/导出/清空命令与测试
+│  ├─ src/history.rs             阅读历史 JSONL 事件日志、内存索引、分页命令与测试
 │  ├─ src/ech/                   ECH bootstrap / DoH / TLS 模块
 │  │  ├─ mod.rs                  命令、EchStatus 与模块导出
 │  │  ├─ bootstrap.rs            AliDNS/360 仅查询 cloudflare-ech.com 的 ECH
@@ -222,6 +226,15 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 - `settings.logging` 通过 `set_logging_enabled` 同步到 Rust，默认关闭；启动时仅在持久化为 true 时调用。设置页开关失败会回滚 store 并给出本地化提示；日志页仍可读取关闭前留下的文件。日志页是 `/settings/logs`，只读最近 500 条，按时间倒序显示（最新在上）；工具栏用图标按钮刷新、导出和清空，清空不二次确认。导出通过原生保存对话框选择目标，写入轮转文件与当前文件。
 - 日志文件固定为 `app_log_dir()/app.log`，每行一个 JSON 对象（`timestamp` 毫秒、`level`、`target`、`message`），超过 1 MiB 轮转为 `app.log.1`，只保留一份旧文件。清空会同时删除当前与轮转文件。日志开关是运行时状态，Rust 不持久化它。
 
+### 阅读历史
+
+- 阅读历史按“作品”记录（`platform + id`），只保留最后阅读的章节与页码；进入阅读器并成功加载页源时写入，翻页时防抖更新，离开或切换章节前 flush。只浏览详情页不会产生记录。
+- 历史由 Rust 拥有，存放于 `app_data_dir()/history.jsonl`，每行是一个 `record` 或 `remove` 事件；首次命令加载时重放为内存索引，写入只追加一行，避免在 10,000 条上限下每次翻页重写整个文件。日志超过 `MAX_ENTRIES * 2` 或加载时裁剪过条目会压缩成每个作品一行。
+- `MAX_ENTRIES` 为 10,000；超出时丢弃最旧的记录。读取时会过滤未知平台、空字段和非法页码，并按 `updatedAt` 倒序。
+- 命令为 `list_history(offset?, limit?)`、`record_history(entry)`、`remove_history(platform, id)` 与 `clear_history()`。`updatedAt` 由 Rust 写入；每页默认 50、最大 200，历史页只取当前页，不把全部条目传到 webview。
+- `ReaderChapter` 新增 `thumb` 字段供历史列表复用；历史封面仍走 `ComicThumb` → `fetch_image` 缓存。记录失败会被前端静默忽略（Rust 记日志），不能影响阅读。
+- 历史文件是应用数据，不是设置：不要放进 `settings` store 或 localStorage。当前未启用单实例插件，多个应用实例同时写入同一文件不受支持。
+
 ### 远程 HTTP、图片缓存与平台检索
 
 - 图片抓取全部在 Rust 中完成：`ComicThumb.vue` 对可见缩略图调用 `fetch_image` 命令（`src-tauri/src/image/`），由 `reqwest` 请求并缓存，webview 通过资产协议读取文件；首页本身不再直接请求图片站点。
@@ -241,7 +254,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 - ECH 开启时按 HTTPS origin（`host:port`）缓存“ECH 失败但 plain TLS 成功”的结果 10 分钟。命中缓存的请求直接使用 plain client，不再重复失败的 ECH 握手，同时继续复用 plain 连接池。缓存是内存态：ECH 关闭/重新启用会清空，ECH 配置刷新不清空；缓存内 plain 请求失败会移除该 origin 的缓存。
 - `nhentai.net` 在 AliDNS/360 上的地址答案会被污染或不一致（虚假 IPv6、0.0.0.0 或错误 IPv4），但 `probe_ech_handshake` 已通过 Cloudflare DoH 解析目标，因此可直接直连：测试 `queries_nhentai_via_cloudflare_doh_over_ech` 结果为 `echStatus=accepted`、TLS1.3、HTTP 200、`fallback=false`，全程未使用本地代理。
 - 检索与详情命令为 `search_comics(platform, query, page)` 与 `get_comic(platform, id)`。平台通过 `search_request`/`parse_search`/`detail_request`/`parse_detail` 构建 URL 并解析响应，共享的 `fetch_document` 负责请求、状态码与大小限制。
-- 阅读页源命令为 `get_reader_chapter(platform, id, chapterId?)`。`Platform` 的 `reader_chapter_request`/`parse_reader_chapter` 默认返回 unsupported；当前只有 nhentai 实现：复用 `/api/v2/galleries/{id}`，从 `pages[].path` 拼出 `https://i.nhentai.net/...`，返回 `{ title, chapterId, chapterTitle, pages, previous, next }`。页图片仍由前端逐页调用 `fetch_image`，不新增缓存目录。manhuagui/JM 尚未实现页源，详情页只为 nhentai 显示阅读入口。
+- 阅读页源命令为 `get_reader_chapter(platform, id, chapterId?)`。`Platform` 的 `reader_chapter_request`/`parse_reader_chapter` 默认返回 unsupported；当前只有 nhentai 实现：复用 `/api/v2/galleries/{id}`，从 `pages[].path` 拼出 `https://i.nhentai.net/...`，返回 `{ title, thumb, chapterId, chapterTitle, pages, previous, next }`。页图片仍由前端逐页调用 `fetch_image`，不新增缓存目录。manhuagui/JM 尚未实现页源，详情页只为 nhentai 显示阅读入口。
 - 阅读路由为 `/comic/:platform/:id/read/:chapterId?`，当前只适用 nhentai；`ComicReaderView.vue` 负责请求页源、把页码写入 `?page=`（`router.replace`，不新增历史）、返回详情和错误态。`ComicViewer.vue` 是单页视口：上/中/下三个页面槽位组成三倍视口长的轨道，当前页始终在中间；翻页时轨道以 260ms 动画滑到相邻页，页与页之间没有背景缝。轨道方向由设置中的 `readerDirection` 决定：`ltr` / `rtl` 使用横向轨道（`rtl` 用 `row-reverse`，下一页在左侧），`ttb` 使用纵向轨道。轨道同时挂载相邻页，因此不需要额外的预加载命令。滑动轴和方向键映射也随方向切换；缩放后改为平移。支持滚轮翻页、Ctrl+滚轮以光标为焦点缩放、全屏和工具栏自动隐藏。页码超出范围时夹到首尾页。
 - 详情页为 `/comic/:platform/:id`，不依赖内存态搜索会话，刷新或直接打开也能请求 `get_comic`；返回按钮在搜索会话仍有效时回 `/search`，否则回首页。路由 `scrollBehavior` 让新页面从顶部开始，详情加载后用 `setWindowTitle` 把漫画标题写入原生窗口标题。
 - Nhentai 详情封面使用 `t.nhentai.net` 缩略图：`i.nhentai.net` 的封面 CDN 在部分代理网络下不可达，而详情页封面宽度只有 240px，缩略图足够。
@@ -315,6 +328,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 | 新增/修改详情页 | `src/views/ComicDetailView.vue`、`src/components/comic-detail/`、`src/router/index.ts`、`src-tauri/src/image/model.rs` |
 | 新增/修改阅读器 | `src/views/ComicReaderView.vue`、`src/components/reader/`、`src/composables/useCachedImage.ts`、`useReaderZoom.ts`、`src/api/reader.ts`、`src/router/index.ts`、`src-tauri/src/image/model.rs`、`src-tauri/src/image/platform/`、`src-tauri/src/image/mod.rs` |
 | 新增/修改阅读页源 | `src-tauri/src/image/platform/`（`reader_chapter_request`/`parse_reader_chapter`）、`src-tauri/src/image/model.rs`、`src-tauri/src/image/mod.rs`（`get_reader_chapter`）、`src-tauri/src/lib.rs`、`src/api/reader.ts` |
+| 新增/修改阅读历史 | `src-tauri/src/history.rs`、`src-tauri/src/lib.rs`（命令与状态注册）、`src/api/history.ts`、`src/composables/useReadingHistory.ts`、`src/views/HistoryView.vue`、`src/views/ComicReaderView.vue`、`src/router/index.ts`、两个语言包 |
 | 修改首页或设置 UI | `src/views/HomeView.vue`、`src/views/SearchView.vue`、`src/views/SettingsView.vue`、`src/views/LogsView.vue`、`src/views/ShortcutPlaceholderView.vue`、`src/components/HomeShortcuts.vue`、`src/components/ShortcutIcon.vue`、`src/shortcuts.ts`、`src/stores/search.ts`、`src/stores/runtime.ts`、`src/composables/useRouteTransition.ts`、`src/components/ComicSearchBar.vue`、`src/components/ComicSearchResults.vue`、`src/components/ComicResultCard.vue`、`src/components/result-cards/`、`src/components/PlatformPicker.vue`、`src/components/ComicThumb.vue`、`src/assets/platforms/`、`src/api/comics.ts`、`src/api/logs.ts` |
 | 修改全局样式或顶部安全区 | `src/styles/base.scss`、`src/App.vue`；组件样式保持在组件内 |
 | 修改 Android 原生配置 | `src-tauri/gen/android/`（已跟踪，但大部分是生成内容，修改前要确认） |
@@ -377,7 +391,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 ### 手动冒烟测试
 
 - 搜索流程：从首页选择平台、输入关键词进入 `#/search`，确认结果数/卡片/缩略图/分页正常；切换平台、重新搜索、翻页都留在结果页；点击首页图标固定回首页，并与结果页搜索栏的反向动画同时完成；直接打开或刷新 `#/search` 回到首页；无结果与错误状态正常。
-- 首页快捷入口：收藏、下载、历史进入占位页，设置进入设置页；窗口标题与正文标题正确，返回首页可用。
+- 首页快捷入口：收藏、下载进入占位页，历史进入阅读历史页，设置进入设置页；窗口标题与正文标题正确，返回首页可用。
 - 平台检索：分别用 manhuagui/nhentai 搜索关键词并取一条详情，确认 total/page_size/result 与 thumb/extras；JM 若被 Cloudflare 403，应返回本地化 httpStatus 错误而不是崩溃。
 - 设置页：切换主题立即生效并在重启后恢复；切换语言后文案、Naive UI 与窗口标题同步更新。
 - 设置页代理：启用并填写可达代理后搜索与缩略图正常；非法地址有本地化提示且不持久化；关闭开关后立即恢复默认网络行为（无需保存）；开启或修改地址后仍需保存并应用；重启后配置恢复。
@@ -387,11 +401,12 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 - 移动端安全区：在真机或 DevTools 中临时给 `.safe-area-top` 设置高度（如 32px），确认所有页面从安全区下方开始；滚动后安全区条仍固定在顶部并遮住其下内容；切换深色主题时背景色一致。
 - 详情页：从结果卡片进入三个平台详情，确认标题/封面/信息/标签；直接刷新 `#/comic/...` 可加载；返回按钮回到原搜索结果；非法 id 显示本地化未找到；窄窗口切换单列。
 - 阅读器：nhentai 详情点击“开始阅读”，确认页图片经 Rust 缓存后显示；当前页与相邻页拼接，翻页时能看到相邻页连续滑入而不是空白/淡出；在设置页切换从左到右、从右到左、从上到下后，轨道方向、滑动轴和方向键映射同步变化，且偏好重启后恢复；滚轮、方向键切换页面，页码 query 同步；Ctrl+滚轮以光标为焦点缩放且不翻页；缩放后拖拽平移并受边界限制；`Home`/`End`、全屏、自动隐藏工具栏和返回详情正常；直接打开 `#/comic/nhentai/:id/read?page=3` 可恢复页码；manhuagui/JM 深链接进入阅读路由时应显示本地化不支持错误，而不是崩溃。
+- 阅读历史：nhentai 阅读器打开后进入历史页，确认封面、标题、章节、页码与时间；翻页后返回历史确认进度更新；点击条目回到对应页；删除单条与清空全部（二次确认）正常；重启应用后记录仍在；直接打开 `#/comic/nhentai/:id/read?page=3` 也会产生或更新记录。
 - 访问 `#/does-not-exist`：显示 404 页面与本地化标题，返回首页链接可用。
 
 ### 测试现状
 
-- Rust 测试覆盖错误契约（`src-tauri/src/error.rs`）、图片缓存、HTTP 基础头、平台识别/请求头与三平台搜索/详情 parser fixture（`src-tauri/src/image/`），以及 ECH 的 URL 解析、SVCB 提取、Cloudflare DoH 查询构造、ECH/普通 TLS 配置、resolver 端口映射与 60 秒缓存 TTL、reqwest ECH client（`src-tauri/src/ech/`、`src-tauri/src/image/http.rs`），共 81 个测试，其中 10 个联网测试默认 `ignored`；阅读器测试覆盖 nhentai `pages` 解析、页 URL 绝对化与空页错误（`src-tauri/src/image/platform/nhentai.rs`），以及 `ReaderChapter` 的 camelCase wire 形状（`src-tauri/src/image/model.rs`）。ECH 回退缓存测试覆盖 origin key、过期清理与 ECH 关闭清空（`src-tauri/src/image/http.rs`），日志模块测试覆盖 JSON wire 形状、尾部截断、损坏行跳过与导出拼接顺序（`src-tauri/src/logging.rs`）。
+- Rust 测试覆盖错误契约（`src-tauri/src/error.rs`）、图片缓存、HTTP 基础头、平台识别/请求头与三平台搜索/详情 parser fixture（`src-tauri/src/image/`），以及 ECH 的 URL 解析、SVCB 提取、Cloudflare DoH 查询构造、ECH/普通 TLS 配置、resolver 端口映射与 60 秒缓存 TTL、reqwest ECH client（`src-tauri/src/ech/`、`src-tauri/src/image/http.rs`），共 89 个测试，其中 10 个联网测试默认 `ignored`；阅读器测试覆盖 nhentai `pages` 解析、页 URL 绝对化与空页错误（`src-tauri/src/image/platform/nhentai.rs`），以及 `ReaderChapter` 的 camelCase wire 形状（`src-tauri/src/image/model.rs`）。ECH 回退缓存测试覆盖 origin key、过期清理与 ECH 关闭清空（`src-tauri/src/image/http.rs`），日志模块测试覆盖 JSON wire 形状、尾部截断、损坏行跳过与导出拼接顺序（`src-tauri/src/logging.rs`）。阅读历史测试覆盖事件 wire 形状、按作品去重、10,000 条上限裁剪、删除/清空、损坏行跳过、压缩与分页（`src-tauri/src/history.rs`）。
 - ECH 联网测试使用 `dns.alidns.com` 与 `doh.360.cn`：`queries_cloudflare_ech_over_doh` 验证 bootstrap；`performs_ech_handshake` 用同一份 `cloudflare-ech.com` 配置对 5 个 Cloudflare 站点握手；`queries_cloudflare_dns_over_ech` 验证 Cloudflare DoH over ECH 解析 `example.com`；`queries_nhentai_via_cloudflare_doh_over_ech` 验证 `nhentai.net` 直连（accepted、TLS1.3、HTTP 200、无本地代理）；`falls_back_to_plain_tls_for_non_cloudflare_site` 验证 `www.qq.com` 回退普通 TLS（`fallback=true`、`echStatus=notOffered`）；`reqwest_client_uses_ech_and_cloudflare_dns` 验证 reqwest ECH client（nhentai 200/HTTP2、qq ECH 失败分类、plain 回退）；`ech_client_fetches_and_falls_back` 验证 `HttpClient` runtime、TTL 懒刷新、ECH 回退缓存跨配置刷新与关闭清空、代理互斥与禁用恢复；`enables_ech_with_the_default_bootstrap` 验证默认 AliDNS/360 bootstrap；`failed_bootstrap_leaves_ech_disabled` 验证 bootstrap 失败不会安装 runtime；`nhentai_search_detail_and_image_work_with_ech` 验证 nhentai 搜索、详情和详情缩略图的完整 ECH 链路。hickory DoH 查询测试要求 HTTP/2，经过只支持 HTTP/1.1 的代理时会超时。
 - 前端没有单元/E2E 测试框架（没有 Vitest、Playwright，也没有 `pnpm test`），仓库也没有 CI。不要声称存在并未运行的测试覆盖。如果新增测试体系，请在 `package.json` 中加脚本并同步更新本文件。
 
@@ -411,6 +426,9 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 - **阅读器目前只支持 nhentai。** 详情页只为 nhentai 显示阅读按钮；manhuagui/JM 的 `reader_chapter_request` 仍走默认 unsupported，深链接会返回本地化错误。不要在页源实现前放开入口。nhentai 页列表来自同一详情 API 的 `pages`，页图片仍逐页走 `fetch_image`，不要直接使用 CDN URL。
 - **阅读器页码用 `router.replace` 写入 `?page=`。** 每次翻页不应新增浏览器历史；刷新或深链接应恢复到该页。页码会被夹到 `1..pages.length`，空页章节显示空态而不是渲染破图。
 - **阅读器是单页模式。** 当前页与相邻页在一条三倍视口长的轨道上无间隙拼接，翻页时轨道整体滑动；`readerDirection` 决定轨道轴和手势/方向键映射：`ltr` 横向、`rtl` 横向反向、`ttb` 纵向。缩放后拖拽改为平移，滚轮仍负责翻页。不要把长条自由滚动或双页模式混进当前组件，它们需要独立布局和手势语义。
+- **阅读历史是 Rust 应用数据，不是设置。** 历史写在 `app_data_dir()/history.jsonl`，按事件追加并在 10,000 条上限下压缩；不要改回 localStorage、每次翻页重写整个 JSON，或把全部条目一次传给前端。历史页使用 `list_history(offset, limit)` 分页，每页 50 条。
+- **阅读进度写入是辅助路径。** `useReadingHistory` 防抖 600ms、串行提交，并在切章/离开阅读器时 flush；写入失败必须静默，不能影响阅读。`ReaderChapter.thumb` 只用于历史封面，仍要走 `ComicThumb` 缓存。
+- **历史文件不保证多实例并发写。** 当前没有单实例插件，不要假设多个应用实例共用 `history.jsonl` 时写入一致。
 - **Rust 与前端构建是分开的。** Vite 不监听 `src-tauri/**`；修改 Rust 后请用 `pnpm tauri dev` / `pnpm tauri build`。`pnpm build` 永远不会编译 Rust。
 - **开发端口固定。** `1420` 与 `build.devUrl` 必须保持一致；只改一处会破坏应用。
 - **生成文件。** 不要手改 `src/components.d.ts`、`src-tauri/gen/schemas/`、`src-tauri/gen/android/**/build/`、`src-tauri/target/`、`dist/` 或 `src-tauri/icons/` 下的 PNG；应通过工具重新生成。
@@ -453,6 +471,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 - [ ] Tauri 命令已注册，所需 capability 已添加。
 - [ ] 当改动涉及 IPC、图片缓存、平台检索、搜索 UI、主题、i18n 或路由时，已用 `pnpm tauri dev` 做运行时冒烟测试。
 - [ ] 阅读器改动已完成运行时冒烟：nhentai 页图片、滑动/滚轮/方向键、Ctrl+滚轮缩放、全屏、页码 query、返回详情与不支持平台的错误态。
+- [ ] 阅读历史已完成运行时冒烟：进入阅读器产生记录、翻页进度更新、历史页分页/续读/删除/清空、重启后恢复，且 10,000 条上限裁剪正常。
 - [ ] 移动端安全区改动已验证：所有页面从安全区下方开始，滚动时内容不会显示在状态栏/刘海区域。
 - [ ] 没有修改或暂存生成文件与构建产物。
 - [ ] 如果命令、架构或契约发生变化，本文件已同步更新。

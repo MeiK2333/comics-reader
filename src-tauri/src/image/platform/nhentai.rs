@@ -122,6 +122,7 @@ impl Platform for Nhentai {
 
         Ok(ReaderChapter {
             title: detail.title,
+            thumb: detail.thumb,
             chapter_id: None,
             chapter_title: None,
             pages,
@@ -417,6 +418,10 @@ mod tests {
             .unwrap();
 
         assert_eq!(chapter.title, "Example Gallery");
+        assert_eq!(
+            chapter.thumb,
+            "https://t.nhentai.net/galleries/100/thumb.webp"
+        );
         assert!(chapter.chapter_id.is_none());
         assert!(chapter.chapter_title.is_none());
         assert_eq!(chapter.pages.len(), 2);

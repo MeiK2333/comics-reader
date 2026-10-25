@@ -206,6 +206,22 @@
       "error": "错误"
     }
   },
+  "history": {
+    "title": "阅读历史",
+    "back": "返回首页",
+    "count": "共 {count} 部作品",
+    "emptyDescription": "打开漫画阅读后，会在这里记录进度。",
+    "loadFailed": "无法读取阅读历史。",
+    "retry": "重试",
+    "progress": "第 {page} / {total} 页",
+    "resume": "继续阅读",
+    "remove": "从历史中删除",
+    "removeFailed": "无法删除该记录。",
+    "clear": "清空历史",
+    "clearConfirm": "确定清空全部阅读历史吗？此操作无法撤销。",
+    "cleared": "阅读历史已清空。",
+    "clearFailed": "无法清空阅读历史。"
+  },
   "shortcut": {
     "placeholder": {
       "description": "该功能正在开发中，敬请期待。",

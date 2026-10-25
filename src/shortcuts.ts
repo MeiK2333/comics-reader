@@ -1,6 +1,6 @@
 import type { MessageKey } from "./i18n";
 
-/** Home page shortcut entries that do not have a real feature yet. */
+/** Home page quick links shared by the home grid and the placeholder page. */
 export type ShortcutFeature = "favorites" | "downloads" | "history" | "settings";
 
 export const SHORTCUT_LABEL_KEYS: Record<ShortcutFeature, MessageKey> = {

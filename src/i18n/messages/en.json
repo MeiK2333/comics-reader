@@ -206,6 +206,22 @@
       "error": "Error"
     }
   },
+  "history": {
+    "title": "Reading history",
+    "back": "Back to home",
+    "count": "{count} works",
+    "emptyDescription": "Works you open in the reader appear here with your progress.",
+    "loadFailed": "Could not load your reading history.",
+    "retry": "Retry",
+    "progress": "Page {page} / {total}",
+    "resume": "Continue reading",
+    "remove": "Remove from history",
+    "removeFailed": "Could not remove this entry.",
+    "clear": "Clear history",
+    "clearConfirm": "Clear all reading history? This cannot be undone.",
+    "cleared": "Reading history cleared.",
+    "clearFailed": "Could not clear your reading history."
+  },
   "shortcut": {
     "placeholder": {
       "description": "This feature is coming soon.",

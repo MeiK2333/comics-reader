@@ -7,6 +7,7 @@ import type { ReaderChapter } from "../api/reader";
 import { getReaderChapter } from "../api/reader";
 import ComicViewer from "../components/reader/ComicViewer.vue";
 import { useErrorMessage } from "../composables/useErrorMessage";
+import { useReadingHistory } from "../composables/useReadingHistory";
 import { AppError, toAppError } from "../errors";
 import { useAppI18n } from "../i18n";
 import { setWindowTitle, updateWindowTitle } from "../router";
@@ -24,6 +25,7 @@ const error = ref<AppError | null>(null);
 const page = ref(1);
 let requestId = 0;
 let previousBodyOverflow = "";
+let recordedPage = 0;
 
 const platform = computed<ComicPlatform | null>(() => {
   const value = route.params.platform;
@@ -45,6 +47,26 @@ const chapterId = computed(() => {
 const viewerPlatform = computed<ComicPlatform>(
   () => platform.value ?? "nhentai",
 );
+
+// The reader owns the page counter, so history simply mirrors it. The target
+// is snapshotted when a write is queued, which keeps a pending page from the
+// previous chapter out of the next chapter's record.
+const readingHistory = useReadingHistory(() => {
+  const current = chapter.value;
+  const currentPlatform = platform.value;
+  if (!current || current.pages.length === 0 || !currentPlatform || !id.value) {
+    return null;
+  }
+  return {
+    platform: currentPlatform,
+    id: id.value,
+    title: current.title,
+    thumb: current.thumb?.trim() || null,
+    chapterId: current.chapterId,
+    chapterTitle: current.chapterTitle,
+    totalPages: current.pages.length,
+  };
+});
 
 const errorTitle = computed(() => t("reader.loadFailed"));
 const errorText = computed(() => {
@@ -94,6 +116,8 @@ function goToChapter(target: ReaderChapter["previous"]) {
   if (!target || !platform.value || !id.value) {
     return;
   }
+  // Persist the last page before the route params switch to another chapter.
+  readingHistory.flush();
   void router.push({
     name: "comic-reader",
     params: {
@@ -108,6 +132,8 @@ function goToChapter(target: ReaderChapter["previous"]) {
 }
 
 async function load() {
+  // Capture the outgoing chapter's last page before clearing its state.
+  readingHistory.flush();
   const currentRequest = ++requestId;
   const currentPlatform = platform.value;
   const currentId = id.value;
@@ -156,6 +182,8 @@ async function load() {
         : `${result.title} · ${t("app.name")}`,
     );
     syncPageQuery(page.value);
+    recordedPage = page.value;
+    readingHistory.record(page.value);
   } catch (cause) {
     if (currentRequest !== requestId) {
       return;
@@ -174,6 +202,11 @@ watch([platform, id, chapterId], () => void load(), { immediate: true });
 watch(page, (value) => {
   if (chapter.value) {
     syncPageQuery(value);
+    // The explicit record after loading already covers the first page.
+    if (!loading.value && value !== recordedPage) {
+      recordedPage = value;
+      readingHistory.schedule(value);
+    }
   }
 });
 
@@ -201,6 +234,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  readingHistory.flush();
   requestId++;
   document.body.style.overflow = previousBodyOverflow;
 });

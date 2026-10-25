@@ -52,8 +52,7 @@ const router = createRouter({
     {
       path: "/history",
       name: "history",
-      component: () => import("../views/ShortcutPlaceholderView.vue"),
-      props: { feature: "history" },
+      component: () => import("../views/HistoryView.vue"),
       meta: { titleKey: "meta.history" },
     },
     {
