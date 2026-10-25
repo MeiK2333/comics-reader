@@ -205,7 +205,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 - 给 `SettingsState` 新增字段会自动持久化，老用户通常会回落到 store 的初始值。重命名或删除已持久化字段则需要迁移，否则旧数据会被静默忽略。
 - `useTheme()` 与 `useLocale()` 只在 shell 层调用一次。其他组件直接读 `useSettingsStore()`；重复调用 `useTheme()` 会重复注册 media query 监听器。
 - 首页提供设置快捷入口，设置页可切换主题与语言，并可保存 HTTP 代理；主题/语言立即生效。关闭代理开关会立即通过 `set_http_proxy(null)` 清除代理并写回 store，无需点击保存；开启代理或修改地址仍需点击“保存并应用”，且只有 `set_http_proxy` 成功后才写回 store，避免持久化无法应用的地址。
-- `settings.ech` 通过 `set_ech_enabled` 同步到 Rust。开启时设置页先关闭代理，后端 `enable_ech` 也会清空代理；关闭时 `disable_ech` 丢弃 runtime，普通 client 恢复。启动时若持久化 ECH 为 true，`main.ts` 在挂载前异步初始化，失败会回滚 `settings.ech`。`set_http_proxy(Some)` 在 ECH 开启时返回 `invalidInput`，设置页在 ECH 开启时禁用代理控件。`get_ech_status` 仅保留为诊断命令，设置页不展示状态。启动阶段若 ECH 正在初始化，首页显示等待状态并隐藏搜索栏。
+- `settings.ech` 通过 `set_ech_enabled` 同步到 Rust。开启时设置页先关闭代理，后端 `enable_ech` 也会清空代理；关闭时 `disable_ech` 丢弃 runtime，普通 client 恢复。启动时若持久化 ECH 为 true，`main.ts` 在挂载前异步初始化，失败会回滚 `settings.ech`。`set_http_proxy(Some)` 在 ECH 开启时返回 `invalidInput`；设置页不再因 ECH 开启而禁用代理开关，而是在打开代理时先关闭 ECH（与打开 ECH 自动关闭代理对称）。`get_ech_status` 仅保留为诊断命令，设置页不展示状态。启动阶段若 ECH 正在初始化，首页显示等待状态并隐藏搜索栏。
 - 设置页的“网络设置”区域把 HTTP 代理与 ECH 放在一起，不再为 ECH 单独分组；区块标题用“网络设置”，代理开关文案用“HTTP 代理”，不要写回旧的“使用代理”或单独 ECH 章节。
 
 ### 远程 HTTP、图片缓存与平台检索

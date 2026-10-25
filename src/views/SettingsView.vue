@@ -76,15 +76,37 @@ async function disableProxyNow(): Promise<boolean> {
  * Turning the proxy off is always safe to apply immediately: there is no
  * address to validate, and the user may need to fall back to a direct
  * connection right away. Enabling still requires the save button so host and
- * port can be validated first.
+ * port can be validated first; turning it on also disables ECH because the
+ * two network modes are mutually exclusive.
  */
 async function onProxyToggle(enabled: boolean) {
-  if (enabled || savingProxy.value) {
+  if (savingProxy.value || savingEch.value) {
     return;
   }
 
-  if (!(await disableProxyNow())) {
-    proxyDraft.enabled = true;
+  if (!enabled) {
+    if (!(await disableProxyNow())) {
+      proxyDraft.enabled = true;
+    }
+    return;
+  }
+
+  if (!settings.ech) {
+    return;
+  }
+
+  savingEch.value = true;
+  try {
+    const pending = setEchEnabled(false);
+    beginEchStartup(pending);
+    await pending;
+    settings.ech = false;
+  } catch (cause) {
+    proxyDraft.enabled = false;
+    message.error(t("settings.ech.errors.update"));
+    console.error("failed to disable ECH for the proxy", cause);
+  } finally {
+    savingEch.value = false;
   }
 }
 
@@ -126,6 +148,10 @@ async function onEchToggle(enabled: boolean) {
 }
 
 async function saveProxy() {
+  if (savingEch.value) {
+    return;
+  }
+
   const validationError = proxyDraft.enabled
     ? validateProxy(proxyDraft.host, proxyDraft.port)
     : null;
@@ -202,7 +228,7 @@ function goHome() {
         <NSwitch
           v-model:value="proxyDraft.enabled"
           :loading="savingProxy"
-          :disabled="savingProxy || settings.ech"
+          :disabled="savingProxy || savingEch"
           @update:value="onProxyToggle"
         />
       </div>
@@ -212,7 +238,7 @@ function goHome() {
           <span class="proxy-field__label">{{ t("settings.proxy.host") }}</span>
           <NInput
             v-model:value="proxyDraft.host"
-            :disabled="!proxyDraft.enabled || settings.ech"
+            :disabled="!proxyDraft.enabled || savingEch"
             :placeholder="t('settings.proxy.hostPlaceholder')"
             spellcheck="false"
           />
@@ -221,7 +247,7 @@ function goHome() {
           <span class="proxy-field__label">{{ t("settings.proxy.port") }}</span>
           <NInputNumber
             v-model:value="proxyDraft.port"
-            :disabled="!proxyDraft.enabled || settings.ech"
+            :disabled="!proxyDraft.enabled || savingEch"
             :min="1"
             :max="65535"
             :precision="0"
@@ -235,6 +261,7 @@ function goHome() {
           attr-type="button"
           size="small"
           :loading="savingProxy"
+          :disabled="savingEch"
           @click="saveProxy"
         >
           {{ t("settings.proxy.save") }}
