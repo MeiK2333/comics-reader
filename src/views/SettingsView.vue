@@ -265,20 +265,14 @@ function goHome() {
           @update:value="onEchToggle"
         />
       </div>
-      <p class="ech-status">
-        <template v-if="echStatus?.enabled">
-          {{
-            t("settings.ech.status.enabled", {
-              domain: echStatus.configDomain ?? "",
-            })
-          }}
-        </template>
-        <template v-else-if="echStatus">
-          {{ t("settings.ech.status.disabled") }}
-        </template>
-        <template v-else>
-          {{ t("settings.ech.status.checking") }}
-        </template>
+      <p v-if="echStatus" class="ech-status">
+        {{
+          t(
+            echStatus.enabled
+              ? "settings.ech.status.enabled"
+              : "settings.ech.status.disabled",
+          )
+        }}
       </p>
     </NCard>
   </main>

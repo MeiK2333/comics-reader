@@ -140,12 +140,11 @@
     "ech": {
       "enable": "Enable ECH",
       "errors": {
-        "update": "Could not update ECH. Check your network and try again."
+        "update": "Could not update ECH."
       },
       "status": {
-        "checking": "Checking ECH status…",
-        "enabled": "ECH is active ({domain}).",
-        "disabled": "ECH is off."
+        "enabled": "ECH enabled",
+        "disabled": "ECH off"
       }
     }
   },
