@@ -138,7 +138,7 @@
       }
     },
     "ech": {
-      "enable": "Enable ECH",
+      "enable": "ECH",
       "errors": {
         "update": "Could not update ECH."
       }
