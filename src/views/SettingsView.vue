@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 import { useMessage } from "naive-ui";
 import type { SelectOption } from "naive-ui";
 import HomeIcon from "../components/HomeIcon.vue";
-import { setEchEnabled } from "../api/ech";
+import {
+  getEchStatus,
+  setEchEnabled,
+  type EchStatus,
+} from "../api/ech";
 import {
   applyProxy,
   validateProxy,
@@ -42,6 +46,20 @@ const proxyDraft = reactive<{
 }>({ ...settings.proxy });
 const savingProxy = ref(false);
 const savingEch = ref(false);
+const echStatus = ref<EchStatus | null>(null);
+
+async function refreshEchStatus() {
+  try {
+    echStatus.value = await getEchStatus();
+  } catch (cause) {
+    // The UI can still operate without the status probe; the toggle reports
+    // its own errors.
+    console.error("failed to read ECH status", cause);
+    echStatus.value = null;
+  }
+}
+
+onMounted(refreshEchStatus);
 
 const PROXY_ERROR_KEYS: Record<ProxyValidationError, MessageKey> = {
   hostRequired: "settings.proxy.errors.hostRequired",
@@ -118,6 +136,7 @@ async function onEchToggle(enabled: boolean) {
     console.error("failed to update ECH", cause);
   } finally {
     savingEch.value = false;
+    void refreshEchStatus();
   }
 }
 
@@ -246,6 +265,21 @@ function goHome() {
           @update:value="onEchToggle"
         />
       </div>
+      <p class="ech-status">
+        <template v-if="echStatus?.enabled">
+          {{
+            t("settings.ech.status.enabled", {
+              domain: echStatus.configDomain ?? "",
+            })
+          }}
+        </template>
+        <template v-else-if="echStatus">
+          {{ t("settings.ech.status.disabled") }}
+        </template>
+        <template v-else>
+          {{ t("settings.ech.status.checking") }}
+        </template>
+      </p>
     </NCard>
   </main>
 </template>
@@ -332,5 +366,11 @@ function goHome() {
 
 .ech-setting {
   margin-top: 0.9rem;
+}
+
+.ech-status {
+  margin: 0.35rem 0 0;
+  font-size: 0.85rem;
+  opacity: 0.75;
 }
 </style>

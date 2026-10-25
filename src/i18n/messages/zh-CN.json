@@ -140,6 +140,11 @@
       "enable": "启用 ECH",
       "errors": {
         "update": "无法更新 ECH，请检查网络后重试。"
+      },
+      "status": {
+        "checking": "正在检查 ECH 状态…",
+        "enabled": "ECH 已启用（{domain}）。",
+        "disabled": "ECH 已关闭。"
       }
     }
   },
