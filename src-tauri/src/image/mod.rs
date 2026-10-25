@@ -15,6 +15,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
 
 use crate::error::{AppError, Result};
+use crate::logging;
 
 use cache::ImageFormat;
 pub(crate) use http::HttpClient;
@@ -54,6 +55,40 @@ pub(crate) async fn fetch_image(
     url: String,
     platform: Option<String>,
 ) -> Result<CachedImage> {
+    let requested_platform = platform.clone();
+    let result = fetch_image_inner(&app, client.inner(), url.clone(), platform).await;
+
+    match &result {
+        // Cache hits are intentionally not logged: a single results page would
+        // otherwise bury the network failures this log is meant to surface.
+        Ok(image) if !image.from_cache => logging::info(
+            "image",
+            format!(
+                "downloaded image: platform={} url={} bytes={}",
+                image.platform, url, image.byte_length
+            ),
+        ),
+        Ok(_) => {}
+        Err(error) => logging::error(
+            "image",
+            format!(
+                "failed to fetch image: platform={} url={} code={} error={error}",
+                requested_platform.as_deref().unwrap_or("auto"),
+                url,
+                error.code().as_str()
+            ),
+        ),
+    }
+
+    result
+}
+
+async fn fetch_image_inner(
+    app: &AppHandle,
+    client: &HttpClient,
+    url: String,
+    platform: Option<String>,
+) -> Result<CachedImage> {
     let url = cache::normalize_url(&url)?;
     let platform = resolve_platform(platform.as_deref(), &url)?;
     let cache_dir = app
@@ -72,7 +107,7 @@ pub(crate) async fn fetch_image(
         return cached_image(path, platform.id(), true).await;
     }
 
-    let download = http::download_image(client.inner(), platform, &url).await?;
+    let download = http::download_image(client, platform, &url).await?;
     let path = cache_dir.join(format!("{key}.{}", download.format.extension()));
     cache::write_atomically(&cache_dir, &path, &key, &download.bytes).await?;
 
@@ -104,7 +139,36 @@ pub(crate) async fn search_comics(
     query: String,
     page: u32,
 ) -> Result<SearchResponse> {
-    let platform = find_platform(&platform).ok_or_else(|| unknown_platform(&platform))?;
+    let result = search_comics_inner(client.inner(), &platform, &query, page).await;
+
+    match &result {
+        Ok(response) => logging::info(
+            "search",
+            format!(
+                "search completed: platform={platform} page={page} total={} returned={} query={query:?}",
+                response.total,
+                response.result.len()
+            ),
+        ),
+        Err(error) => logging::error(
+            "search",
+            format!(
+                "search failed: platform={platform} page={page} code={} error={error} query={query:?}",
+                error.code().as_str()
+            ),
+        ),
+    }
+
+    result
+}
+
+async fn search_comics_inner(
+    client: &HttpClient,
+    platform: &str,
+    query: &str,
+    page: u32,
+) -> Result<SearchResponse> {
+    let platform = find_platform(platform).ok_or_else(|| unknown_platform(platform))?;
 
     let query = query.trim();
     if query.is_empty() {
@@ -121,7 +185,7 @@ pub(crate) async fn search_comics(
     }
 
     let spec = platform.search_request(query, page)?;
-    let body = http::fetch_document(client.inner(), platform, &spec).await?;
+    let body = http::fetch_document(client, platform, &spec).await?;
     platform.parse_search(query, page, &body)
 }
 
@@ -132,7 +196,30 @@ pub(crate) async fn get_comic(
     platform: String,
     id: String,
 ) -> Result<ComicDetail> {
-    let platform = find_platform(&platform).ok_or_else(|| unknown_platform(&platform))?;
+    let result = get_comic_inner(client.inner(), &platform, &id).await;
+
+    match &result {
+        Ok(detail) => logging::info(
+            "detail",
+            format!(
+                "detail loaded: platform={platform} id={id:?} title={:?}",
+                detail.title
+            ),
+        ),
+        Err(error) => logging::error(
+            "detail",
+            format!(
+                "detail failed: platform={platform} id={id:?} code={} error={error}",
+                error.code().as_str()
+            ),
+        ),
+    }
+
+    result
+}
+
+async fn get_comic_inner(client: &HttpClient, platform: &str, id: &str) -> Result<ComicDetail> {
+    let platform = find_platform(platform).ok_or_else(|| unknown_platform(platform))?;
 
     let id = id.trim();
     if id.is_empty() {
@@ -143,7 +230,7 @@ pub(crate) async fn get_comic(
     }
 
     let spec = platform.detail_request(id)?;
-    let body = http::fetch_document(client.inner(), platform, &spec).await?;
+    let body = http::fetch_document(client, platform, &spec).await?;
     platform.parse_detail(id, &body)
 }
 
@@ -153,5 +240,20 @@ pub(crate) fn set_http_proxy(
     client: State<'_, HttpClient>,
     proxy: Option<HttpProxyConfig>,
 ) -> Result<()> {
-    client.set_proxy(proxy)
+    let enabled = proxy.is_some();
+    let result = client.set_proxy(proxy);
+
+    match &result {
+        Ok(()) if enabled => logging::info("http", "HTTP proxy enabled"),
+        Ok(()) => logging::info("http", "HTTP proxy cleared"),
+        Err(error) => logging::error(
+            "http",
+            format!(
+                "failed to update the HTTP proxy: code={} error={error}",
+                error.code().as_str()
+            ),
+        ),
+    }
+
+    result
 }

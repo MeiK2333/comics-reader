@@ -1,7 +1,8 @@
 //! Shared HTTP client and the platform-agnostic download pipeline.
 
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 
 use reqwest::header::{ACCEPT, HeaderMap, HeaderValue, USER_AGENT};
 use serde::Deserialize;
@@ -9,6 +10,7 @@ use url::Url;
 
 use crate::ech::{CloudflareResolver, EchSession, EchStatus};
 use crate::error::{AppError, Result};
+use crate::logging;
 
 use super::cache::ImageFormat;
 use super::platform::{Platform, RequestSpec};
@@ -26,6 +28,9 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const ECH_CONFIG_TTL: Duration = Duration::from_secs(10 * 60);
 /// After a failed refresh, wait this long before trying the bootstrap again.
 const ECH_REFRESH_RETRY: Duration = Duration::from_secs(60);
+/// A host that rejected ECH but accepted plain TLS is retried with ECH after
+/// this long, so a server or config change cannot disable ECH indefinitely.
+const ECH_FALLBACK_TTL: Duration = Duration::from_secs(10 * 60);
 
 const USER_AGENT_VALUE: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36";
 const ACCEPT_VALUE: &str = "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8";
@@ -105,6 +110,9 @@ struct ClientState {
     /// Incremented when a command starts changing the ECH state. A bootstrap
     /// that finishes after a newer command must be discarded.
     ech_control_generation: u64,
+    /// `https://host:port` keys that rejected ECH but accepted plain TLS. The
+    /// cache survives an ECH config refresh but is cleared when ECH is toggled.
+    ech_fallback_until: HashMap<String, Instant>,
 }
 
 /// The two clients used while ECH is enabled. Both resolve targets through
@@ -192,6 +200,7 @@ impl HttpClient {
         state.proxy = None;
         state.normal_client = Some(normal_client);
         state.ech_generation = state.ech_generation.wrapping_add(1);
+        state.ech_fallback_until.clear();
         state.ech = Some(EchRuntime {
             session,
             ech_client,
@@ -209,6 +218,7 @@ impl HttpClient {
     pub(crate) fn disable_ech(&self) -> Result<()> {
         let mut state = self.lock()?;
         state.ech = None;
+        state.ech_fallback_until.clear();
         state.ech_generation = state.ech_generation.wrapping_add(1);
         state.ech_control_generation = state.ech_control_generation.wrapping_add(1);
         Ok(())
@@ -233,6 +243,7 @@ impl HttpClient {
         let session = match EchSession::bootstrap(&bootstrap_doh).await {
             Ok(session) => Arc::new(session),
             Err(error) => {
+                logging::warn("ech", format!("failed to refresh the ECH config: {error}"));
                 eprintln!("failed to refresh the ECH config: {error}");
                 self.postpone_refresh(generation);
                 return;
@@ -240,6 +251,10 @@ impl HttpClient {
         };
 
         if let Err(error) = self.install_refreshed_ech(generation, session) {
+            logging::warn(
+                "ech",
+                format!("failed to install the refreshed ECH runtime: {error}"),
+            );
             eprintln!("failed to install the refreshed ECH runtime: {error}");
             self.postpone_refresh(generation);
         }
@@ -328,8 +343,42 @@ impl HttpClient {
         })
     }
 
+    fn ech_fallback_is_active(&self, key: &str) -> Result<bool> {
+        let mut state = self.lock()?;
+        match state.ech_fallback_until.get(key).copied() {
+            Some(until) if until > Instant::now() => Ok(true),
+            Some(_) => {
+                state.ech_fallback_until.remove(key);
+                Ok(false)
+            }
+            None => Ok(false),
+        }
+    }
+
+    fn remember_ech_fallback(&self, key: &str) -> Result<()> {
+        let now = Instant::now();
+        let mut state = self.lock()?;
+        // Expired keys are only useful for diagnosing that the host was tried;
+        // prune them here so a long-running app cannot accumulate stale hosts.
+        state.ech_fallback_until.retain(|_, until| *until > now);
+        state
+            .ech_fallback_until
+            .insert(key.to_owned(), now + ECH_FALLBACK_TTL);
+        Ok(())
+    }
+
+    fn forget_ech_fallback(&self, key: &str) {
+        if let Ok(mut state) = self.lock() {
+            state.ech_fallback_until.remove(key);
+        }
+    }
+
     /// Send a request through the ECH client when it is enabled, retrying once
     /// with plain TLS when ECH cannot complete the connection.
+    ///
+    /// A host that rejected ECH is remembered for [`ECH_FALLBACK_TTL`] after a
+    /// successful plain request. Later requests then skip the doomed ECH
+    /// handshake while keeping the plain client's connection pool.
     ///
     /// `build` must be able to construct the request again; the fallback path
     /// calls it a second time. Plain HTTP always uses the ordinary client so
@@ -342,6 +391,7 @@ impl HttpClient {
             self.refresh_ech_if_due().await;
         }
 
+        let fallback_key = ech_fallback_key(url);
         let normal_client = self.get()?;
         let ech_clients = {
             let state = self.lock()?;
@@ -354,13 +404,55 @@ impl HttpClient {
         if url.scheme() == "https"
             && let Some((ech_client, plain_client)) = ech_clients
         {
+            let skip_ech = match fallback_key.as_deref() {
+                Some(key) => self.ech_fallback_is_active(key)?,
+                None => false,
+            };
+
+            if skip_ech {
+                return match build(&plain_client).send().await {
+                    Ok(response) => Ok(response),
+                    Err(error) => {
+                        if let Some(key) = fallback_key.as_deref() {
+                            self.forget_ech_fallback(key);
+                        }
+                        Err(network_error(url, error))
+                    }
+                };
+            }
+
             match build(&ech_client).send().await {
                 Ok(response) => return Ok(response),
                 Err(error) if is_fallback_error(&error) => {
-                    return build(&plain_client)
-                        .send()
-                        .await
-                        .map_err(|error| network_error(url, error));
+                    logging::warn(
+                        "ech",
+                        format!("ECH connection to {url} failed; retrying with plain TLS: {error}"),
+                    );
+                    match build(&plain_client).send().await {
+                        Ok(response) => {
+                            if let Some(key) = fallback_key.as_deref() {
+                                match self.remember_ech_fallback(key) {
+                                    Ok(()) => logging::info(
+                                        "ech",
+                                        format!("ECH unavailable for {key}; using plain TLS"),
+                                    ),
+                                    Err(error) => logging::warn(
+                                        "ech",
+                                        format!(
+                                            "failed to cache the ECH fallback for {key}: {error}"
+                                        ),
+                                    ),
+                                }
+                            }
+                            return Ok(response);
+                        }
+                        Err(error) => {
+                            if let Some(key) = fallback_key.as_deref() {
+                                self.forget_ech_fallback(key);
+                            }
+                            return Err(network_error(url, error));
+                        }
+                    }
                 }
                 Err(error) => return Err(network_error(url, error)),
             }
@@ -429,6 +521,17 @@ fn build_ech_client(
 /// and decode errors have already reached the server and must not be repeated.
 fn is_fallback_error(error: &reqwest::Error) -> bool {
     error.is_connect() || error.is_timeout()
+}
+
+/// Cache key for an HTTPS origin. The port is included so a service on a
+/// non-default port cannot inherit another service's fallback decision.
+fn ech_fallback_key(url: &Url) -> Option<String> {
+    if url.scheme() != "https" {
+        return None;
+    }
+    let host = url.host_str()?.to_ascii_lowercase();
+    let port = url.port_or_known_default().unwrap_or(443);
+    Some(format!("{host}:{port}"))
 }
 
 fn network_error(url: &Url, error: reqwest::Error) -> AppError {
@@ -686,6 +789,51 @@ mod tests {
     }
 
     #[test]
+    fn ech_fallback_key_is_scoped_to_the_https_origin() {
+        assert_eq!(
+            ech_fallback_key(&Url::parse("http://example.com/").unwrap()),
+            None
+        );
+        assert_eq!(
+            ech_fallback_key(&Url::parse("https://example.com/path").unwrap()).as_deref(),
+            Some("example.com:443")
+        );
+        assert_eq!(
+            ech_fallback_key(&Url::parse("https://EXAMPLE.com:8443/").unwrap()).as_deref(),
+            Some("example.com:8443")
+        );
+    }
+
+    #[test]
+    fn caches_and_expires_ech_fallbacks() {
+        let client = HttpClient::default();
+        let key = "example.com:443";
+
+        assert!(!client.ech_fallback_is_active(key).unwrap());
+        client.remember_ech_fallback(key).unwrap();
+        assert!(client.ech_fallback_is_active(key).unwrap());
+
+        client
+            .lock()
+            .unwrap()
+            .ech_fallback_until
+            .insert(key.into(), Instant::now() - Duration::from_secs(1));
+        assert!(!client.ech_fallback_is_active(key).unwrap());
+        assert!(client.lock().unwrap().ech_fallback_until.is_empty());
+    }
+
+    #[test]
+    fn disabling_ech_clears_cached_fallbacks() {
+        let client = HttpClient::default();
+        let key = "example.com:443";
+        client.remember_ech_fallback(key).unwrap();
+
+        client.disable_ech().unwrap();
+
+        assert!(!client.ech_fallback_is_active(key).unwrap());
+    }
+
+    #[test]
     fn disabling_ech_invalidates_an_in_flight_enable() {
         let client = HttpClient::default();
         let control = client.begin_ech_control().unwrap();
@@ -737,6 +885,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), reqwest::StatusCode::OK);
+        assert!(http.ech_fallback_is_active("www.qq.com:443").unwrap());
 
         // Force the deadline so the next HTTPS request re-runs the bootstrap
         // and swaps in a fresh runtime.
@@ -751,6 +900,13 @@ mod tests {
             .unwrap();
         assert_eq!(response.status(), reqwest::StatusCode::OK);
         assert!(http.lock().unwrap().ech_generation > generation);
+        // The fallback decision belongs to the origin, not the ECH runtime.
+        assert!(http.ech_fallback_is_active("www.qq.com:443").unwrap());
+        let response = http
+            .send(&qq, |client| client.get(qq.as_str()))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
 
         let error = http.set_proxy(Some(proxy("127.0.0.1", 7890))).unwrap_err();
         assert!(matches!(
@@ -760,6 +916,7 @@ mod tests {
 
         http.disable_ech().unwrap();
         assert!(!http.ech_status().unwrap().enabled);
+        assert!(!http.ech_fallback_is_active("www.qq.com:443").unwrap());
         http.set_proxy(Some(proxy("127.0.0.1", 7890))).unwrap();
     }
 

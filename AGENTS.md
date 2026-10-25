@@ -11,8 +11,8 @@
 - 首页是 Google 风格搜索页：选择平台、输入关键词后进入独立的 `/search` 结果页；结果页负责分页与错误/空态，缩略图由 Rust `fetch_image` 缓存后通过资产协议显示；
 - 结果卡片进入 `/comic/:platform/:id` 详情页，manhuagui/JM/nhentai 各自渲染封面、元数据和标签；详情页可直接刷新或通过深链接打开；
 - `search_comics` / `get_comic` 为 manhuagui、jm、nhentai 提供统一的关键词搜索与精确 id 详情，搜索与详情分别返回带 `platform` 判别的强类型扩展字段；
-- 首页搜索框下方有收藏、下载、历史、设置快捷入口；前三个目前指向占位页，设置页已提供主题、语言、HTTP 代理与 ECH 开关。
-- 主题、语言、HTTP 代理与 ECH 偏好从 webview 本地恢复，并可在设置页修改；代理配置与 ECH 开关会同步到 Rust 的 HTTP client。
+- 首页搜索框下方有收藏、下载、历史、设置快捷入口；前三个目前指向占位页，设置页已提供主题、语言、HTTP 代理、ECH 开关，以及日志开关与日志查看入口。
+- 主题、语言、HTTP 代理、ECH 与日志偏好从 webview 本地恢复，并可在设置页修改；代理配置、ECH 开关与日志开关会同步到 Rust。日志开启后写入应用日志目录，可在 `/settings/logs` 页面查看、导出或清空。
 
 不要假设项目里已经有漫画库、章节浏览、下载器、数据库或阅读器引擎；这些都属于待实现的新功能。
 
@@ -23,7 +23,7 @@ ECH 接入已完成；当前实现与约束见本文件的“远程 HTTP、图�
 ### 技术栈
 
 - **前端：** Vue 3.5（`<script setup>`）、Vue Router 4（hash 路由）、Pinia 4 + `pinia-plugin-persistedstate`、vue-i18n 11、Naive UI 2（自动导入）、Sass、TypeScript 6。
-- **后端：** Rust edition 2024、Tauri 2（启用 `protocol-asset`）、`reqwest`（rustls）负责抓取、`rustls`/`tokio-rustls`（ring + aws-lc-rs）用于 ECH 握手、`hickory-resolver`（DoH）查询 ECH 配置、`scraper`/`regex`/`html-escape` 解析 HTML、`serde_json` 解析 JSON、`sha2` 生成缓存键、`thiserror` 2、Tauri 插件 `opener`。
+- **后端：** Rust edition 2024、Tauri 2（启用 `protocol-asset`）、`reqwest`（rustls）负责抓取、`rustls`/`tokio-rustls`（ring + aws-lc-rs）用于 ECH 握手、`hickory-resolver`（DoH）查询 ECH 配置、`scraper`/`regex`/`html-escape` 解析 HTML、`serde_json` 解析 JSON、`sha2` 生成缓存键、`thiserror` 2、Tauri 插件 `opener` 与 `dialog`（日志导出的原生保存对话框）。
 - **工具链：** pnpm（单包项目，不是 monorepo）、Vite 8、`vue-tsc`。
 - **平台：** Windows/macOS/Linux 桌面端。Android 工程已在 `src-tauri/gen/android` 初始化；iOS 尚未初始化。
 
@@ -64,13 +64,14 @@ ECH 接入已完成；当前实现与约束见本文件的“远程 HTTP、图�
 ```text
 .
 ├─ src/                          Vue 应用
-│  ├─ main.ts                    启动：Pinia、i18n、router；挂载前应用主题/语言/代理并启动 ECH 初始化
+│  ├─ main.ts                    启动：Pinia、i18n、router；挂载前应用主题/语言/日志/代理并启动 ECH 初始化
 │  ├─ App.vue                    Naive UI Provider、顶部安全区与 RouterView 外壳
 │  ├─ components/
 │  │  ├─ ComicThumb.vue          结果缩略图：Rust 缓存 + 资产协议
 │  │  ├─ ComicSearchBar.vue      搜索表单：平台选择、关键词输入、提交
 │  │  ├─ HomeShortcuts.vue       首页快捷入口：收藏/下载/历史/设置
 │  │  ├─ ShortcutIcon.vue        快捷入口 SVG 图标
+│  │  ├─ LogActionIcon.vue       日志页返回/刷新/导出/清空图标
 │  │  ├─ PlatformPicker.vue      平台下拉菜单与图标
 │  │  ├─ ComicSearchResults.vue  结果区：错误/加载/空态、网格、分页
 │  │  ├─ ComicResultCard.vue     结果卡片分发器：按 item.platform 选择平台卡片
@@ -92,14 +93,15 @@ ECH 接入已完成；当前实现与约束见本文件的“远程 HTTP、图�
 │  │  ├─ SearchView.vue          结果页：首页图标、搜索栏与结果区
 │  │  ├─ ComicDetailView.vue     详情页：加载/错误/重试与平台内容分发
 │  │  ├─ ShortcutPlaceholderView.vue  收藏/下载/历史的占位页
-│  │  ├─ SettingsView.vue        设置页：主题、语言、代理与 ECH
+│  │  ├─ SettingsView.vue        设置页：主题、语言、代理、ECH 与日志
+│  │  ├─ LogsView.vue            日志页：状态、条目、图标操作与返回
 │  │  └─ NotFoundView.vue        404 页面
 │  ├─ router/index.ts            Hash 路由、守卫、详情路由、滚动行为与原生窗口标题
 │  ├─ stores/
 │  │  ├─ index.ts                Pinia + 持久化命名空间
 │  │  ├─ runtime.ts              非持久化启动状态：ECH 初始化等待
 │  │  ├─ search.ts               内存态搜索会话：平台、关键词、分页与请求竞态
-│  │  └─ settings.ts             持久化的主题、语言、代理与 ECH 偏好
+│  │  └─ settings.ts             持久化的主题、语言、代理、ECH 与日志偏好
 │  ├─ composables/
 │  │  ├─ useRouteTransition.ts   首页/结果页的 View Transition 导航
 │  │  ├─ useTheme.ts             系统/浅色/深色解析 + <html data-theme>
@@ -112,12 +114,14 @@ ECH 接入已完成；当前实现与约束见本文件的“远程 HTTP、图�
 │  ├─ api/comics.ts              平台检索/详情的前端类型与 invoke 封装
 │  ├─ api/proxy.ts               代理配置的前端校验与 set_http_proxy 封装
 │  ├─ api/ech.ts                 ECH 开关、启动门槛与状态命令的 invoke 封装
+│  ├─ api/logs.ts                日志开关、读取、导出与清空命令的 invoke 封装
 │  ├─ errors.ts                  前端错误契约与 AppError
 │  ├─ styles/base.scss           全局 reset/基础样式与安全区留白
 │  └─ components.d.ts            由 unplugin-vue-components 生成；不要手改
 ├─ src-tauri/
-│  ├─ src/lib.rs                 Tauri Builder、命令注册、插件初始化
+│  ├─ src/lib.rs                 Tauri Builder、日志初始化、命令注册、插件初始化
 │  ├─ src/error.rs               AppError 序列化、错误码、测试
+│  ├─ src/logging.rs             可选 JSONL 文件日志、开关/读取/导出/清空命令与测试
 │  ├─ src/ech/                   ECH bootstrap / DoH / TLS 模块
 │  │  ├─ mod.rs                  命令、EchStatus 与模块导出
 │  │  ├─ bootstrap.rs            AliDNS/360 仅查询 cloudflare-ech.com 的 ECH
@@ -131,7 +135,7 @@ ECH 接入已完成；当前实现与约束见本文件的“远程 HTTP、图�
 │  │  ├─ model.rs                搜索/详情 wire 类型
 │  │  └─ platform/               平台 trait、请求头与 HTML/JSON 解析
 │  ├─ src/main.rs                桌面端二进制入口
-│  ├─ capabilities/default.json  窗口权限（标题、opener）
+│  ├─ capabilities/default.json  窗口权限（标题、opener、dialog 保存）
 │  ├─ tauri.conf.json            窗口、构建、安全与打包配置
 │  ├─ icons/                     Tauri 生成的应用图标
 │  └─ gen/
@@ -150,7 +154,7 @@ ECH 接入已完成；当前实现与约束见本文件的“远程 HTTP、图�
 ### 启动顺序
 
 1. `src/main.ts` 创建 Vue 应用，并注册 Pinia、i18n 与 router。
-2. 同步读取 `useSettingsStore(pinia)`（持久化状态会从 `localStorage` 恢复），在挂载前应用已保存的主题、语言与 HTTP 代理（代理通过 `set_http_proxy` 写入 Rust）；若持久化 ECH 为 true，同时启动异步 `set_ech_enabled(true)`，并把 `runtime.echStarting` 置为 true；首页在该标志为 true 时显示等待，不渲染搜索栏，初始化完成/失败后再允许搜索。
+2. 同步读取 `useSettingsStore(pinia)`（持久化状态会从 `localStorage` 恢复），在挂载前应用已保存的主题、语言、日志与 HTTP 代理：日志偏好通过 `set_logging_enabled` 同步，代理通过 `set_http_proxy` 写入 Rust；若持久化 ECH 为 true，同时启动异步 `set_ech_enabled(true)`，并把 `runtime.echStarting` 置为 true；首页在该标志为 true 时显示等待，不渲染搜索栏，初始化完成/失败后再允许搜索。
 3. 应用挂载到 `#app`。
 4. `App.vue` 通过 `NConfigProvider` 提供 Naive UI 的主题与语言，并用 `NMessageProvider` 包裹路由视图。`useTheme()` 与 `useLocale()` 负责保持运行时状态同步，且只在这个外壳中调用一次。
 
@@ -158,7 +162,7 @@ ECH 接入已完成；当前实现与约束见本文件的“远程 HTTP、图�
 
 - Vue UI 只通过 Tauri JS API 与系统交互：`@tauri-apps/api/core` 的 `invoke`、`convertFileSrc` 以及窗口 API。
 - Rust 命令返回数据或类型化错误。**面向用户的文案只放在前端语言包中**，绝不放在 Rust 命令返回值里。
-- 设置保存在 webview 的 `localStorage` 中，键名为 `comics-reader:<store-id>`。Rust 不持久化设置；HTTP 代理与 ECH 开关是运行时状态，前端在启动和保存设置时分别通过 `set_http_proxy` 与 `set_ech_enabled` 同步到内存中的共享 client。
+- 设置保存在 webview 的 `localStorage` 中，键名为 `comics-reader:<store-id>`。Rust 不持久化设置；HTTP 代理、ECH 与日志开关是运行时状态，前端在启动和设置变更时通过 `set_http_proxy`、`set_ech_enabled` 与 `set_logging_enabled` 同步。
 - 路由使用 `createWebHashHistory()`。不要在未处理 Tauri webview 路由回退的情况下改成 web history。
 - 文档主题写入 `document.documentElement.dataset.theme`（`light` / `dark`）；`App.vue` 同时给 Naive UI 传入匹配的 `darkTheme` 对象。
 - Tauri 不会自动把 `document.title` 同步到原生窗口。`router/index.ts` 会显式调用当前 Tauri 窗口的 `setTitle()`；切换语言后 `useLocale` 会再次调用。
@@ -207,6 +211,8 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 - 首页提供设置快捷入口，设置页可切换主题与语言，并可保存 HTTP 代理；主题/语言立即生效。关闭代理开关会立即通过 `set_http_proxy(null)` 清除代理并写回 store，无需点击保存；开启代理或修改地址仍需点击“保存并应用”，且只有 `set_http_proxy` 成功后才写回 store，避免持久化无法应用的地址。
 - `settings.ech` 通过 `set_ech_enabled` 同步到 Rust。开启时设置页先关闭代理，后端 `enable_ech` 也会清空代理；关闭时 `disable_ech` 丢弃 runtime，普通 client 恢复。启动时若持久化 ECH 为 true，`main.ts` 在挂载前异步初始化，失败会回滚 `settings.ech`。`set_http_proxy(Some)` 在 ECH 开启时返回 `invalidInput`；设置页不再因 ECH 开启而禁用代理开关，而是在打开代理时先关闭 ECH（与打开 ECH 自动关闭代理对称）。`get_ech_status` 仅保留为诊断命令，设置页不展示状态。启动阶段若 ECH 正在初始化，首页显示等待状态并隐藏搜索栏。
 - 设置页的“网络设置”区域把 HTTP 代理与 ECH 放在一起，不再为 ECH 单独分组；区块标题用“网络设置”，代理开关文案用“HTTP 代理”，不要写回旧的“使用代理”或单独 ECH 章节。
+- `settings.logging` 通过 `set_logging_enabled` 同步到 Rust，默认关闭；启动时仅在持久化为 true 时调用。设置页开关失败会回滚 store 并给出本地化提示；日志页仍可读取关闭前留下的文件。日志页是 `/settings/logs`，只读最近 500 条，按时间倒序显示（最新在上）；工具栏用图标按钮刷新、导出和清空，清空不二次确认。导出通过原生保存对话框选择目标，写入轮转文件与当前文件。
+- 日志文件固定为 `app_log_dir()/app.log`，每行一个 JSON 对象（`timestamp` 毫秒、`level`、`target`、`message`），超过 1 MiB 轮转为 `app.log.1`，只保留一份旧文件。清空会同时删除当前与轮转文件。日志开关是运行时状态，Rust 不持久化它。
 
 ### 远程 HTTP、图片缓存与平台检索
 
@@ -224,6 +230,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 - `fetch_ech_config` 在 `src-tauri/src/ech/bootstrap.rs` 中用 `hickory-resolver` 的 DoH 传输查询 `cloudflare-ech.com` 的 HTTPS RR，返回全部记录与 base64 ECHConfigList；它仍是诊断命令，不参与业务请求，业务请求使用 `set_ech_enabled` 构建的 runtime。端点 host 先经系统解析，DoH 连接的 TLS 由 `webpki-roots` 校验；hickory 不读取应用的 HTTP 代理设置。
 - `probe_ech_handshake(domain, dohEndpoint)` 在 `src-tauri/src/ech/session.rs` / `tls.rs` 中固定查询 `cloudflare-ech.com` 的 ECHConfigList，再把同一份配置应用到目标域名；目标 A/AAAA 通过 `src-tauri/src/ech/doh.rs` 的 Cloudflare DoH over ECH 解析，固定连接 `104.16.248.249` / `104.16.249.249`，不再使用系统 DNS 或 AliDNS/360 解析目标。握手返回 `configDomain`、`echStatus`、TLS 版本、ALPN、HTTP 状态与 `fallback`；非 Cloudflare 站点 ECH 失败后自动回退普通 TLS。该探针仍独立于业务请求；由于 reqwest/hickory 使用 ring 而 ECH 使用 aws-lc-rs，`run()` 启动时会安装 ring 作为进程默认 provider。
 - ECH runtime 的配置 TTL 为 10 分钟；到期后的首个 HTTPS 请求会重新 bootstrap 并替换 runtime，失败时保留旧 runtime 并在 60 秒后重试。Cloudflare DoH 的 A/AAAA 结果按 60 秒缓存，ECH 与 plain client 共享同一个 `CloudflareResolver`，避免回退时重复查询。
+- ECH 开启时按 HTTPS origin（`host:port`）缓存“ECH 失败但 plain TLS 成功”的结果 10 分钟。命中缓存的请求直接使用 plain client，不再重复失败的 ECH 握手，同时继续复用 plain 连接池。缓存是内存态：ECH 关闭/重新启用会清空，ECH 配置刷新不清空；缓存内 plain 请求失败会移除该 origin 的缓存。
 - `nhentai.net` 在 AliDNS/360 上的地址答案会被污染或不一致（虚假 IPv6、0.0.0.0 或错误 IPv4），但 `probe_ech_handshake` 已通过 Cloudflare DoH 解析目标，因此可直接直连：测试 `queries_nhentai_via_cloudflare_doh_over_ech` 结果为 `echStatus=accepted`、TLS1.3、HTTP 200、`fallback=false`，全程未使用本地代理。
 - 检索与详情命令为 `search_comics(platform, query, page)` 与 `get_comic(platform, id)`。平台通过 `search_request`/`parse_search`/`detail_request`/`parse_detail` 构建 URL 并解析响应，共享的 `fetch_document` 负责请求、状态码与大小限制。
 - 详情页为 `/comic/:platform/:id`，不依赖内存态搜索会话，刷新或直接打开也能请求 `get_comic`；返回按钮在搜索会话仍有效时回 `/search`，否则回首页。路由 `scrollBehavior` 让新页面从顶部开始，详情加载后用 `setWindowTitle` 把漫画标题写入原生窗口标题。
@@ -260,6 +267,10 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 - 优先使用 Naive UI 组件（`NButton`、`NInput`、`NCard` 等），不要重复造基础组件。自动导入已在 `vite.config.ts` 配置；不要手动修改 `src/components.d.ts`。
 - 调用 `useMessage()` 的组件必须位于 `NMessageProvider` 之下，`App.vue` 已提供。若需要 dialog、notification 等 Provider，也在 `App.vue` 中添加。
 - 优先使用现有 Naive UI 主题机制（`NConfigProvider`、`darkTheme`），不要零散地写 CSS 变量或内联颜色。
+- 设置项只保留简洁标签，不要添加“将应用运行活动记录到本地日志文件”这类解释性副文案；用开关或整行链接本身表达行为。
+- 设置页的导航项（如“查看日志”）必须整行可点击，不要在右侧再放按钮。
+- 日志页返回按钮沿用漫画详情页的设计：`quaternary`、`circle`、仅 chevron 图标，并带 `aria-label` 与 `title`，不要显示“返回设置”文本。
+- 日志页不显示日志文件路径；工具栏只放图标按钮（刷新、导出、清空），清空不弹二次确认。图标按钮必须有本地化的 `aria-label` 与 `title`。
 
 ### 移动端安全区
 
@@ -283,7 +294,8 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 | 新增错误码 | `src-tauri/src/error.rs`、`src/errors.ts`、`useErrorMessage.ts`、两个语言包 |
 | 新增或修改界面文案 | `src/i18n/messages/en.json` 与 `zh-CN.json`；通过 `useAppI18n()` 使用 |
 | 新增路由或页面标题 | `src/router/index.ts`（`RouteTitleKey`、route meta）+ 语言包 |
-| 新增持久化设置 | `src/stores/settings.ts`、`src/views/SettingsView.vue`、相关 composable |
+| 新增持久化设置 | `src/stores/settings.ts`、`src/views/SettingsView.vue`、相关 composable；若同步到 Rust，还要改对应 `src/api/*.ts` 与命令 |
+| 修改日志行为、日志事件或日志页 | `src-tauri/src/logging.rs`、`src-tauri/src/lib.rs`（命令注册）、`src-tauri/capabilities/default.json`（导出保存对话框）、`src/api/logs.ts`、`src/views/LogsView.vue`、`src/views/SettingsView.vue`、`src/components/LogActionIcon.vue`、两个语言包 |
 | 修改窗口权限 | `src-tauri/capabilities/default.json` |
 | 修改窗口/构建/打包配置 | `src-tauri/tauri.conf.json` |
 | 新增 Tauri 插件 | `src-tauri/Cargo.toml`、`src-tauri/src/lib.rs`、`package.json`（若需要 JS API）、capabilities |
@@ -291,7 +303,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 | 新增图片平台 | `src-tauri/src/image/platform/`（实现 trait、注册、host/header 与测试） |
 | 新增/修改平台搜索或详情 | `src-tauri/src/image/platform/`、`src-tauri/src/image/model.rs`、`src/api/comics.ts` |
 | 新增/修改详情页 | `src/views/ComicDetailView.vue`、`src/components/comic-detail/`、`src/router/index.ts`、`src-tauri/src/image/model.rs` |
-| 修改首页或设置 UI | `src/views/HomeView.vue`、`src/views/SearchView.vue`、`src/views/SettingsView.vue`、`src/views/ShortcutPlaceholderView.vue`、`src/components/HomeShortcuts.vue`、`src/components/ShortcutIcon.vue`、`src/shortcuts.ts`、`src/stores/search.ts`、`src/stores/runtime.ts`、`src/composables/useRouteTransition.ts`、`src/components/ComicSearchBar.vue`、`src/components/ComicSearchResults.vue`、`src/components/ComicResultCard.vue`、`src/components/result-cards/`、`src/components/PlatformPicker.vue`、`src/components/ComicThumb.vue`、`src/assets/platforms/`、`src/api/comics.ts` |
+| 修改首页或设置 UI | `src/views/HomeView.vue`、`src/views/SearchView.vue`、`src/views/SettingsView.vue`、`src/views/LogsView.vue`、`src/views/ShortcutPlaceholderView.vue`、`src/components/HomeShortcuts.vue`、`src/components/ShortcutIcon.vue`、`src/shortcuts.ts`、`src/stores/search.ts`、`src/stores/runtime.ts`、`src/composables/useRouteTransition.ts`、`src/components/ComicSearchBar.vue`、`src/components/ComicSearchResults.vue`、`src/components/ComicResultCard.vue`、`src/components/result-cards/`、`src/components/PlatformPicker.vue`、`src/components/ComicThumb.vue`、`src/assets/platforms/`、`src/api/comics.ts`、`src/api/logs.ts` |
 | 修改全局样式或顶部安全区 | `src/styles/base.scss`、`src/App.vue`；组件样式保持在组件内 |
 | 修改 Android 原生配置 | `src-tauri/gen/android/`（已跟踪，但大部分是生成内容，修改前要确认） |
 | 重新生成应用图标 | `src-tauri/icons/`，通过 `pnpm tauri icon <source>` 生成；不要手改 |
@@ -305,6 +317,12 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 3. 前端通过 `invoke<T>("my_command", { ... })` 调用。
 4. 失败时返回 `AppError`。如果引入了新错误码，按上面的错误契约完整更新。
 5. 运行 `cargo test`、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`，再运行 `pnpm build`。
+
+### 新增日志事件
+
+1. 在 `src-tauri/src/logging.rs` 中调用 `logging::info` / `logging::warn` / `logging::error`；这些函数在开关关闭时直接返回，不要在调用点手写文件操作。
+2. `target` 保持稳定（如 `http`、`search`、`ech`），消息可以包含 URL、平台等技术上下文，但不要记录认证信息或秘密。
+3. 需要新增字段时同步 `LogEntry`、`read_logs` wire 类型、`src/api/logs.ts` 与 `LogsView.vue`，并补序列化/尾部读取测试。
 
 ### 新增 Tauri 插件或权限
 
@@ -350,6 +368,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 - 平台检索：分别用 manhuagui/nhentai 搜索关键词并取一条详情，确认 total/page_size/result 与 thumb/extras；JM 若被 Cloudflare 403，应返回本地化 httpStatus 错误而不是崩溃。
 - 设置页：切换主题立即生效并在重启后恢复；切换语言后文案、Naive UI 与窗口标题同步更新。
 - 设置页代理：启用并填写可达代理后搜索与缩略图正常；非法地址有本地化提示且不持久化；关闭开关后立即恢复默认网络行为（无需保存）；开启或修改地址后仍需保存并应用；重启后配置恢复。
+- 日志：在设置页开启“记录日志”，完成一次搜索或打开详情后进入“查看日志”，确认状态、级别与条目正常；确认“查看日志”整行可点击，日志页返回按钮为无文字图标；刷新、导出、清空三个图标按钮可用，导出生成文件，清空不弹确认；关闭开关后不再产生新条目；重启后开关状态恢复并继续写入。
 - ECH：代理开启时打开 ECH，确认代理立即关闭且持久化；启用后搜索 nhentai 成功、缩略图正常；manhuagui 走 plain fallback（本机实测 `www.manhuagui.com` 为 `notOffered`/TLS1.2、HTTP 200，不能当作 ECH accepted）；JM 的 403/IP 锁定返回本地化 httpStatus；关闭 ECH 后代理控件恢复可用；持久化为 `ech: true` + 代理开启后重启，确认启动阶段代理被自动关闭且 ECH 初始化成功；禁用后再启用，确认 runtime 重建且没有残留代理。
 - ECH 握手探针：调用 `probe_ech_handshake`，传 `domain: "crypto.cloudflare.com"` 与 `dohEndpoint: "https://dns.alidns.com/dns-query"`，确认返回的 `configDomain` 为 `cloudflare-ech.com`、`echStatus` 为 `accepted`、TLS 版本为 `TLSv1.3`、`fallback` 为 `false`；同一份配置对 `www.cloudflare.com`、`example.com` 等 Cloudflare 站点也应生效；对 `www.qq.com` 等非 Cloudflare 站点应返回 `fallback: true`、`echStatus: "notOffered"`。
 - 移动端安全区：在真机或 DevTools 中临时给 `.safe-area-top` 设置高度（如 32px），确认所有页面从安全区下方开始；滚动后安全区条仍固定在顶部并遮住其下内容；切换深色主题时背景色一致。
@@ -358,16 +377,17 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 
 ### 测试现状
 
-- Rust 测试覆盖错误契约（`src-tauri/src/error.rs`）、图片缓存、HTTP 基础头、平台识别/请求头与三平台搜索/详情 parser fixture（`src-tauri/src/image/`），以及 ECH 的 URL 解析、SVCB 提取、Cloudflare DoH 查询构造、ECH/普通 TLS 配置、resolver 端口映射与 60 秒缓存 TTL、reqwest ECH client（`src-tauri/src/ech/`、`src-tauri/src/image/http.rs`），共 71 个测试，其中 10 个联网测试默认 `ignored`。
-- ECH 联网测试使用 `dns.alidns.com` 与 `doh.360.cn`：`queries_cloudflare_ech_over_doh` 验证 bootstrap；`performs_ech_handshake` 用同一份 `cloudflare-ech.com` 配置对 5 个 Cloudflare 站点握手；`queries_cloudflare_dns_over_ech` 验证 Cloudflare DoH over ECH 解析 `example.com`；`queries_nhentai_via_cloudflare_doh_over_ech` 验证 `nhentai.net` 直连（accepted、TLS1.3、HTTP 200、无本地代理）；`falls_back_to_plain_tls_for_non_cloudflare_site` 验证 `www.qq.com` 回退普通 TLS（`fallback=true`、`echStatus=notOffered`）；`reqwest_client_uses_ech_and_cloudflare_dns` 验证 reqwest ECH client（nhentai 200/HTTP2、qq ECH 失败分类、plain 回退）；`ech_client_fetches_and_falls_back` 验证 `HttpClient` runtime、TTL 懒刷新、代理互斥与禁用恢复；`enables_ech_with_the_default_bootstrap` 验证默认 AliDNS/360 bootstrap；`failed_bootstrap_leaves_ech_disabled` 验证 bootstrap 失败不会安装 runtime；`nhentai_search_detail_and_image_work_with_ech` 验证 nhentai 搜索、详情和详情缩略图的完整 ECH 链路。hickory DoH 查询测试要求 HTTP/2，经过只支持 HTTP/1.1 的代理时会超时。
+- Rust 测试覆盖错误契约（`src-tauri/src/error.rs`）、图片缓存、HTTP 基础头、平台识别/请求头与三平台搜索/详情 parser fixture（`src-tauri/src/image/`），以及 ECH 的 URL 解析、SVCB 提取、Cloudflare DoH 查询构造、ECH/普通 TLS 配置、resolver 端口映射与 60 秒缓存 TTL、reqwest ECH client（`src-tauri/src/ech/`、`src-tauri/src/image/http.rs`），共 78 个测试，其中 10 个联网测试默认 `ignored`；ECH 回退缓存测试覆盖 origin key、过期清理与 ECH 关闭清空（`src-tauri/src/image/http.rs`），日志模块测试覆盖 JSON wire 形状、尾部截断、损坏行跳过与导出拼接顺序（`src-tauri/src/logging.rs`）。
+- ECH 联网测试使用 `dns.alidns.com` 与 `doh.360.cn`：`queries_cloudflare_ech_over_doh` 验证 bootstrap；`performs_ech_handshake` 用同一份 `cloudflare-ech.com` 配置对 5 个 Cloudflare 站点握手；`queries_cloudflare_dns_over_ech` 验证 Cloudflare DoH over ECH 解析 `example.com`；`queries_nhentai_via_cloudflare_doh_over_ech` 验证 `nhentai.net` 直连（accepted、TLS1.3、HTTP 200、无本地代理）；`falls_back_to_plain_tls_for_non_cloudflare_site` 验证 `www.qq.com` 回退普通 TLS（`fallback=true`、`echStatus=notOffered`）；`reqwest_client_uses_ech_and_cloudflare_dns` 验证 reqwest ECH client（nhentai 200/HTTP2、qq ECH 失败分类、plain 回退）；`ech_client_fetches_and_falls_back` 验证 `HttpClient` runtime、TTL 懒刷新、ECH 回退缓存跨配置刷新与关闭清空、代理互斥与禁用恢复；`enables_ech_with_the_default_bootstrap` 验证默认 AliDNS/360 bootstrap；`failed_bootstrap_leaves_ech_disabled` 验证 bootstrap 失败不会安装 runtime；`nhentai_search_detail_and_image_work_with_ech` 验证 nhentai 搜索、详情和详情缩略图的完整 ECH 链路。hickory DoH 查询测试要求 HTTP/2，经过只支持 HTTP/1.1 的代理时会超时。
 - 前端没有单元/E2E 测试框架（没有 Vitest、Playwright，也没有 `pnpm test`），仓库也没有 CI。不要声称存在并未运行的测试覆盖。如果新增测试体系，请在 `package.json` 中加脚本并同步更新本文件。
 
 ## 陷阱与刻意保留的现状
 
 - **`pnpm dev` 不是完整应用。** 它只提供 UI，没有 Tauri，因此 `invoke`、`convertFileSrc` 与窗口 API 都会失败。浏览器兜底逻辑已被有意移除。
-- **ECH 已接入 HTTPS 请求。** `settings.ech` 经 `set_ech_enabled` 同步到 Rust；`HttpClient::send` 对 HTTPS 使用 ECH runtime，HTTP 保持普通 client。ECH client 使用 `cloudflare-ech.com` 的共享配置，目标 A/AAAA 通过 Cloudflare DoH over ECH（固定 IP `104.16.248.249` / `104.16.249.249`），非 Cloudflare 站点在 `is_connect()/is_timeout()` 时回退 plain TLS（会暴露目标 SNI）；`www.manhuagui.com` 本机实测也是 `notOffered`/TLS1.2 回退，“能访问”不等于 ECH accepted。JM 的失败是 IP/地域锁定，ECH 不能绕过。代理与 ECH 互斥；`set_http_proxy(Some)` 在 ECH 开启时返回 `invalidInput`。配置 TTL 为 10 分钟，到期后的首个 HTTPS 请求会懒刷新；DoH A/AAAA 按 60 秒缓存，ECH 与 plain client 共享 resolver；刷新失败保留旧 runtime 并在 60 秒后重试。
+- **ECH 已接入 HTTPS 请求。** `settings.ech` 经 `set_ech_enabled` 同步到 Rust；`HttpClient::send` 对 HTTPS 使用 ECH runtime，HTTP 保持普通 client。ECH client 使用 `cloudflare-ech.com` 的共享配置，目标 A/AAAA 通过 Cloudflare DoH over ECH（固定 IP `104.16.248.249` / `104.16.249.249`），非 Cloudflare 站点在 `is_connect()/is_timeout()` 时回退 plain TLS（会暴露目标 SNI）；`www.manhuagui.com` 本机实测也是 `notOffered`/TLS1.2 回退，“能访问”不等于 ECH accepted。JM 的失败是 IP/地域锁定，ECH 不能绕过。代理与 ECH 互斥；`set_http_proxy(Some)` 在 ECH 开启时返回 `invalidInput`。配置 TTL 为 10 分钟，到期后的首个 HTTPS 请求会懒刷新；DoH A/AAAA 按 60 秒缓存，ECH 与 plain client 共享 resolver；刷新失败保留旧 runtime 并在 60 秒后重试；非 ECH origin 首次回退成功后会缓存 10 分钟，后续请求直接走 plain TLS。
 - **启动 ECH 是异步的，业务请求会等待。** `main.ts` 不等待 `set_ech_enabled(true)` 就挂载，但 `HomeView` 在 `runtime.echStarting` 为 true 时只显示等待、不渲染搜索栏；搜索、详情和缩略图 API 也都在 `waitForEchStartup` 上等待，因此直接打开详情深链接不会提前走普通 client。后端用 `ech_control_generation` 保证迟到的 bootstrap 不会覆盖用户之后的关闭。
 - **代理是 Rust 的运行时状态。** 不要把代理持久化到 Rust；启动和设置页保存时通过 `set_http_proxy` 同步，命令失败时保留旧 client。
+- **日志开关也是 Rust 的运行时状态。** 偏好只存在 `comics-reader:settings`，启动时按需调用 `set_logging_enabled(true)`；Rust 不保存开关。日志写入在锁内完成并按 1 MiB 轮转，读取只返回最近 500 条；不要把它改成会阻塞命令或无限增长的实现。
 - **顶部安全区不要用页面 padding。** 页面滚动时 padding 会跟着滚走；顶部安全区由 `App.vue` 的 sticky `.safe-area-top` 统一留白，滚动内容不会显示到状态栏或刘海区域。
 - **主题与语言只能通过设置页修改。** 偏好保存在 `comics-reader:settings`；不要在组件里绕过 `useSettingsStore`，也不要重复调用 `useTheme()`/`useLocale()`。
 - **`/search` 不携带查询参数。** 结果页依赖内存态 `search` store；刷新或直接打开 `#/search` 会被路由守卫送回首页，这是刻意取舍。首页图标固定回首页，不使用 `router.back()`。
@@ -411,6 +431,7 @@ Rust 命令返回 `Result<T, AppError>`。失败时会序列化为：
 - [ ] `pnpm build` 通过（前端改动）。
 - [ ] `cargo test`、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings` 通过（Rust 改动）。
 - [ ] 新增界面文案同时存在于 `en.json` 与 `zh-CN.json`。
+- [ ] 日志开关与 `/settings/logs` 页已做运行时冒烟测试：开关即时生效、整行可点击、返回/工具栏均为图标按钮、导出可用、清空无确认、重启后偏好恢复。
 - [ ] 新增或修改的错误码已贯通 Rust、`errors.ts`、`useErrorMessage.ts` 与两个语言包。
 - [ ] Tauri 命令已注册，所需 capability 已添加。
 - [ ] 当改动涉及 IPC、图片缓存、平台检索、搜索 UI、主题、i18n 或路由时，已用 `pnpm tauri dev` 做运行时冒烟测试。

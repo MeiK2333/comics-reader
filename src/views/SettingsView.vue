@@ -5,6 +5,7 @@ import { useMessage } from "naive-ui";
 import type { SelectOption } from "naive-ui";
 import HomeIcon from "../components/HomeIcon.vue";
 import { beginEchStartup, setEchEnabled } from "../api/ech";
+import { setLoggingEnabled } from "../api/logs";
 import {
   applyProxy,
   validateProxy,
@@ -42,6 +43,7 @@ const proxyDraft = reactive<{
 }>({ ...settings.proxy });
 const savingProxy = ref(false);
 const savingEch = ref(false);
+const savingLogging = ref(false);
 
 const PROXY_ERROR_KEYS: Record<ProxyValidationError, MessageKey> = {
   hostRequired: "settings.proxy.errors.hostRequired",
@@ -144,6 +146,26 @@ async function onEchToggle(enabled: boolean) {
     console.error("failed to update ECH", cause);
   } finally {
     savingEch.value = false;
+  }
+}
+
+async function onLoggingToggle(enabled: boolean) {
+  if (savingLogging.value) {
+    return;
+  }
+
+  savingLogging.value = true;
+  try {
+    await setLoggingEnabled(enabled);
+    settings.logging = enabled;
+  } catch (cause) {
+    // The file could not be opened (or removed); keep the store in sync with
+    // what Rust actually accepted instead of persisting a broken preference.
+    settings.logging = !enabled;
+    message.error(t("settings.logging.errors.update"));
+    console.error("failed to update logging", cause);
+  } finally {
+    savingLogging.value = false;
   }
 }
 
@@ -277,6 +299,24 @@ function goHome() {
           @update:value="onEchToggle"
         />
       </div>
+
+      <NDivider class="settings-divider" />
+
+      <h2 class="settings-subtitle">{{ t("settings.logging.title") }}</h2>
+
+      <div class="setting">
+        <span>{{ t("settings.logging.enable") }}</span>
+        <NSwitch
+          v-model:value="settings.logging"
+          :loading="savingLogging"
+          :disabled="savingLogging"
+          @update:value="onLoggingToggle"
+        />
+      </div>
+
+      <RouterLink class="setting setting-link" :to="{ name: 'logs' }">
+        <span>{{ t("settings.logging.view") }}</span>
+      </RouterLink>
     </NCard>
   </main>
 </template>
@@ -320,6 +360,24 @@ function goHome() {
 .setting-select {
   width: 9.5rem;
   flex: none;
+}
+
+.setting-link {
+  color: inherit;
+  text-decoration: none;
+  padding: 0.4rem 0.5rem;
+  margin-right: -0.5rem;
+  margin-left: -0.5rem;
+  border-radius: 6px;
+}
+
+.setting-link:hover {
+  background-color: rgba(128, 128, 128, 0.12);
+}
+
+.setting-link:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 1px;
 }
 
 .settings-divider {

@@ -9,6 +9,7 @@
     "downloads": "下载 · {app}",
     "history": "历史 · {app}",
     "settings": "设置 · {app}",
+    "logs": "日志 · {app}",
     "notFound": "页面不存在 · {app}"
   },
   "errors": {
@@ -142,6 +143,36 @@
       "errors": {
         "update": "无法更新 ECH。"
       }
+    },
+    "logging": {
+      "title": "日志",
+      "enable": "记录日志",
+      "view": "查看日志",
+      "errors": {
+        "update": "无法更新日志设置。"
+      }
+    }
+  },
+  "logs": {
+    "title": "日志",
+    "back": "返回设置",
+    "enabled": "日志已开启",
+    "disabled": "日志已关闭",
+    "refresh": "刷新",
+    "export": "导出日志",
+    "exported": "日志已导出。",
+    "exportFailed": "无法导出日志。",
+    "clear": "清空日志",
+    "cleared": "日志已清空。",
+    "count": "共 {count} 条",
+    "truncated": "仅显示最新的 {count} 条记录。",
+    "empty": "暂无日志。",
+    "loadFailed": "无法读取日志。",
+    "clearFailed": "无法清空日志。",
+    "levels": {
+      "info": "信息",
+      "warn": "警告",
+      "error": "错误"
     }
   },
   "shortcut": {

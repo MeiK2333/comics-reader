@@ -20,6 +20,7 @@ use tauri::State;
 
 use crate::error::{AppError, Result};
 use crate::image::HttpClient;
+use crate::logging;
 
 /// Bootstrap endpoints tried in order when the caller does not choose one.
 const DEFAULT_BOOTSTRAP_DOHS: [&str; 2] = [
@@ -68,12 +69,25 @@ pub(crate) async fn set_ech_enabled(
     enabled: bool,
     bootstrap_doh: Option<String>,
 ) -> Result<()> {
-    if !enabled {
-        http.disable_ech()?;
-        return Ok(());
+    let result = if enabled {
+        enable_ech_with_bootstrap(http.inner(), bootstrap_doh).await
+    } else {
+        http.disable_ech()
+    };
+
+    match &result {
+        Ok(()) if enabled => logging::info("ech", "ECH enabled"),
+        Ok(()) => logging::info("ech", "ECH disabled"),
+        Err(error) => logging::error(
+            "ech",
+            format!(
+                "failed to update ECH: enabled={enabled} code={} error={error}",
+                error.code().as_str()
+            ),
+        ),
     }
 
-    enable_ech_with_bootstrap(http.inner(), bootstrap_doh).await
+    result
 }
 
 /// Report whether ECH is enabled and which config is in use.
@@ -104,6 +118,10 @@ async fn enable_ech_with_bootstrap(http: &HttpClient, bootstrap_doh: Option<Stri
     // issued while it runs wins, even if this future completes afterwards.
     let control = http.begin_ech_control()?;
     let session = bootstrap_session(bootstrap_doh).await?;
+    logging::info(
+        "ech",
+        format!("ECH config bootstrapped via {}", session.bootstrap_doh()),
+    );
     http.enable_ech_if_current(control, Arc::new(session))
 }
 

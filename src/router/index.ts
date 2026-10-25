@@ -14,6 +14,7 @@ type RouteTitleKey =
   | "meta.downloads"
   | "meta.history"
   | "meta.settings"
+  | "meta.logs"
   | "meta.notFound";
 
 declare module "vue-router" {
@@ -61,6 +62,12 @@ const router = createRouter({
       meta: { titleKey: "meta.settings" },
     },
     {
+      path: "/settings/logs",
+      name: "logs",
+      component: () => import("../views/LogsView.vue"),
+      meta: { titleKey: "meta.logs" },
+    },
+    {
       path: "/comic/:platform(manhuagui|jm|nhentai)/:id",
       name: "comic-detail",
       component: () => import("../views/ComicDetailView.vue"),
@@ -101,6 +108,7 @@ function translateTitleKey(key: RouteTitleKey) {
     case "meta.downloads":
     case "meta.history":
     case "meta.settings":
+    case "meta.logs":
       return translate(key, { app: translate("app.name") });
     case "app.name":
       return translate("app.name");

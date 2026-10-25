@@ -16,6 +16,8 @@ export interface SettingsState {
   proxy: ProxySettings;
   /** Mirrored to Rust through set_ech_enabled; enabling clears any proxy. */
   ech: boolean;
+  /** Mirrored to Rust through set_logging_enabled; writes to the app log file. */
+  logging: boolean;
 }
 
 export const useSettingsStore = defineStore("settings", {
@@ -28,6 +30,7 @@ export const useSettingsStore = defineStore("settings", {
       port: 8080,
     },
     ech: false,
+    logging: false,
   }),
   // Persisted under `comics-reader:settings` (see `src/stores/index.ts`) and
   // rehydrated synchronously when the store is first used.

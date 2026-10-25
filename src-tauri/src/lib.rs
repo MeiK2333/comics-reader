@@ -1,6 +1,7 @@
 mod ech;
 pub mod error;
 mod image;
+mod logging;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -11,6 +12,15 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            // Logging is opt-in and must never prevent startup. Commands retry
+            // path resolution if this diagnostic setup fails.
+            if let Err(error) = logging::init(app.handle()) {
+                eprintln!("failed to initialize the application log: {error}");
+            }
+            Ok(())
+        })
         .manage(image::HttpClient::default())
         .invoke_handler(tauri::generate_handler![
             image::fetch_image,
@@ -20,7 +30,11 @@ pub fn run() {
             ech::fetch_ech_config,
             ech::probe_ech_handshake,
             ech::set_ech_enabled,
-            ech::get_ech_status
+            ech::get_ech_status,
+            logging::set_logging_enabled,
+            logging::read_logs,
+            logging::export_logs,
+            logging::clear_logs
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

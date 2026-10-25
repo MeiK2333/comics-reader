@@ -6,6 +6,7 @@ import router from "./router";
 import pinia from "./stores";
 import { beginEchStartup, setEchEnabled } from "./api/ech";
 import { applyProxy } from "./api/proxy";
+import { setLoggingEnabled } from "./api/logs";
 import { applyTheme } from "./composables/useTheme";
 import { i18n, resolveLocale, setLocale } from "./i18n";
 import { useSettingsStore } from "./stores/settings";
@@ -30,6 +31,17 @@ async function bootstrap() {
   // The proxy is runtime state in Rust. Restore it before mounting so the
   // first search or thumbnail cannot race ahead with a direct connection.
   if (isTauri()) {
+    // Logging is also runtime state. Enable it before the network setup so
+    // proxy and ECH startup failures are recorded when the user opted in.
+    if (settings.logging) {
+      try {
+        await setLoggingEnabled(true);
+      } catch (error) {
+        settings.logging = false;
+        console.error("failed to enable logging", error);
+      }
+    }
+
     try {
       await applyProxy(settings.proxy);
     } catch (error) {

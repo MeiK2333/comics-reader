@@ -9,6 +9,7 @@
     "downloads": "Downloads · {app}",
     "history": "History · {app}",
     "settings": "Settings · {app}",
+    "logs": "Logs · {app}",
     "notFound": "Page Not Found · {app}"
   },
   "errors": {
@@ -142,6 +143,36 @@
       "errors": {
         "update": "Could not update ECH."
       }
+    },
+    "logging": {
+      "title": "Logs",
+      "enable": "Enable logging",
+      "view": "View logs",
+      "errors": {
+        "update": "Could not update the logging setting."
+      }
+    }
+  },
+  "logs": {
+    "title": "Logs",
+    "back": "Back to settings",
+    "enabled": "Logging on",
+    "disabled": "Logging off",
+    "refresh": "Refresh",
+    "export": "Export logs",
+    "exported": "Logs exported.",
+    "exportFailed": "Could not export the logs.",
+    "clear": "Clear logs",
+    "cleared": "Logs cleared.",
+    "count": "{count} entries",
+    "truncated": "Showing the newest {count} entries.",
+    "empty": "No logs.",
+    "loadFailed": "Could not read the logs.",
+    "clearFailed": "Could not clear the logs.",
+    "levels": {
+      "info": "Info",
+      "warn": "Warning",
+      "error": "Error"
     }
   },
   "shortcut": {
