@@ -2162,4 +2162,70 @@ mod tests {
         cleanup(&path);
         let _ = fs::remove_file(backup_path(&path));
     }
+
+    fn download_input() -> DownloadInput {
+        DownloadInput {
+            platform: "manhuagui".into(),
+            id: "42".into(),
+            title: "Work".into(),
+            thumb: None,
+            chapters: vec![DownloadChapterInput {
+                id: Some("1".into()),
+                title: Some("Chapter 1".into()),
+            }],
+        }
+    }
+
+    #[test]
+    fn pause_and_resume_invalidate_the_previous_worker() {
+        let path = temp_path("run-id");
+        let root = temp_path("run-id-root").with_extension("dir");
+        let store = DownloadsStore::default();
+        let key: DownloadKey = ("manhuagui".into(), "42".into());
+
+        let (queued, spawn) = store.start(&path, &root, download_input()).unwrap();
+        assert_eq!(queued.status, DownloadStatus::Queued);
+        let first = spawn.expect("a queued download should spawn a worker");
+
+        assert!(store.begin_worker(&path, &key, first).unwrap());
+        assert!(store.is_current(&path, &key, first).unwrap());
+
+        let paused = store.pause(&path, &root, "manhuagui", "42").unwrap();
+        assert_eq!(paused.status, DownloadStatus::Paused);
+        assert!(!store.is_current(&path, &key, first).unwrap());
+
+        let (resumed, spawn) = store.resume(&path, &root, "manhuagui", "42").unwrap();
+        assert_eq!(resumed.status, DownloadStatus::Queued);
+        let second = spawn.expect("resume should spawn a new worker");
+        assert!(second > first);
+
+        // The old worker must not claim the resumed queue entry.
+        assert!(!store.begin_worker(&path, &key, first).unwrap());
+        assert!(store.begin_worker(&path, &key, second).unwrap());
+        assert!(store.is_current(&path, &key, second).unwrap());
+
+        cleanup(&path);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rejects_deleting_an_active_download_and_allows_it_after_pause() {
+        let path = temp_path("delete-active");
+        let root = temp_path("delete-active-root").with_extension("dir");
+        let store = DownloadsStore::default();
+        let key: DownloadKey = ("manhuagui".into(), "42".into());
+
+        store.start(&path, &root, download_input()).unwrap();
+        let error = store
+            .delete(&path, &root, "manhuagui", "42")
+            .expect_err("an active download must not be deleted");
+        assert_eq!(error.code(), crate::error::ErrorCode::InvalidInput);
+
+        store.pause(&path, &root, "manhuagui", "42").unwrap();
+        store.delete(&path, &root, "manhuagui", "42").unwrap();
+        assert!(store.record_snapshot(&path, &key).unwrap().is_none());
+
+        cleanup(&path);
+        let _ = fs::remove_dir_all(&root);
+    }
 }

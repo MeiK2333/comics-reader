@@ -234,4 +234,44 @@ mod tests {
         assert_eq!(payload["code"], "io");
         assert_eq!(payload["details"]["kind"], "PermissionDenied");
     }
+
+    #[test]
+    fn wire_codes_are_stable_and_unique() {
+        let codes = [
+            ErrorCode::InvalidInput,
+            ErrorCode::Network,
+            ErrorCode::HttpStatus,
+            ErrorCode::EmptyResponse,
+            ErrorCode::NotImage,
+            ErrorCode::TooLarge,
+            ErrorCode::NotFound,
+            ErrorCode::Io,
+            ErrorCode::Json,
+            ErrorCode::Tauri,
+            ErrorCode::Unexpected,
+        ];
+
+        let names: Vec<&str> = codes.iter().map(|code| code.as_str()).collect();
+        assert_eq!(
+            names,
+            [
+                "invalidInput",
+                "network",
+                "httpStatus",
+                "emptyResponse",
+                "notImage",
+                "tooLarge",
+                "notFound",
+                "io",
+                "json",
+                "tauri",
+                "unexpected",
+            ]
+        );
+
+        let mut unique = names.clone();
+        unique.sort_unstable();
+        unique.dedup();
+        assert_eq!(unique.len(), names.len());
+    }
 }
