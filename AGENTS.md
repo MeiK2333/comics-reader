@@ -5,8 +5,8 @@
 ## 项目速览
 
 - 早期 Tauri 2 漫画阅读器：Vue 3.5 + TypeScript + Vite 8，Rust 后端；桌面端与移动端（Android 已初始化，iOS 未初始化）。
-- 已有：manhuagui/JM/nhentai 搜索与详情；nhentai 单页阅读器；阅读历史；设置（主题、语言、阅读方向、HTTP 代理、ECH、日志）；日志页。
-- 尚无：漫画库、通用章节列表、下载器、数据库、manhuagui/JM 阅读；收藏/下载仍是占位页。不要按已存在处理。
+- 已有：manhuagui/JM/nhentai 搜索与详情；nhentai 与 JM 单页阅读器；阅读历史；设置（主题、语言、阅读方向、HTTP 代理、ECH、日志）；日志页。
+- 尚无：漫画库、通用章节列表、下载器、数据库、manhuagui 阅读；收藏/下载仍是占位页。不要按已存在处理。
 - README 是上游模板，不可信。以本文件、`package.json`、`src-tauri/Cargo.toml`、`tauri.conf.json` 和代码为准。
 
 ## 环境与命令
@@ -84,19 +84,19 @@
 - 搜索会话由 `search` store 管理；`/search` 不携带 query，刷新/深链会被守卫送回首页；首页图标固定回首页。
 - 详情 `/comic/:platform/:id` 不依赖搜索会话，直接 `get_comic`，刷新/深链可用；返回按钮只在搜索会话有效时回 `/search`，否则回首页。
 - 搜索返回 `{ total, page_size, result: [{ id, title, thumb, platform, extra }] }`，详情 `{ platform, title, thumb, extra }`；`platform` 判别，`extra` 强类型（Rust `SearchExtra`/`DetailExtra`，前端判别联合）。不要退回 `Record<string, unknown>` 或 JSON 兜底。
-- 阅读页源 `get_reader_chapter(platform, id, chapterId?)`；默认 unsupported，目前只有 nhentai。页图片仍逐页 `fetch_image`，不新增缓存目录。
-- `nhentai.net` 在 AliDNS/360 的地址可能被污染；ECH 探针已通过 Cloudflare DoH 解析目标，可直连。JM 搜索可用，album 详情常 403（IP/地区锁定），不是 parser/ECH 问题；Cookie/TLS 指纹通常无效。
+- 阅读页源 `get_reader_chapter(platform, id, chapterId?)`；目前 nhentai 与 JM 已实现，manhuagui 仍 unsupported。页图片仍逐页 `fetch_image`，不新增缓存目录。JM 页图在缓存前由 Rust 按 `scramble_id` 还原并重编码为 JPEG（缓存键带 `?decoded`，`scramble_id` 每章节请求一次并缓存）。
+- `nhentai.net` 在 AliDNS/360 的地址可能被污染；ECH 探针已通过 Cloudflare DoH 解析目标，可直连。JM 走移动端 APP API（`image/platform/jm_api.rs`）：HTML 站点在部分网络对搜索和专辑都返回 403，APP 域名可用；搜索/详情需要 token 签名与 AES 解密，封面由 album id 推导，不需要 Cookie 或 TLS 指纹。请求仍走 `HttpClient`。
 - Nhentai 详情封面用 `t.nhentai.net` 缩略图：`i.nhentai.net` 在部分网络不可达，240px 封面足够。
 
 ### 阅读器
 
-- 路由 `/comic/:platform/:id/read/:chapterId?`，目前只适用 nhentai；`ComicReaderView` 负责加载页源、写 `?page=`、返回详情和错误态。
+- 路由 `/comic/:platform/:id/read/:chapterId?`，适用 nhentai 与 JM；`ComicReaderView` 负责加载页源、写 `?page=`、返回详情和错误态。JM 详情页会传入第一章 id；省略 `chapterId` 时后端退化为用 album id 作为章节（单章本子）。
 - 单页视口：上/中/下三页槽位组成 3 倍轨道，当前页居中；翻页整体滑动，无背景缝。
 - `readerDirection` 决定轨道轴和手势/方向键：`ltr` 横向、`rtl` 横向反向（下一页在左）、`ttb` 纵向；缩放后拖拽平移，滚轮翻页。
 - 上下栏是绝对定位覆盖层，默认隐藏，不占 stage 布局；点击中间 1/3 切换显隐，左右 1/3 按方向翻页；不要在滑动、滚轮或翻页时自动唤出。
 - 页码用 `router.replace` 写 `?page=`，不新增历史；越界夹到 `1..pages.length`；空页显示空态。
 - 页图片仍走 `fetch_image`，不要直接用 CDN URL。缩放、全屏、`Home`/`End` 等现有行为不要破坏。
-- 阅读器目前只支持 nhentai；manhuagui/JM 深链返回本地化 unsupported，不要在页源实现前放开入口。
+- manhuagui 深链返回本地化 unsupported，不要在页源实现前放开入口；JM 章内用页源返回的 `previous`/`next` 导航，不要在前端自行拼接章节。
 
 ### 阅读历史
 
@@ -170,7 +170,7 @@
 - 首页/结果页用 View Transition；不要用延迟 `router.push` 等动画；不支持时直接导航。
 - 生成文件不要手改；`README.md` 只是上游模板。
 - 缓存没有自动清理/容量上限；图片格式和缓存键变更要提升版本。
-- JM 域名常轮换；调用显式传 `platform: "jm"`；403 是 IP/地区限制。
+- JM 域名常轮换；调用显式传 `platform: "jm"`；遇到 403 先确认走的是 APP API 而不是 HTML。
 - 平台解析依赖上游结构；改 selector 必须补 fixture，并保持 `extra` 字段名稳定。
 - 无 CI；`cargo test`、`pnpm build` 等本地检查是唯一门禁。
 
@@ -184,7 +184,7 @@
   - 搜索 → 结果 → 详情 → 返回；缩略图/分页/空态/错误。
   - 设置：主题/语言立即生效并重启恢复；代理保存/关闭；ECH 切换与启动恢复。
   - 日志：开关、日志页图标、导出、清空、重启恢复。
-  - 阅读器：nhentai 页图片、方向、滑动/滚轮/键盘、缩放、全屏、点击中间显隐/左右翻页、`?page=`、返回详情、不支持平台错误。
+  - 阅读器：nhentai 页图片、方向、滑动/滚轮/键盘、缩放、全屏、点击中间显隐/左右翻页、`?page=`、返回详情、不支持平台错误；JM 章节入口、前后章、页图还原无错位。
   - 历史：产生/更新、分页/续读、无删除/清空入口、重启恢复。
   - 移动端安全区：所有页面从安全区下方开始，滚动不盖状态栏。
 - 前端没有单元/E2E 测试和 CI；不要声称存在。新增测试体系要加 `package.json` 脚本并同步本文件。
@@ -192,9 +192,10 @@
 
 ## 尚未实现
 
-- **JM 加载优化**：搜索可用，详情常 403；先选客户端/域名/重试/header，继续走 `HttpClient`；不要搬 Python 登录/收藏/下载框架，APP 解密/图片解码只放 Rust。
+- **JM 域名自动更新**：域名列表内置，失败会换域名但不会拉取 JM 发布的最新域名；如需更新，从发布页获取，不要搬 Python 登录/收藏/下载框架。
+- **JM 章节选择器**：详情页只进第一章，章内靠 `previous`/`next`；多章本子的目录 UI 尚未实现。
 - **收藏与下载**：`/favorites`、`/downloads` 仍是占位页。先定产品边界；Rust 持久化到 `app_data_dir()`，下载不放 `app_cache_dir()`；离线阅读用本地路径 + 资产协议；替换占位页时同步 `shortcuts.ts`、route meta、语言包与本文件。
-- **manhuagui/JM 阅读**：实现 `reader_chapter_request`/`parse_reader_chapter` 并补 fixture；详情入口改为能力判断；复用阅读路由、方向和历史；页源只返回 URL/尺寸，图片仍走 `fetch_image`。
+- **manhuagui 阅读**：实现 `reader_chapter_request`/`parse_reader_chapter` 并补 fixture；详情入口改为能力判断；复用阅读路由、方向和历史；页源只返回 URL/尺寸，图片仍走 `fetch_image`。
 - **更多平台**：按平台改动入口实现；先确认接口、登录/付费/地区限制与抓取许可；至少补搜索/详情 fixture；保持判别联合的编译期安全。
 
 ## 提交
