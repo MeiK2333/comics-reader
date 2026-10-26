@@ -10,6 +10,8 @@ const props = defineProps<{
   title: string;
   thumb: string;
   subtitle?: string;
+  /** Downloaded cover path, used by the offline detail fallback. */
+  localPath?: string;
 }>();
 
 const { t } = useAppI18n();
@@ -27,7 +29,12 @@ const platformLabel = computed(() => t(PLATFORM_LABEL_KEYS[props.platform]));
   <article class="detail-shell">
     <div class="detail-hero">
       <div class="detail-cover">
-        <ComicThumb :platform="platform" :thumb="thumb" :title="title" />
+        <ComicThumb
+          :platform="platform"
+          :thumb="thumb"
+          :title="title"
+          :local-path="localPath"
+        />
       </div>
 
       <div class="detail-summary">

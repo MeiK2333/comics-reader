@@ -195,6 +195,28 @@ pub(crate) struct DownloadSummary {
     progress: Option<DownloadProgress>,
 }
 
+/// One chapter in the detail payload. The offline detail page keeps the
+/// original order so fallback numbering stays stable even when only a subset
+/// was downloaded.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct DownloadChapterSummary {
+    id: Option<String>,
+    title: Option<String>,
+    page_count: u32,
+    completed: bool,
+}
+
+/// `get_download` payload: the list summary plus every stored chapter. The
+/// detail page can render downloaded chapters when the online lookup fails.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct DownloadDetail {
+    #[serde(flatten)]
+    summary: DownloadSummary,
+    chapters: Vec<DownloadChapterSummary>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct DownloadProgress {
@@ -440,10 +462,25 @@ impl DownloadsStore {
         root: &Path,
         platform: &str,
         id: &str,
-    ) -> Result<Option<DownloadSummary>> {
+    ) -> Result<Option<DownloadDetail>> {
         let key = download_key(platform, id)?;
         let record = self.with_data(path, |data, _| Ok(data.entries.get(&key).cloned()))?;
-        record.map(|record| self.summary(root, &record)).transpose()
+        let Some(record) = record else {
+            return Ok(None);
+        };
+
+        let summary = self.summary(root, &record)?;
+        let chapters = record
+            .chapters
+            .iter()
+            .map(|chapter| DownloadChapterSummary {
+                id: chapter.id.clone(),
+                title: chapter.title.clone(),
+                page_count: chapter.page_count,
+                completed: chapter.completed,
+            })
+            .collect();
+        Ok(Some(DownloadDetail { summary, chapters }))
     }
 
     fn list(&self, path: &Path, root: &Path, offset: usize, limit: usize) -> Result<DownloadPage> {
@@ -1783,7 +1820,7 @@ pub(crate) async fn get_download(
     app: AppHandle,
     platform: String,
     id: String,
-) -> Result<Option<DownloadSummary>> {
+) -> Result<Option<DownloadDetail>> {
     let path = downloads_index_path(&app)?;
     let root = downloads_root(&app)?;
     app.state::<DownloadsStore>()
@@ -1861,7 +1898,7 @@ mod tests {
             serde_json::json!("partial")
         );
 
-        let value = serde_json::to_value(DownloadSummary {
+        let summary = DownloadSummary {
             platform: "nhentai".into(),
             id: "42".into(),
             title: "Gallery".into(),
@@ -1878,12 +1915,28 @@ mod tests {
             updated_at: 2,
             error: None,
             progress: None,
-        })
-        .unwrap();
+        };
+        let value = serde_json::to_value(&summary).unwrap();
 
         assert_eq!(value["readChapterId"], serde_json::Value::Null);
         assert_eq!(value["totalChapters"], 1);
         assert!(value.get("read_chapter_id").is_none());
+
+        let detail = DownloadDetail {
+            summary,
+            chapters: vec![DownloadChapterSummary {
+                id: Some("7".into()),
+                title: Some("Chapter 7".into()),
+                page_count: 10,
+                completed: true,
+            }],
+        };
+        let value = serde_json::to_value(detail).unwrap();
+
+        assert_eq!(value["id"], "42");
+        assert_eq!(value["chapters"][0]["pageCount"], 10);
+        assert_eq!(value["chapters"][0]["completed"], true);
+        assert!(value["chapters"][0].get("page_count").is_none());
     }
 
     #[test]
@@ -2077,6 +2130,15 @@ mod tests {
         );
         assert_eq!(local.previous.as_ref().unwrap().id, "1");
         assert!(local.next.is_none());
+
+        let detail = store
+            .get(&temp_path("local-index"), &root, "manhuagui", "42")
+            .unwrap()
+            .expect("download detail should resolve");
+        assert_eq!(detail.chapters.len(), 3);
+        assert_eq!(detail.summary.completed_chapters, 2);
+        assert!(detail.chapters[0].completed);
+        assert!(!detail.chapters[1].completed);
 
         let _ = fs::remove_dir_all(&root);
     }

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import { useRouter } from "vue-router";
+import { RouterLink } from "vue-router";
 import { useMessage } from "naive-ui";
 import type { ComicPlatform } from "../api/comics";
 import {
@@ -23,7 +23,6 @@ import { useSettingsStore } from "../stores/settings";
 const PAGE_SIZE = 50;
 const POLL_MS = 1_000;
 
-const router = useRouter();
 const { goBack } = useBackNavigation();
 const message = useMessage();
 const settings = useSettingsStore();
@@ -122,13 +121,6 @@ function entryKey(entry: DownloadSummary): string {
   return `${entry.platform}:${entry.id}`;
 }
 
-function canRead(entry: DownloadSummary): boolean {
-  return (
-    entry.readChapterId !== null ||
-    (entry.platform === "nhentai" && entry.completedChapters > 0)
-  );
-}
-
 function progressPercent(entry: DownloadSummary): number {
   if (entry.totalChapters === 0) {
     return 0;
@@ -158,17 +150,6 @@ function progressText(entry: DownloadSummary): string {
     page: progress.page,
     total: progress.pageCount,
   })}`;
-}
-
-function openReader(entry: DownloadSummary) {
-  const params: Record<string, string> = {
-    platform: entry.platform,
-    id: entry.id,
-  };
-  if (entry.readChapterId) {
-    params.chapterId = entry.readChapterId;
-  }
-  void router.push({ name: "comic-reader", params });
 }
 
 function clearPolling() {
@@ -385,77 +366,86 @@ onBeforeUnmount(() => {
           :key="entryKey(entry)"
           class="download-entry"
         >
-          <div class="download-entry__cover">
-            <ComicThumb
-              :platform="entry.platform"
-              :thumb="entry.thumb ?? ''"
-              :title="entry.title"
-              :local-path="entry.coverPath ?? undefined"
-            />
-          </div>
-
-          <div class="download-entry__body">
-            <span class="download-entry__title" :title="entry.title">
-              {{ entry.title }}
-            </span>
-
-            <span class="download-entry__meta">
-              <NTag size="tiny" :bordered="false">
-                {{ t(PLATFORM_LABEL_KEYS[entry.platform]) }}
-              </NTag>
-              <NTag size="tiny" :bordered="false" :type="STATUS_TYPES[entry.status]">
-                {{ t(STATUS_LABEL_KEYS[entry.status]) }}
-              </NTag>
-              <span>
-                {{
-                  t("downloads.chapters", {
-                    done: entry.completedChapters,
-                    total: entry.totalChapters,
-                  })
-                }}
-              </span>
-              <span>{{ formatBytes(entry.totalBytes) }}</span>
-              <time :datetime="isoTimestamp(entry.updatedAt)">
-                {{ formatTimestamp(entry.updatedAt) }}
-              </time>
-            </span>
-
-            <div
-              v-if="isDownloadActive(entry.status) || entry.progress"
-              class="download-entry__progress"
-            >
-              <NProgress
-                type="line"
-                :percentage="progressPercent(entry)"
-                :processing="entry.status === 'queued'"
-                :status="entry.status === 'failed' ? 'error' : undefined"
-                :show-indicator="false"
+          <RouterLink
+            class="download-entry__main"
+            :to="{
+              name: 'comic-detail',
+              params: { platform: entry.platform, id: entry.id },
+            }"
+          >
+            <div class="download-entry__cover">
+              <ComicThumb
+                :platform="entry.platform"
+                :thumb="entry.thumb ?? ''"
+                :title="entry.title"
+                :local-path="entry.coverPath ?? undefined"
               />
-              <span class="download-entry__progress-text">
-                {{ progressText(entry) }}
-              </span>
             </div>
 
-            <p v-if="entry.failedChapters > 0" class="download-entry__warning">
-              {{ t("downloads.failedChapters", { count: entry.failedChapters }) }}
-            </p>
+            <div class="download-entry__body">
+              <span class="download-entry__title" :title="entry.title">
+                {{ entry.title }}
+              </span>
 
-            <p v-if="entry.error" class="download-entry__error">
-              {{ formatError(entry.error) }}
-            </p>
-          </div>
+              <span class="download-entry__meta">
+                <NTag size="tiny" :bordered="false">
+                  {{ t(PLATFORM_LABEL_KEYS[entry.platform]) }}
+                </NTag>
+                <NTag
+                  size="tiny"
+                  :bordered="false"
+                  :type="STATUS_TYPES[entry.status]"
+                >
+                  {{ t(STATUS_LABEL_KEYS[entry.status]) }}
+                </NTag>
+                <span>
+                  {{
+                    t("downloads.chapters", {
+                      done: entry.completedChapters,
+                      total: entry.totalChapters,
+                    })
+                  }}
+                </span>
+                <span>{{ formatBytes(entry.totalBytes) }}</span>
+                <time :datetime="isoTimestamp(entry.updatedAt)">
+                  {{ formatTimestamp(entry.updatedAt) }}
+                </time>
+              </span>
+
+              <div
+                v-if="isDownloadActive(entry.status) || entry.progress"
+                class="download-entry__progress"
+              >
+                <NProgress
+                  type="line"
+                  :percentage="progressPercent(entry)"
+                  :processing="entry.status === 'queued'"
+                  :status="entry.status === 'failed' ? 'error' : undefined"
+                  :show-indicator="false"
+                />
+                <span class="download-entry__progress-text">
+                  {{ progressText(entry) }}
+                </span>
+              </div>
+
+              <p
+                v-if="entry.failedChapters > 0"
+                class="download-entry__warning"
+              >
+                {{
+                  t("downloads.failedChapters", {
+                    count: entry.failedChapters,
+                  })
+                }}
+              </p>
+
+              <p v-if="entry.error" class="download-entry__error">
+                {{ formatError(entry.error) }}
+              </p>
+            </div>
+          </RouterLink>
 
           <div class="download-entry__actions">
-            <NButton
-              v-if="canRead(entry)"
-              attr-type="button"
-              size="small"
-              type="primary"
-              :disabled="busy"
-              @click="openReader(entry)"
-            >
-              {{ t("downloads.read") }}
-            </NButton>
             <NButton
               v-if="isDownloadActive(entry.status)"
               attr-type="button"
@@ -594,7 +584,7 @@ onBeforeUnmount(() => {
 
 .download-entry {
   display: grid;
-  grid-template-columns: 64px minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
   gap: 0.85rem;
   padding: 0.75rem 0.25rem;
@@ -603,6 +593,28 @@ onBeforeUnmount(() => {
 
 .download-entry:last-child {
   border-bottom: none;
+}
+
+.download-entry__main {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  align-items: start;
+  gap: 0.85rem;
+  min-width: 0;
+  padding: 0.1rem 0;
+  border-radius: 8px;
+  color: inherit;
+  text-decoration: none;
+  transition: background-color 150ms ease;
+}
+
+.download-entry__main:hover {
+  background-color: rgba(127, 127, 127, 0.08);
+}
+
+.download-entry__main:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
 }
 
 .download-entry__cover {
@@ -702,6 +714,11 @@ onBeforeUnmount(() => {
 
 @media (max-width: 700px) {
   .download-entry {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.65rem;
+  }
+
+  .download-entry__main {
     grid-template-columns: 52px minmax(0, 1fr);
     gap: 0.65rem;
   }

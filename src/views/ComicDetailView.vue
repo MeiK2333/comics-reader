@@ -16,7 +16,7 @@ import {
   isDownloadActive,
   startDownload,
   type DownloadChapterInput,
-  type DownloadSummary,
+  type DownloadDetail,
 } from "../api/downloads";
 import {
   addFavorite,
@@ -32,6 +32,7 @@ import ComicDetailSkeleton from "../components/comic-detail/ComicDetailSkeleton.
 import JmDetail from "../components/comic-detail/JmDetail.vue";
 import ManhuaguiDetail from "../components/comic-detail/ManhuaguiDetail.vue";
 import NhentaiDetail from "../components/comic-detail/NhentaiDetail.vue";
+import OfflineDetail from "../components/comic-detail/OfflineDetail.vue";
 import {
   previousPath,
   useBackNavigation,
@@ -58,14 +59,19 @@ const favoriteEntry = ref<FavoriteEntry | null>(null);
 const favoriteLoading = ref(false);
 const favoritePending = ref(false);
 const historyEntry = ref<HistoryEntry | null>(null);
-const download = ref<DownloadSummary | null>(null);
+const download = ref<DownloadDetail | null>(null);
+const offline = ref(false);
 const downloadLoading = ref(false);
 const downloadPending = ref(false);
 const showGroupPicker = ref(false);
 let requestId = 0;
 let downloadTimer: ReturnType<typeof setInterval> | undefined;
+let offlineTimer: ReturnType<typeof setTimeout> | undefined;
 
 const DOWNLOAD_POLL_MS = 1_500;
+// A downloaded work should open without waiting for a failing network request,
+// but a fast online response should still win without flashing the local view.
+const OFFLINE_FALLBACK_DELAY_MS = 1_500;
 
 const favorited = computed(() => favoriteEntry.value !== null);
 const currentGroupId = computed(() => favoriteEntry.value?.groupId ?? null);
@@ -75,6 +81,7 @@ const currentGroupId = computed(() => favoriteEntry.value?.groupId ?? null);
 const previous = previousPath();
 const cameFromFavorites = previous === "/favorites";
 const cameFromHistory = previous === "/history";
+const cameFromDownloads = previous === "/downloads";
 
 // Long-press opens the group picker; the short press is handled by click.
 const longPress = useLongPress({
@@ -105,6 +112,9 @@ const backTarget = computed<RouteLocationRaw>(() => {
   if (cameFromHistory) {
     return { name: "history" };
   }
+  if (cameFromDownloads) {
+    return { name: "downloads" };
+  }
   return canReturnToSearch.value ? { name: "search" } : { name: "home" };
 });
 const backLabel = computed(() => {
@@ -113,6 +123,9 @@ const backLabel = computed(() => {
   }
   if (cameFromHistory) {
     return t("detail.backToHistory");
+  }
+  if (cameFromDownloads) {
+    return t("detail.backToDownloads");
   }
   return t(canReturnToSearch.value ? "detail.backToSearch" : "detail.backHome");
 });
@@ -126,6 +139,9 @@ const manhuaguiChapters = computed(() => {
 // nhentai has a single implicit chapter; jm and manhuagui expose chapters
 // through the detail payload, so the entry only appears once one exists.
 const canRead = computed(() => {
+  if (offline.value) {
+    return (download.value?.completedChapters ?? 0) > 0;
+  }
   const current = detail.value;
   if (!current || platform.value === null) {
     return false;
@@ -137,6 +153,20 @@ const canRead = computed(() => {
     return manhuaguiChapters.value.length > 0;
   }
   return current.platform === "jm" && current.extra.chapters.length > 0;
+});
+
+const offlineDetail = computed<DownloadDetail | null>(() =>
+  offline.value ? download.value : null,
+);
+
+const offlineChapterIds = computed<string[]>(() => {
+  const ids: string[] = [];
+  for (const chapter of download.value?.chapters ?? []) {
+    if (chapter.completed && chapter.id !== null) {
+      ids.push(chapter.id);
+    }
+  }
+  return ids;
 });
 
 const downloadChapters = computed<DownloadChapterInput[]>(() => {
@@ -194,8 +224,26 @@ const canResume = computed(
 );
 const resumeChapterId = computed<string | null>(() => {
   const entry = historyEntry.value;
+  if (!entry) {
+    return null;
+  }
+
+  // Offline progress can only resume inside chapters that are on disk.
+  if (offline.value) {
+    if (platform.value === "nhentai") {
+      return null;
+    }
+    if (
+      entry.chapterId &&
+      offlineChapterIds.value.includes(entry.chapterId)
+    ) {
+      return entry.chapterId;
+    }
+    return offlineChapterIds.value[0] ?? null;
+  }
+
   const current = detail.value;
-  if (!entry || !current) {
+  if (!current) {
     return null;
   }
 
@@ -217,8 +265,25 @@ const resumeChapterId = computed<string | null>(() => {
 });
 const resumePage = computed(() => {
   const entry = historyEntry.value;
+  if (!entry) {
+    return 1;
+  }
+
+  if (offline.value) {
+    if (platform.value === "nhentai") {
+      return entry.page;
+    }
+    if (
+      !entry.chapterId ||
+      !offlineChapterIds.value.includes(entry.chapterId)
+    ) {
+      return 1;
+    }
+    return entry.page;
+  }
+
   const current = detail.value;
-  if (!entry || !current) {
+  if (!current) {
     return 1;
   }
 
@@ -275,14 +340,14 @@ function goBack() {
 }
 
 function openChapter(chapterId: string) {
-  const current = detail.value;
-  if (!current || platform.value === null) {
+  const currentPlatform = platform.value;
+  if (!currentPlatform) {
     return;
   }
   void router.push({
     name: "comic-reader",
     params: {
-      platform: current.platform,
+      platform: currentPlatform,
       id: id.value,
       chapterId,
     },
@@ -290,8 +355,27 @@ function openChapter(chapterId: string) {
 }
 
 function openReader() {
+  const currentPlatform = platform.value;
+  if (!currentPlatform) {
+    return;
+  }
+
+  // Offline start uses the first chapter that is actually on disk.
+  if (offline.value) {
+    const params: Record<string, string> = {
+      platform: currentPlatform,
+      id: id.value,
+    };
+    const chapterId = offlineChapterIds.value[0];
+    if (chapterId) {
+      params.chapterId = chapterId;
+    }
+    void router.push({ name: "comic-reader", params });
+    return;
+  }
+
   const current = detail.value;
-  if (!current || platform.value === null) {
+  if (!current) {
     return;
   }
 
@@ -319,14 +403,14 @@ function openReader() {
 }
 
 function openResume() {
-  const current = detail.value;
+  const currentPlatform = platform.value;
   const entry = historyEntry.value;
-  if (!current || !entry) {
+  if (!currentPlatform || !entry) {
     return;
   }
 
   const params: Record<string, string> = {
-    platform: current.platform,
+    platform: currentPlatform,
     id: id.value,
   };
   const chapterId = resumeChapterId.value;
@@ -385,6 +469,13 @@ async function loadHistoryState(
   }
 }
 
+function clearOfflineFallback() {
+  if (offlineTimer !== undefined) {
+    clearTimeout(offlineTimer);
+    offlineTimer = undefined;
+  }
+}
+
 function clearDownloadPolling() {
   if (downloadTimer !== undefined) {
     clearInterval(downloadTimer);
@@ -416,13 +507,15 @@ async function loadDownloadState(
   comicId: string,
   currentRequest: number,
   silent = false,
-) {
+): Promise<DownloadDetail | null> {
   if (!silent) {
     downloadLoading.value = true;
   }
 
+  let loaded: DownloadDetail | null = null;
   try {
     const saved = await getDownload(comicPlatform, comicId);
+    loaded = saved;
     if (currentRequest === requestId) {
       download.value = saved;
     }
@@ -440,13 +533,17 @@ async function loadDownloadState(
       syncDownloadPolling();
     }
   }
+  return loaded;
 }
 
 async function onDownloadClick() {
   const current = detail.value;
+  const currentPlatform = platform.value;
+  const currentId = id.value;
   if (
     !current ||
-    platform.value === null ||
+    !currentPlatform ||
+    !currentId ||
     downloadLoading.value ||
     downloadPending.value
   ) {
@@ -463,17 +560,17 @@ async function onDownloadClick() {
   downloadPending.value = true;
 
   try {
-    const saved = await startDownload({
-      platform: current.platform,
-      id: id.value,
+    await startDownload({
+      platform: currentPlatform,
+      id: currentId,
       title: current.title,
       thumb: current.thumb,
       chapters: downloadChapters.value,
     });
     if (currentRequest === requestId) {
-      download.value = saved;
       message.success(t("downloads.queuedToast"));
-      syncDownloadPolling();
+      // Re-read the detail so the stored chapter list stays in sync.
+      await loadDownloadState(currentPlatform, currentId, currentRequest);
     }
   } catch (cause) {
     if (currentRequest === requestId) {
@@ -550,9 +647,11 @@ async function load() {
   favoritePending.value = false;
   historyEntry.value = null;
   download.value = null;
+  offline.value = false;
   downloadLoading.value = false;
   downloadPending.value = false;
   clearDownloadPolling();
+  clearOfflineFallback();
   showGroupPicker.value = false;
   // Drop a previous comic's dynamic title while the next request is running.
   updateWindowTitle();
@@ -567,23 +666,60 @@ async function load() {
     return;
   }
 
+  // Download and history live on disk, so load them even when the online
+  // detail request fails and the page falls back to downloaded chapters.
+  const downloadTask = loadDownloadState(
+    currentPlatform,
+    currentId,
+    currentRequest,
+  );
+  void loadHistoryState(currentPlatform, currentId, currentRequest);
+
+  offlineTimer = setTimeout(() => {
+    void downloadTask.then((saved) => {
+      if (
+        currentRequest !== requestId ||
+        detail.value ||
+        error.value ||
+        !saved ||
+        saved.completedChapters === 0
+      ) {
+        return;
+      }
+      offline.value = true;
+      loading.value = false;
+      setWindowTitle(`${saved.title} · ${t("app.name")}`);
+    });
+  }, OFFLINE_FALLBACK_DELAY_MS);
+
   try {
     const result = await getComic(currentPlatform, currentId);
     if (currentRequest !== requestId) {
       return;
     }
+    clearOfflineFallback();
+    offline.value = false;
     detail.value = result;
     setWindowTitle(`${result.title} · ${t("app.name")}`);
     void loadFavoriteState(currentPlatform, currentId, currentRequest);
-    void loadHistoryState(currentPlatform, currentId, currentRequest);
-    void loadDownloadState(currentPlatform, currentId, currentRequest);
   } catch (cause) {
     if (currentRequest !== requestId) {
       return;
     }
-    error.value = toAppError(cause);
-    updateWindowTitle();
+    clearOfflineFallback();
+    const saved = await downloadTask;
+    if (currentRequest !== requestId) {
+      return;
+    }
+    if (saved && saved.completedChapters > 0) {
+      offline.value = true;
+      setWindowTitle(`${saved.title} · ${t("app.name")}`);
+    } else {
+      error.value = toAppError(cause);
+      updateWindowTitle();
+    }
   } finally {
+    clearOfflineFallback();
     if (currentRequest === requestId) {
       loading.value = false;
     }
@@ -595,6 +731,7 @@ watch([platform, id], () => void load(), { immediate: true });
 onBeforeUnmount(() => {
   requestId++;
   clearDownloadPolling();
+  clearOfflineFallback();
 });
 </script>
 
@@ -630,8 +767,8 @@ onBeforeUnmount(() => {
         </template>
       </NButton>
 
-      <div v-if="detail" class="detail-topbar-actions">
-        <span class="favorite-trigger" v-on="longPress.handlers">
+      <div v-if="detail || offlineDetail" class="detail-topbar-actions">
+        <span v-if="detail" class="favorite-trigger" v-on="longPress.handlers">
           <NButton
             attr-type="button"
             :type="favorited ? 'primary' : 'default'"
@@ -654,7 +791,7 @@ onBeforeUnmount(() => {
           </NButton>
         </span>
         <NButton
-          v-if="canRead"
+          v-if="detail && canRead"
           attr-type="button"
           secondary
           :loading="downloadPending"
@@ -707,6 +844,12 @@ onBeforeUnmount(() => {
     />
 
     <ComicDetailSkeleton v-if="loading" />
+
+    <OfflineDetail
+      v-else-if="offlineDetail"
+      :detail="offlineDetail"
+      @open-chapter="openChapter"
+    />
 
     <NResult
       v-else-if="error"

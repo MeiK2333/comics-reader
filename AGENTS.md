@@ -84,7 +84,7 @@
 - ECH 内部细节（`cloudflare-ech.com` 配置、Cloudflare DoH、TTL、fallback 缓存）以 `image/http.rs`、`ech/` 和测试为准。必须保留的约束：代理与 ECH 互斥；启动初始化要等待；非 Cloudflare 站点 plain TLS 回退是预期。
 - 平台集中在 `image/platform/`，实现 `Platform` trait（`id`/`matches`/`configure`/`note_request_outcome`/`prepare`，可选搜索/详情/阅读）。当前 `generic`/`manhuagui`/`jm`/`nhentai`。`platform` 参数可省略时按 host 识别；已知平台显式传，JM 尤其。JM 在首个搜索/详情/阅读命令前通过 `prepare` 请求 `/setting` 同步 `jm3_version`（进程一次，失败下次重试），`tokenparam` 使用运行时版本。
 - 搜索会话由 `search` store 管理；`/search` 不携带 query，刷新/深链会被守卫送回首页；首页图标固定回首页。
-- 详情 `/comic/:platform/:id` 不依赖搜索会话，直接 `get_comic`，刷新/深链可用；返回目标是上一页为 `/favorites` 或 `/history` 时回对应页面，否则搜索会话有效时 `/search`，否则首页，但必须走 `useBackNavigation`：上一页就是目标时 `router.back()`，否则 `router.replace`。
+- 详情 `/comic/:platform/:id` 不依赖搜索会话，直接 `get_comic`，刷新/深链可用；在线详情失败、或等待约 1.5s 仍未返回而本地有已完成章节的下载时，先用 `get_download`（返回 `DownloadDetail`：列表摘要 + `chapters`）渲染离线详情（在线详情随后返回则替换为完整详情），封面用 `coverPath`，开始阅读取首个已下载章节，继续阅读优先历史章节/页码，章节不可用时回退首个已下载章节第 1 页。返回目标是上一页为 `/favorites`、`/history` 或 `/downloads` 时回对应页面，否则搜索会话有效时 `/search`，否则首页，但必须走 `useBackNavigation`：上一页就是目标时 `router.back()`，否则 `router.replace`。
 - 搜索返回 `{ total, page_size, result: [{ id, title, thumb, platform, extra }] }`，详情 `{ platform, title, thumb, extra }`；`platform` 判别，`extra` 强类型（Rust `SearchExtra`/`DetailExtra`，前端判别联合）。不要退回 `Record<string, unknown>` 或 JSON 兜底。
 - 阅读页源 `get_reader_chapter(platform, id, chapterId?)`；nhentai、JM、manhuagui 均已实现。页图片仍逐页 `fetch_image`，不新增缓存目录。JM 页图在缓存前由 Rust 按 `scramble_id` 还原并重编码为 JPEG（缓存键带 `?decoded`，`scramble_id` 每章节请求一次并缓存）。
 - manhuagui 详情优先解 `#__VIEWSTATE`（R18/隐藏列表，LZString），失败再读 `.chapter-list`；`h4` 与 `.chapter-list` 配对成 `ManhuaguiExtra.chapterGroups`，每个 `ul` 内的 `li` 逆序得到阅读顺序；无标题分组传空标题由前端本地化。搜索结果 `chapterGroups` 为空。阅读页地址 `/comic/{id}/{chapterId}.html`，`chapterId` 必需；详情“开始阅读”取分组扁平化后的首章，`ComicReaderView` 对无章节深链先取详情首章并 `router.replace`。
@@ -128,17 +128,17 @@
 - 收藏页支持“全部 / 默认分组 / 自定义分组”筛选、计数、创建/重命名/删除分组；列表按 `addedAt` 倒序，点击条目进详情，取消收藏不弹确认；缩略图仍走 `ComicThumb`，不要为每条收藏请求远程详情。
 - 详情页收藏按钮：短按 toggle（未收藏进默认分组，已收藏取消收藏）；长按（或右键 / `Shift+Enter`）打开分组选择器，未收藏时选择后加入，已收藏时移动。长按 500ms，移动/取消/离开要取消，长按后的 click 必须抑制，否则会误取消收藏；选择器含新建分组并提示长按用法。
 - 详情页先 `get_favorite` 取当前分组；查询失败按未收藏处理，`add` 的幂等语义保证不会误移分组。请求带 token，切换作品丢弃旧结果。
-- 从收藏页进详情返回收藏；从历史页进详情返回历史；`previousPath()` 优先于 `search.active`。收藏页自身返回首页。
+- 从收藏页、历史页或下载页进详情，分别返回对应页面；`previousPath()` 优先于 `search.active`。收藏页自身返回首页。
 - 文件损坏按空列表并备份 `.bak`；更高 `version` 返回 `unexpected` 并拒绝写入。收藏不用新增错误码，复用 `invalidInput`/`io`/`json`/`tauri`/`unexpected`。
 
 ### 下载
 
-- v1 只按作品下载整部章节，不支持按章勾选；详情页提交当前详情里的完整章节列表，nhentai 传空列表由 Rust 合成单章。下载页不是缓存页。
+- v1 只按作品下载整部章节，不支持按章勾选；详情页提交当前详情里的完整章节列表，nhentai 传空列表由 Rust 合成单章。下载页不是缓存页，列表项只进漫画详情，不直接打开阅读器。
 - Rust 拥有 `app_data_dir()/downloads.json`（version 1）和 `app_data_dir()/downloads/<platform>/<work-id>/`；每章完成写 `manifest.json`，页面与索引原子写入。不要把下载放 `app_cache_dir()`，也不要依赖图片缓存清理。
 - 下载复用 `image::fetch_image_inner` / `get_reader_chapter_inner`，页面从缓存复制到下载目录；重复磁盘占用是接受的取舍，不要另写平台请求逻辑。
 - 同一时间只跑一个作品；章节按详情顺序，页页串行。索引只在开始、章节边界、暂停和结束时写，不要每页重写整个索引。
 - 状态为 `queued/downloading/paused/completed/partial/failed`；启动/首次加载把遗留 active 状态改为 `paused`，不自动联网续传。暂停/续传用 run id 让旧 worker 失效；删除只允许非 active 状态。
-- `get_downloaded_chapter` 返回带 `localPath` 的 `ReaderChapter`；`get_reader_chapter` 的前端封装先查本地再等 ECH。本地章节的 `previous`/`next` 只包含已下载章节，离线翻章不会跳到需要联网的章节。
+- `get_downloaded_chapter` 返回带 `localPath` 的 `ReaderChapter`；`get_reader_chapter` 的前端封装先查本地再等 ECH。本地章节的 `previous`/`next` 只包含已下载章节，离线翻章不会跳到需要联网的章节。详情页离线回退的“开始阅读/继续阅读”也只用已完成下载章节，不被在线详情阻塞。
 - 资产协议必须同时放行 `$APPCACHE/images/**` 与 `$APPDATA/downloads/**`；`ReaderPageImage`/`useCachedImage`/`ComicThumb` 优先使用 `localPath`，阅读器预加载必须跳过本地页。
 - 下载进度用活动期间轮询（下载页 1s、详情页 1.5s），不要为此增加事件权限；页面卸载必须清定时器。
 - 下载错误复用现有错误码；索引/manifest 损坏按空/`None` 处理并记日志，更高版本返回 `unexpected` 并拒绝写入。
@@ -192,7 +192,7 @@
 | 改设置 | `stores/settings.ts` + `SettingsView.vue`；若同步 Rust，加对应 `src/api/*.ts` 与命令。 |
 | 改阅读器/页源 | `components/reader/`、`views/ComicReaderView.vue`、`router/index.ts`、`api/reader.ts`、`image/model.rs`、`image/platform/`、`image/mod.rs`。 |
 | 改收藏 | `src-tauri/src/favorites.rs`、`src/api/favorites.ts`、`FavoritesView.vue`、`ComicDetailView.vue`、`FavoriteGroupPicker.vue`、`useLongPress.ts`、两个语言包。 |
-| 改下载 | `src-tauri/src/downloads.rs`、`src/api/downloads.ts`、`DownloadsView.vue`、`ComicDetailView.vue`、`api/reader.ts`、`ReaderPageImage.vue`、`useCachedImage.ts`、`tauri.conf.json` 资产 scope。 |
+| 改下载 | `src-tauri/src/downloads.rs`、`src/api/downloads.ts`、`DownloadsView.vue`、`ComicDetailView.vue`、`OfflineDetail.vue`、`api/reader.ts`、`ReaderPageImage.vue`、`useCachedImage.ts`、`tauri.conf.json` 资产 scope。 |
 | 改图片/网络 | `src-tauri/src/image/`、`src-tauri/tauri.conf.json`（资产 scope）；请求必须走 `HttpClient`。 |
 
 ## 易错点
@@ -208,8 +208,8 @@
 - 收藏可取消；不要照搬历史的不可删除约束。收藏列表项进详情，不直接进阅读器；不要为每条收藏请求远程详情。
 - 一个作品只属于一个分组；默认分组 id 固定 `default`，不可删除/改名。收藏 v1 文件必须迁移到 v2，不要只改 version。
 - 详情页收藏按钮是短按 toggle + 长按分组；长按必须抑制随后的 click，否则会误取消。右键 / `Shift+Enter` 也要能打开选择器。
-- 从收藏/历史进详情，返回来源用 `previousPath()` 判断，收藏/历史优先于 `search.active`。
-- 历史行进详情，不直接进阅读器；详情“继续阅读”用 `get_history_entry` 的 `chapterId`/`page`，JM 章节失效时回退第一章。
+- 从收藏/历史/下载进详情，返回来源用 `previousPath()` 判断，收藏/历史/下载优先于 `search.active`。
+- 历史行、收藏行、下载行都进详情，不直接进阅读器；详情“继续阅读”用 `get_history_entry` 的 `chapterId`/`page`，JM 章节失效时回退第一章。断网时详情用下载索引回退，开始/继续阅读只走本地章节。
 - 返回按钮不要用 `router.push`：用 `useBackNavigation` 在上一页等于目标时 pop，否则 replace；push 会把当前页留在历史栈，系统返回会重新进入刚离开的页面（搜索 → 漫画 → 返回 → 漫画）。阅读器切章同样用 `router.replace`。
 - 首页/结果页用 View Transition；不要用延迟 `router.push` 等动画；不支持时直接导航。
 - 生成文件不要手改；`README.md` 只是上游模板。
@@ -241,7 +241,7 @@
   - 移动端阅读器：菜单隐藏时右上角页码 HUD、电量显示与插拔更新、双指缩放/缩放后单指平移、不误翻页；HUD 避开右侧安全区。
   - 历史：行进详情、详情返回历史、“继续阅读”恢复章节/页码、“开始阅读”从头、更新后返回详情。
   - 收藏分组：v1→v2 迁移、创建/重命名/删除、计数/筛选、短按默认、长按选择、右键 / `Shift+Enter`、从收藏进详情返回收藏。
-  - 下载：三平台各下载一本、封面/页图、详情按钮状态、暂停/继续/删除、重启后恢复为暂停、断网后从下载页离线阅读；删除后阅读器不再命中旧本地页。
+  - 下载：三平台各下载一本、封面/页图、详情按钮状态、暂停/继续/删除、重启后恢复为暂停；下载页点条目进详情，断网后详情回退显示已下载章节，开始阅读/继续阅读（含历史页码）可用；删除后阅读器不再命中旧本地页。
   - 移动端安全区：所有页面从安全区下方开始，滚动不盖状态栏；toast 与 Modal 也不越过顶部/左右/底部安全区。
 - 前端没有单元/E2E 测试和 CI；不要声称存在。新增测试体系要加 `package.json` 脚本并同步本文件。
 - Rust 测试数量和联网测试的实测结果会变化；以 `cargo test` 输出为准，不要把具体数字当契约。

@@ -67,6 +67,7 @@
     "backHome": "Back to home",
     "backToFavorites": "Back to favorites",
     "backToHistory": "Back to history",
+    "backToDownloads": "Back to downloads",
     "read": "Start reading",
     "download": "Download",
     "downloading": "Downloading {done}/{total}",
@@ -122,6 +123,12 @@
       "group": "Groups",
       "category": "Categories",
       "other": "Other"
+    },
+    "offline": {
+      "tag": "Offline",
+      "summary": "Downloaded {done} / {total} chapters",
+      "notice": "Online details are unavailable or still loading, so only downloaded chapters are shown.",
+      "chapters": "Downloaded chapters"
     }
   },
   "reader": {
@@ -293,7 +300,6 @@
     "emptyDescription": "Comics you download appear here for offline reading.",
     "loadFailed": "Could not load your downloads.",
     "retry": "Retry",
-    "read": "Read offline",
     "pause": "Pause",
     "resume": "Resume",
     "delete": "Delete",

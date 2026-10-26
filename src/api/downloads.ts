@@ -49,6 +49,19 @@ export interface DownloadPage {
   entries: DownloadSummary[];
 }
 
+/** One stored chapter, in the original reading order. */
+export interface DownloadChapterSummary {
+  id: string | null;
+  title: string | null;
+  pageCount: number;
+  completed: boolean;
+}
+
+/** Detail-page payload: the list summary plus every stored chapter. */
+export interface DownloadDetail extends DownloadSummary {
+  chapters: DownloadChapterSummary[];
+}
+
 export interface DownloadChapterInput {
   id: string | null;
   title: string | null;
@@ -108,8 +121,8 @@ export function listDownloads(
 export function getDownload(
   platform: ComicPlatform,
   id: string,
-): Promise<DownloadSummary | null> {
-  return invoke<DownloadSummary | null>("get_download", { platform, id });
+): Promise<DownloadDetail | null> {
+  return invoke<DownloadDetail | null>("get_download", { platform, id });
 }
 
 /**

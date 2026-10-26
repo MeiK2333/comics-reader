@@ -67,6 +67,7 @@
     "backHome": "返回首页",
     "backToFavorites": "返回收藏",
     "backToHistory": "返回历史",
+    "backToDownloads": "返回下载",
     "read": "开始阅读",
     "download": "下载",
     "downloading": "下载中 {done}/{total}",
@@ -122,6 +123,12 @@
       "group": "社团",
       "category": "分类",
       "other": "其他"
+    },
+    "offline": {
+      "tag": "离线",
+      "summary": "已下载 {done} / {total} 章",
+      "notice": "在线详情不可用或仍在加载，当前仅显示已下载章节。",
+      "chapters": "已下载章节"
     }
   },
   "reader": {
@@ -293,7 +300,6 @@
     "emptyDescription": "下载的漫画会出现在这里，可离线阅读。",
     "loadFailed": "无法加载下载列表。",
     "retry": "重试",
-    "read": "离线阅读",
     "pause": "暂停",
     "resume": "继续",
     "delete": "删除",

@@ -58,6 +58,7 @@ declare module 'vue' {
     NSpin: typeof import('naive-ui')['NSpin']
     NSwitch: typeof import('naive-ui')['NSwitch']
     NTag: typeof import('naive-ui')['NTag']
+    OfflineDetail: typeof import('./components/comic-detail/OfflineDetail.vue')['default']
     PlatformPicker: typeof import('./components/PlatformPicker.vue')['default']
     ReaderBattery: typeof import('./components/reader/ReaderBattery.vue')['default']
     ReaderPageImage: typeof import('./components/reader/ReaderPageImage.vue')['default']
