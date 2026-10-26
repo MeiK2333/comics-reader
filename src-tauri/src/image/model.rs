@@ -85,12 +85,14 @@ pub(crate) struct ManhuaguiExtra {
     pub rating_count: Option<u64>,
 }
 
-/// Search results only expose tags; the rest of the album metadata needs the
-/// detail request.
+/// Search results only expose the fields the APP search payload carries: it
+/// has no tags, so author and category replace them on the result card.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct JmExtra {
     pub tags: Vec<String>,
+    pub author: Option<String>,
+    pub category: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -165,6 +167,18 @@ pub(crate) struct JmDetailExtra {
     pub likes: Option<String>,
     pub views: Option<String>,
     pub comment_count: Option<u64>,
+    /// Chapters in reading order. A single-chapter album still has one entry,
+    /// so the reader entry point never needs a special case.
+    pub chapters: Vec<JmChapterRef>,
+}
+
+/// One chapter of a jm album. `sort` is JM's 1-based chapter number.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct JmChapterRef {
+    pub id: String,
+    pub title: String,
+    pub sort: u32,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -250,6 +264,8 @@ mod tests {
             "https://cdn.example/1.jpg",
             SearchExtra::Jm(JmExtra {
                 tags: vec!["tag-a".into(), "tag-b".into()],
+                author: Some("Author".into()),
+                category: Some("同人".into()),
             }),
         );
 
@@ -276,6 +292,11 @@ mod tests {
                 likes: None,
                 views: None,
                 comment_count: None,
+                chapters: vec![JmChapterRef {
+                    id: "1".into(),
+                    title: "Chapter 1".into(),
+                    sort: 1,
+                }],
             }),
         );
 

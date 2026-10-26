@@ -7,10 +7,16 @@
 
 mod generic;
 mod jm;
+mod jm_api;
+mod jm_image;
 mod manhuagui;
 mod nhentai;
 
+pub(crate) use jm::scramble_id;
+pub(crate) use jm_image::{descramble, segment_count};
+
 use reqwest::RequestBuilder;
+use reqwest::header::HeaderMap;
 use url::Url;
 
 use crate::error::{AppError, Result};
@@ -27,6 +33,13 @@ const HTML_ACCEPT: &str = "text/html,application/xhtml+xml,application/xml;q=0.9
 pub(crate) struct RequestSpec {
     pub(crate) url: Url,
     pub(crate) accept: &'static str,
+    /// Headers that only this request needs, such as JM's APP token. They are
+    /// applied after [`Platform::configure`], which keeps shared platform
+    /// headers in one place and per-request signing data here.
+    pub(crate) headers: HeaderMap,
+    /// Mirrors of the same logical request. The fetch layer tries them in
+    /// order when the current one fails with a retryable error.
+    pub(crate) fallbacks: Vec<Url>,
 }
 
 impl RequestSpec {
@@ -34,6 +47,8 @@ impl RequestSpec {
         Self {
             url,
             accept: HTML_ACCEPT,
+            headers: HeaderMap::new(),
+            fallbacks: Vec::new(),
         }
     }
 
@@ -41,8 +56,33 @@ impl RequestSpec {
         Self {
             url,
             accept: "application/json",
+            headers: HeaderMap::new(),
+            fallbacks: Vec::new(),
         }
     }
+
+    pub(crate) fn with_headers(mut self, headers: HeaderMap) -> Self {
+        self.headers = headers;
+        self
+    }
+
+    pub(crate) fn with_fallbacks(mut self, fallbacks: Vec<Url>) -> Self {
+        self.fallbacks = fallbacks;
+        self
+    }
+
+    /// The primary URL followed by every mirror.
+    pub(crate) fn urls(&self) -> impl Iterator<Item = &Url> {
+        std::iter::once(&self.url).chain(self.fallbacks.iter())
+    }
+}
+
+/// Post-download work a platform needs before the bytes are cached.
+#[derive(Debug, Clone)]
+pub(crate) enum ImageDecode {
+    /// JM permutes the horizontal bands of every page image. The band count
+    /// depends on the photo id, the file name and the album's scramble id.
+    JmScramble { photo_id: String, filename: String },
 }
 
 /// Everything the request layer needs to know about one platform.
@@ -68,6 +108,22 @@ pub(crate) trait Platform: Send + Sync {
     /// disposable query parameters can drop them without changing the request.
     fn cache_key_url(&self, url: &Url) -> String {
         url.to_string()
+    }
+
+    /// Called after a document request to one mirror succeeds or fails. A
+    /// platform with interchangeable origins can remember which one works;
+    /// single-origin platforms keep the default no-op.
+    fn note_request_outcome(&self, _url: &Url, _success: bool) {}
+
+    /// Alternative hosts for the same image. The image pipeline tries them in
+    /// order when the current host fails with a retryable error.
+    fn image_fallbacks(&self, _url: &Url) -> Vec<Url> {
+        Vec::new()
+    }
+
+    /// Whether the downloaded bytes need decoding before they are cached.
+    fn image_decode(&self, _url: &Url) -> Option<ImageDecode> {
+        None
     }
 
     /// Build the keyword search request for a 1-based page.
@@ -117,7 +173,7 @@ pub(crate) trait Platform: Send + Sync {
 
 static GENERIC: Generic = Generic;
 static MANHUAGUI: Manhuagui = Manhuagui;
-static JM: Jm = Jm;
+static JM: Jm = Jm::new();
 static NHENTAI: Nhentai = Nhentai;
 
 static PLATFORMS: [&dyn Platform; 4] = [&GENERIC, &MANHUAGUI, &JM, &NHENTAI];
@@ -213,7 +269,7 @@ pub(super) fn collapse_whitespace(raw: &str) -> String {
 mod tests {
     use super::*;
     use reqwest::Client;
-    use reqwest::header::{ACCEPT_LANGUAGE, HeaderMap, REFERER};
+    use reqwest::header::{ACCEPT_LANGUAGE, HeaderMap, REFERER, USER_AGENT};
 
     fn parse(raw: &str) -> Url {
         Url::parse(raw).unwrap()
@@ -274,8 +330,12 @@ mod tests {
         let nhentai = headers_for("nhentai", "https://i.nhentai.net/a.jpg");
         assert_eq!(nhentai[REFERER].to_str().unwrap(), "https://nhentai.net/");
 
-        let jm = headers_for("jm", "https://cdn-msp.jmapiproxy.com/a.jpg");
-        assert_eq!(jm[REFERER].to_str().unwrap(), "https://18comic.vip/");
+        let jm = headers_for("jm", "https://cdn-msp.jmapiproxy1.cc/a.jpg");
+        assert_eq!(jm[REFERER].to_str().unwrap(), "https://www.cdnhjk.net");
+        assert!(
+            jm[USER_AGENT].to_str().unwrap().contains("Android"),
+            "jm must send the APP user agent"
+        );
     }
 
     #[test]

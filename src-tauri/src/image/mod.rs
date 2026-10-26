@@ -21,7 +21,10 @@ use cache::ImageFormat;
 pub(crate) use http::HttpClient;
 use http::HttpProxyConfig;
 use model::{ComicDetail, ReaderChapter, SearchResponse};
-use platform::{find as find_platform, resolve as resolve_platform, unknown_platform};
+use platform::{
+    ImageDecode, descramble, find as find_platform, resolve as resolve_platform, scramble_id,
+    segment_count, unknown_platform,
+};
 
 /// Bump only when the cache layout itself changes. Per-platform header changes
 /// use `Platform::cache_version` instead.
@@ -98,16 +101,59 @@ async fn fetch_image_inner(
         .join(platform.id());
     tokio::fs::create_dir_all(&cache_dir).await?;
 
-    let key = cache::cache_key(
-        platform.id(),
-        platform.cache_version(),
-        &platform.cache_key_url(&url),
-    );
+    // Decoded bytes differ from the download, so they get a distinct key. The
+    // suffix is constant, which also lets a cached page load without asking JM
+    // for the scramble id again.
+    let decode = platform.image_decode(&url);
+    let mut key_url = platform.cache_key_url(&url);
+    if decode.is_some() {
+        key_url.push_str("?decoded");
+    }
+
+    let key = cache::cache_key(platform.id(), platform.cache_version(), &key_url);
     if let Some(path) = cache::find_cached(&cache_dir, &key).await? {
         return cached_image(path, platform.id(), true).await;
     }
 
-    let download = http::download_image(client, platform, &url).await?;
+    let mut last_error = None;
+    let mut download = None;
+
+    for candidate in std::iter::once(url.clone()).chain(platform.image_fallbacks(&url)) {
+        match http::download_image(client, platform, &candidate).await {
+            Ok(result) => {
+                download = Some(result);
+                break;
+            }
+            // A blocked CDN can answer with a challenge page instead of an
+            // error, so `NotImage` is also worth another host.
+            Err(error)
+                if http::is_mirror_error(&error) || matches!(error, AppError::NotImage { .. }) =>
+            {
+                logging::warn(
+                    "image",
+                    format!("image host {candidate} failed ({error}); trying the next host"),
+                );
+                last_error = Some(error);
+            }
+            Err(error) => return Err(error),
+        }
+    }
+
+    let Some(mut download) = download else {
+        return Err(
+            last_error.unwrap_or_else(|| AppError::Unexpected("image has no URL to try".into()))
+        );
+    };
+
+    if let Some(ImageDecode::JmScramble { photo_id, filename }) = decode {
+        let scramble_id = scramble_id(client, platform, &photo_id).await?;
+        let segments = segment_count(scramble_id, &photo_id, &filename);
+        if segments > 0 {
+            download.bytes = descramble(&download.bytes, segments)?;
+            download.format = ImageFormat::Jpeg;
+        }
+    }
+
     let path = cache_dir.join(format!("{key}.{}", download.format.extension()));
     cache::write_atomically(&cache_dir, &path, &key, &download.bytes).await?;
 

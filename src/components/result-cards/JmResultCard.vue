@@ -17,6 +17,14 @@ const visibleTags = computed(() =>
 const hiddenCount = computed(() =>
   Math.max(0, props.item.extra.tags.length - maxVisibleTags),
 );
+
+// The APP search payload has no tags, so author and category are the only
+// metadata a result card can show.
+const metaLine = computed(() =>
+  [props.item.extra.author, props.item.extra.category]
+    .filter((value): value is string => Boolean(value))
+    .join(" · "),
+);
 </script>
 
 <template>
@@ -25,11 +33,15 @@ const hiddenCount = computed(() =>
     :thumb="item.thumb"
     :title="item.title"
   >
-    <p v-if="visibleTags.length === 0" class="meta-line">
+    <p v-if="metaLine" class="meta-line">
+      {{ metaLine }}
+    </p>
+
+    <p v-else-if="visibleTags.length === 0" class="meta-line">
       {{ t("home.search.noTags") }}
     </p>
 
-    <div v-else class="tag-row">
+    <div v-if="visibleTags.length > 0" class="tag-row">
       <NTag
         v-for="tag in visibleTags"
         :key="tag"

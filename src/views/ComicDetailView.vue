@@ -46,11 +46,18 @@ const backTarget = computed(() =>
 const backLabel = computed(() =>
   t(canReturnToSearch.value ? "detail.backToSearch" : "detail.backHome"),
 );
-// Only nhentai has a reader page source so far. Keeping the entry point gated
-// avoids sending users into an unsupported reader for the other platforms.
-const canRead = computed(
-  () => detail.value?.platform === "nhentai" && platform.value !== null,
-);
+// nhentai has a single implicit chapter; jm exposes chapters through the
+// detail payload, so the entry only appears once a chapter exists.
+const canRead = computed(() => {
+  const current = detail.value;
+  if (!current || platform.value === null) {
+    return false;
+  }
+  if (current.platform === "nhentai") {
+    return true;
+  }
+  return current.platform === "jm" && current.extra.chapters.length > 0;
+});
 
 const manhuaguiDetail = computed<ManhuaguiDetailData | null>(() =>
   detail.value?.platform === "manhuagui" ? detail.value : null,
@@ -84,12 +91,23 @@ function goBack() {
 }
 
 function openReader() {
-  if (!detail.value || detail.value.platform !== "nhentai") {
+  const current = detail.value;
+  if (!current || platform.value === null) {
     return;
   }
+
+  // JM reads one chapter at a time; start at the first one and let the reader
+  // navigate from there.
+  const chapterId =
+    current.platform === "jm" ? current.extra.chapters[0]?.id : undefined;
+
   void router.push({
     name: "comic-reader",
-    params: { platform: detail.value.platform, id: id.value },
+    params: {
+      platform: current.platform,
+      id: id.value,
+      ...(chapterId ? { chapterId } : {}),
+    },
   });
 }
 

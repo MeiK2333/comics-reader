@@ -627,16 +627,49 @@ pub(super) async fn download_image(
 }
 
 /// Fetch an HTML or JSON document for a platform search/detail request.
+///
+/// Mirrors are tried only for errors that another host can plausibly fix: a
+/// transport failure, an empty body, or a 403/429/5xx. Parse errors are final
+/// because the body already arrived from a host that answered.
 pub(super) async fn fetch_document(
     http: &HttpClient,
     platform: &dyn Platform,
     spec: &RequestSpec,
 ) -> Result<Vec<u8>> {
-    let url = &spec.url;
+    let mut last_error = None;
+
+    for url in spec.urls() {
+        match fetch_document_once(http, platform, spec, url).await {
+            Ok(body) => {
+                platform.note_request_outcome(url, true);
+                return Ok(body);
+            }
+            Err(error) if is_mirror_error(&error) => {
+                platform.note_request_outcome(url, false);
+                logging::warn(
+                    "http",
+                    format!("request to {url} failed ({error}); trying the next mirror"),
+                );
+                last_error = Some(error);
+            }
+            Err(error) => return Err(error),
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| AppError::Unexpected("request has no URL to try".into())))
+}
+
+async fn fetch_document_once(
+    http: &HttpClient,
+    platform: &dyn Platform,
+    spec: &RequestSpec,
+    url: &Url,
+) -> Result<Vec<u8>> {
     let mut response = http
         .send(url, |client| {
             platform
                 .configure(client.get(url.as_str()), url)
+                .headers(spec.headers.clone())
                 .header(ACCEPT, spec.accept)
         })
         .await?;
@@ -679,6 +712,15 @@ pub(super) async fn fetch_document(
     }
 
     Ok(bytes)
+}
+
+/// Whether trying the same request on another host could succeed.
+pub(super) fn is_mirror_error(error: &AppError) -> bool {
+    match error {
+        AppError::Network { .. } | AppError::EmptyResponse { .. } => true,
+        AppError::HttpStatus { status, .. } => *status == 403 || *status == 429 || *status >= 500,
+        _ => false,
+    }
 }
 
 #[cfg(test)]

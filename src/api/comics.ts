@@ -20,8 +20,11 @@ export interface ManhuaguiExtra {
   ratingCount: number | null;
 }
 
+/** JM's APP search payload carries no tags, only the author and category. */
 export interface JmExtra {
   tags: string[];
+  author: string | null;
+  category: string | null;
 }
 
 export interface NhentaiExtra {
@@ -33,6 +36,14 @@ export interface NhentaiExtra {
   numFavorites: number | null;
   tagIds: number[];
   blacklisted: boolean | null;
+}
+
+/** One chapter of a jm album, in reading order. */
+export interface JmChapterRef {
+  id: string;
+  title: string;
+  /** JM's 1-based chapter number. */
+  sort: number;
 }
 
 /** Detail fields for jm albums, which search results do not expose. */
@@ -47,6 +58,7 @@ export interface JmDetailExtra {
   likes: string | null;
   views: string | null;
   commentCount: number | null;
+  chapters: JmChapterRef[];
 }
 
 export interface NhentaiTag {

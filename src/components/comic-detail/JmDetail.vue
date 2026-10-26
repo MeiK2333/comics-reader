@@ -25,6 +25,15 @@ const infoItems = computed(() =>
       value: extra.value.pageCount?.toString() ?? "",
     },
     {
+      label: t("detail.fields.chapters"),
+      // A single-chapter album is the common case; only show a count when the
+      // album actually has multiple chapters.
+      value:
+        extra.value.chapters.length > 1
+          ? String(extra.value.chapters.length)
+          : "",
+    },
+    {
       label: t("detail.fields.publishedAt"),
       value: extra.value.pubDate ?? "",
     },
