@@ -12,6 +12,7 @@ import { getComic, isComicPlatform } from "../api/comics";
 import JmDetail from "../components/comic-detail/JmDetail.vue";
 import ManhuaguiDetail from "../components/comic-detail/ManhuaguiDetail.vue";
 import NhentaiDetail from "../components/comic-detail/NhentaiDetail.vue";
+import { useBackNavigation } from "../composables/useBackNavigation";
 import { useErrorMessage } from "../composables/useErrorMessage";
 import { AppError, toAppError } from "../errors";
 import { useAppI18n } from "../i18n";
@@ -23,6 +24,7 @@ const router = useRouter();
 const search = useSearchStore();
 const { t } = useAppI18n();
 const formatError = useErrorMessage();
+const { goBack: back } = useBackNavigation();
 
 const detail = ref<ComicDetail | null>(null);
 const loading = ref(true);
@@ -87,7 +89,7 @@ const errorText = computed(() => {
 });
 
 function goBack() {
-  void router.push(backTarget.value);
+  back(backTarget.value);
 }
 
 function openChapter(chapterId: string) {

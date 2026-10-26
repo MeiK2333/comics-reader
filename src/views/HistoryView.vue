@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import type { RouteLocationRaw } from "vue-router";
-import { RouterLink, useRouter } from "vue-router";
+import { RouterLink } from "vue-router";
+import { useBackNavigation } from "../composables/useBackNavigation";
 import type { ComicPlatform } from "../api/comics";
 import { listHistory, type HistoryEntry } from "../api/history";
 import ComicThumb from "../components/ComicThumb.vue";
@@ -12,7 +13,7 @@ import { useSettingsStore } from "../stores/settings";
 
 const PAGE_SIZE = 50;
 
-const router = useRouter();
+const { goBack } = useBackNavigation();
 const settings = useSettingsStore();
 const { t } = useAppI18n();
 const formatError = useErrorMessage();
@@ -118,7 +119,7 @@ function changePage(next: number) {
 }
 
 function goHome() {
-  void router.push({ name: "home" });
+  goBack({ name: "home" });
 }
 
 onMounted(() => {

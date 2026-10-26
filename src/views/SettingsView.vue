@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from "vue";
-import { useRouter } from "vue-router";
+import { useBackNavigation } from "../composables/useBackNavigation";
 import { useMessage } from "naive-ui";
 import type { SelectOption } from "naive-ui";
 import HomeIcon from "../components/HomeIcon.vue";
@@ -16,7 +16,7 @@ import { useErrorMessage } from "../composables/useErrorMessage";
 import { useAppI18n, type MessageKey } from "../i18n";
 import { useSettingsStore, type ProxySettings } from "../stores/settings";
 
-const router = useRouter();
+const { goBack } = useBackNavigation();
 const { t } = useAppI18n();
 const settings = useSettingsStore();
 const message = useMessage();
@@ -216,7 +216,7 @@ async function saveProxy() {
 }
 
 function goHome() {
-  void router.push({ name: "home" });
+  goBack({ name: "home" });
 }
 </script>
 

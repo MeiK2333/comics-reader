@@ -6,6 +6,7 @@ import { isComicPlatform } from "../api/comics";
 import type { ReaderChapter } from "../api/reader";
 import { getReaderChapter } from "../api/reader";
 import ComicViewer from "../components/reader/ComicViewer.vue";
+import { useBackNavigation } from "../composables/useBackNavigation";
 import { useErrorMessage } from "../composables/useErrorMessage";
 import { useReadingHistory } from "../composables/useReadingHistory";
 import { AppError, toAppError } from "../errors";
@@ -15,6 +16,7 @@ import { useSettingsStore } from "../stores/settings";
 
 const route = useRoute();
 const router = useRouter();
+const { goBack: back } = useBackNavigation();
 const { t } = useAppI18n();
 const formatError = useErrorMessage();
 const settings = useSettingsStore();
@@ -103,13 +105,13 @@ function syncPageQuery(value: number) {
 
 function goBack() {
   if (platform.value && id.value) {
-    void router.push({
+    back({
       name: "comic-detail",
       params: { platform: platform.value, id: id.value },
     });
     return;
   }
-  void router.push({ name: "home" });
+  back({ name: "home" });
 }
 
 function goToChapter(target: ReaderChapter["previous"]) {
@@ -118,7 +120,9 @@ function goToChapter(target: ReaderChapter["previous"]) {
   }
   // Persist the last page before the route params switch to another chapter.
   readingHistory.flush();
-  void router.push({
+  // Chapter switches replace the current entry: the reader stays one history
+  // step away from the detail page instead of stacking every chapter.
+  void router.replace({
     name: "comic-reader",
     params: {
       platform: platform.value,

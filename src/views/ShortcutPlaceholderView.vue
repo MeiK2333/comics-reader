@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { useRouter } from "vue-router";
+import { useBackNavigation } from "../composables/useBackNavigation";
 import ShortcutIcon from "../components/ShortcutIcon.vue";
 import { useAppI18n } from "../i18n";
 import { SHORTCUT_LABEL_KEYS, type ShortcutFeature } from "../shortcuts";
@@ -9,13 +9,13 @@ const props = defineProps<{
   feature: ShortcutFeature;
 }>();
 
-const router = useRouter();
+const { goBack } = useBackNavigation();
 const { t } = useAppI18n();
 
 const title = computed(() => t(SHORTCUT_LABEL_KEYS[props.feature]));
 
 function goHome() {
-  void router.push({ name: "home" });
+  goBack({ name: "home" });
 }
 </script>
 

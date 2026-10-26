@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from "vue";
-import { useRouter } from "vue-router";
+import { useBackNavigation } from "../composables/useBackNavigation";
 import { useMessage } from "naive-ui";
 import type { ScrollbarInst } from "naive-ui";
 import {
@@ -14,7 +14,7 @@ import LogActionIcon from "../components/LogActionIcon.vue";
 import { useErrorMessage } from "../composables/useErrorMessage";
 import { useAppI18n, type MessageKey } from "../i18n";
 
-const router = useRouter();
+const { goBack: back } = useBackNavigation();
 const { t } = useAppI18n();
 const message = useMessage();
 const formatError = useErrorMessage();
@@ -129,7 +129,7 @@ async function exportToFile() {
 }
 
 function goBack() {
-  void router.push({ name: "settings" });
+  back({ name: "settings" });
 }
 
 onMounted(() => {
