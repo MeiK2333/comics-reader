@@ -80,7 +80,7 @@
 - 缓存键 = 平台 + 平台 `cache_version` + URL 的 SHA-256；manhuagui/JM 忽略 query。写入 `app_cache_dir()/images/<platform>/<hash>.<ext>`；格式按魔数，扩展名决定 MIME。修改平台请求头/缓存语义要提升该平台 `cache_version`；改 URL 归一化或目录提升 `CACHE_VERSION`。当前无自动清理/容量上限。
 - 所有远程请求走 `HttpClient::send`（代理/ECH）：ECH 关闭用普通 client（可走代理），开启用 `no_proxy` 的 ECH/plain client。不要另建 client。
 - ECH 内部细节（`cloudflare-ech.com` 配置、Cloudflare DoH、TTL、fallback 缓存）以 `image/http.rs`、`ech/` 和测试为准。必须保留的约束：代理与 ECH 互斥；启动初始化要等待；非 Cloudflare 站点 plain TLS 回退是预期。
-- 平台集中在 `image/platform/`，实现 `Platform` trait（`id`/`matches`/`configure`，可选搜索/详情/阅读）。当前 `generic`/`manhuagui`/`jm`/`nhentai`。`platform` 参数可省略时按 host 识别；已知平台显式传，JM 尤其。
+- 平台集中在 `image/platform/`，实现 `Platform` trait（`id`/`matches`/`configure`/`note_request_outcome`/`prepare`，可选搜索/详情/阅读）。当前 `generic`/`manhuagui`/`jm`/`nhentai`。`platform` 参数可省略时按 host 识别；已知平台显式传，JM 尤其。JM 在首个搜索/详情/阅读命令前通过 `prepare` 请求 `/setting` 同步 `jm3_version`（进程一次，失败下次重试），`tokenparam` 使用运行时版本。
 - 搜索会话由 `search` store 管理；`/search` 不携带 query，刷新/深链会被守卫送回首页；首页图标固定回首页。
 - 详情 `/comic/:platform/:id` 不依赖搜索会话，直接 `get_comic`，刷新/深链可用；返回按钮只在搜索会话有效时回 `/search`，否则回首页。
 - 搜索返回 `{ total, page_size, result: [{ id, title, thumb, platform, extra }] }`，详情 `{ platform, title, thumb, extra }`；`platform` 判别，`extra` 强类型（Rust `SearchExtra`/`DetailExtra`，前端判别联合）。不要退回 `Record<string, unknown>` 或 JSON 兜底。
@@ -90,7 +90,7 @@
 
 ### 阅读器
 
-- 路由 `/comic/:platform/:id/read/:chapterId?`，适用 nhentai 与 JM；`ComicReaderView` 负责加载页源、写 `?page=`、返回详情和错误态。JM 详情页会传入第一章 id；省略 `chapterId` 时后端退化为用 album id 作为章节（单章本子）。
+- 路由 `/comic/:platform/:id/read/:chapterId?`，适用 nhentai 与 JM；`ComicReaderView` 负责加载页源、写 `?page=`、返回详情和错误态。JM 详情页在多章时列出章节并传入所选 id，单章本子直接进第一章；省略 `chapterId` 时后端退化为用 album id 作为章节。
 - 单页视口：上/中/下三页槽位组成 3 倍轨道，当前页居中；翻页整体滑动，无背景缝。
 - `readerDirection` 决定轨道轴和手势/方向键：`ltr` 横向、`rtl` 横向反向（下一页在左）、`ttb` 纵向；缩放后拖拽平移，滚轮翻页。
 - 上下栏是绝对定位覆盖层，默认隐藏，不占 stage 布局；点击中间 1/3 切换显隐，左右 1/3 按方向翻页；不要在滑动、滚轮或翻页时自动唤出。
@@ -193,7 +193,6 @@
 ## 尚未实现
 
 - **JM 域名自动更新**：域名列表内置，失败会换域名但不会拉取 JM 发布的最新域名；如需更新，从发布页获取，不要搬 Python 登录/收藏/下载框架。
-- **JM 章节选择器**：详情页只进第一章，章内靠 `previous`/`next`；多章本子的目录 UI 尚未实现。
 - **收藏与下载**：`/favorites`、`/downloads` 仍是占位页。先定产品边界；Rust 持久化到 `app_data_dir()`，下载不放 `app_cache_dir()`；离线阅读用本地路径 + 资产协议；替换占位页时同步 `shortcuts.ts`、route meta、语言包与本文件。
 - **manhuagui 阅读**：实现 `reader_chapter_request`/`parse_reader_chapter` 并补 fixture；详情入口改为能力判断；复用阅读路由、方向和历史；页源只返回 URL/尺寸，图片仍走 `fetch_image`。
 - **更多平台**：按平台改动入口实现；先确认接口、登录/付费/地区限制与抓取许可；至少补搜索/详情 fixture；保持判别联合的编译期安全。
