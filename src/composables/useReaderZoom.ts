@@ -114,6 +114,7 @@ export function useReaderZoom(
     percent,
     zoomBy,
     zoomStep,
+    setScale,
     panBy,
     reset,
     reflow,

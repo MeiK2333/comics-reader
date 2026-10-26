@@ -139,7 +139,8 @@
     "zoomOut": "Zoom out",
     "resetZoom": "Reset zoom",
     "fullscreen": "Fullscreen",
-    "exitFullscreen": "Exit fullscreen"
+    "exitFullscreen": "Exit fullscreen",
+    "batteryLevel": "Battery {level}%"
   },
   "settings": {
     "title": "Settings",
@@ -167,6 +168,13 @@
         "rtl": "Right to left",
         "ttb": "Top to bottom"
       }
+    },
+    "readerPreload": {
+      "label": "Preload pages",
+      "option": "{count} pages"
+    },
+    "readerPreloadNextChapter": {
+      "label": "Preload next chapter"
     },
     "proxy": {
       "title": "Network settings",

@@ -14,7 +14,12 @@ import {
 import { toAppError } from "../errors";
 import { useErrorMessage } from "../composables/useErrorMessage";
 import { useAppI18n, type MessageKey } from "../i18n";
-import { useSettingsStore, type ProxySettings } from "../stores/settings";
+import {
+  READER_PRELOAD_MAX,
+  READER_PRELOAD_MIN,
+  useSettingsStore,
+  type ProxySettings,
+} from "../stores/settings";
 
 const { goBack } = useBackNavigation();
 const { t } = useAppI18n();
@@ -48,6 +53,21 @@ const readerDirectionOptions = computed<SelectOption[]>(() => [
     value: "ttb",
   },
 ]);
+
+const preloadOptions = computed<SelectOption[]>(() => {
+  const options: SelectOption[] = [];
+  for (
+    let count = READER_PRELOAD_MIN;
+    count <= READER_PRELOAD_MAX;
+    count += 1
+  ) {
+    options.push({
+      label: t("settings.readerPreload.option", { count }),
+      value: count,
+    });
+  }
+  return options;
+});
 
 // The form edits a copy so a rejected address is never persisted. Only a
 // successful `set_http_proxy` call writes back to the store.
@@ -262,6 +282,18 @@ function goHome() {
           class="setting-select"
           :options="readerDirectionOptions"
         />
+      </div>
+      <div class="setting">
+        <span>{{ t("settings.readerPreload.label") }}</span>
+        <NSelect
+          v-model:value="settings.readerPreloadCount"
+          class="setting-select"
+          :options="preloadOptions"
+        />
+      </div>
+      <div class="setting">
+        <span>{{ t("settings.readerPreloadNextChapter.label") }}</span>
+        <NSwitch v-model:value="settings.readerPreloadNextChapter" />
       </div>
 
       <NDivider class="settings-divider" />

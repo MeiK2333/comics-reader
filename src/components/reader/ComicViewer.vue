@@ -3,10 +3,13 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { CSSProperties } from "vue";
 import type { ComicPlatform } from "../../api/comics";
 import type { ReaderPage } from "../../api/reader";
+import { useBattery } from "../../composables/useBattery";
+import { useReaderPreload } from "../../composables/useReaderPreload";
 import { useReaderZoom } from "../../composables/useReaderZoom";
 import type { ReaderImageSize } from "../../composables/useReaderZoom";
 import { useAppI18n } from "../../i18n";
 import type { ReaderDirection } from "../../stores/settings";
+import ReaderBattery from "./ReaderBattery.vue";
 import ReaderPageImage from "./ReaderPageImage.vue";
 
 const TURN_DURATION = 260;
@@ -34,11 +37,13 @@ const props = withDefaults(
     chapterTitle?: string;
     hasPreviousChapter?: boolean;
     hasNextChapter?: boolean;
+    preloadCount?: number;
   }>(),
   {
     chapterTitle: "",
     hasPreviousChapter: false,
     hasNextChapter: false,
+    preloadCount: 3,
   },
 );
 
@@ -46,6 +51,7 @@ const emit = defineEmits<{
   "update:page": [page: number];
   "previous-chapter": [];
   "next-chapter": [];
+  "page-boundary": [direction: "previous" | "next"];
   close: [];
 }>();
 
@@ -68,17 +74,20 @@ const displayPage = ref(1);
 const turnTarget = ref<number | null>(null);
 const trackOffset = ref(0);
 const trackAnimating = ref(false);
+const boundaryLeaving = ref(false);
 const identityStyle: CSSProperties = {};
 
 const currentPage = computed(
   () => props.pages[displayPage.value - 1] ?? null,
 );
 const counterPage = computed(() => turnTarget.value ?? displayPage.value);
+// At a chapter boundary the buttons stay enabled: the page-turn attempt is
+// what switches chapter (or returns to the detail page).
 const canPrevious = computed(
-  () => !trackAnimating.value && displayPage.value > 1,
+  () => !trackAnimating.value && !boundaryLeaving.value,
 );
 const canNext = computed(
-  () => !trackAnimating.value && displayPage.value < total.value,
+  () => !trackAnimating.value && !boundaryLeaving.value,
 );
 
 const {
@@ -87,10 +96,18 @@ const {
   percent,
   zoomBy,
   zoomStep,
+  setScale,
   panBy,
   reset,
   reflow,
 } = useReaderZoom(stage, imageSize);
+
+const { percent: batteryPercent } = useBattery();
+const batteryLabel = computed(() =>
+  batteryPercent.value === null
+    ? ""
+    : t("reader.batteryLevel", { level: batteryPercent.value }),
+);
 
 const imageStyle = computed<CSSProperties>(() => ({
   transform: `translate3d(${offset.value.x}px, ${offset.value.y}px, 0) scale(${scale.value})`,
@@ -126,6 +143,13 @@ function clampPage(value: number) {
 }
 
 displayPage.value = clampPage(props.page);
+
+useReaderPreload(
+  computed(() => props.platform),
+  computed(() => props.pages),
+  displayPage,
+  computed(() => props.preloadCount),
+);
 
 function stageHeight() {
   return stage.value?.clientHeight ?? 1;
@@ -245,11 +269,27 @@ function goToPage(next: number) {
   turnTo(next);
 }
 
+function leaveAtBoundary(direction: "previous" | "next") {
+  if (boundaryLeaving.value) {
+    return;
+  }
+  boundaryLeaving.value = true;
+  emit("page-boundary", direction);
+}
+
 function previousPage() {
+  if (displayPage.value <= 1) {
+    leaveAtBoundary("previous");
+    return;
+  }
   goToPage(displayPage.value - 1);
 }
 
 function nextPage() {
+  if (displayPage.value >= total.value) {
+    leaveAtBoundary("next");
+    return;
+  }
   goToPage(displayPage.value + 1);
 }
 
@@ -276,6 +316,7 @@ function onSlotSize(number: number, size: ReaderImageSize) {
 watch(
   () => props.page,
   (value) => {
+    boundaryLeaving.value = false;
     const next = clampPage(value);
     if (next === displayPage.value) {
       return;
@@ -300,6 +341,7 @@ watch(
   () => props.pages,
   () => {
     // Chapter or page-source changes invalidate cached sizes for old pages.
+    boundaryLeaving.value = false;
     pageSizes.clear();
   },
 );
@@ -385,7 +427,22 @@ interface DragState {
   moved: boolean;
 }
 
+interface PointerPoint {
+  x: number;
+  y: number;
+  type: string;
+}
+
+interface PinchState {
+  startDistance: number;
+  startScale: number;
+  lastX: number;
+  lastY: number;
+}
+
 let drag: DragState | null = null;
+let pinch: PinchState | null = null;
+const activePointers = new Map<number, PointerPoint>();
 
 function isInteractiveTarget(target: EventTarget | null) {
   return (
@@ -395,6 +452,56 @@ function isInteractiveTarget(target: EventTarget | null) {
   );
 }
 
+function pointerDistance(first: PointerPoint, second: PointerPoint) {
+  return Math.hypot(first.x - second.x, first.y - second.y);
+}
+
+function pointerMidpoint(first: PointerPoint, second: PointerPoint) {
+  return {
+    x: (first.x + second.x) / 2,
+    y: (first.y + second.y) / 2,
+  };
+}
+
+function startPinch() {
+  const points = [...activePointers.values()];
+  if (points.length !== 2 || !points.every((point) => point.type === "touch")) {
+    return;
+  }
+
+  const [first, second] = points;
+  const distance = pointerDistance(first, second);
+  if (distance <= 0) {
+    return;
+  }
+
+  const midpoint = pointerMidpoint(first, second);
+  drag = null;
+  cancelTurn();
+  trackOffset.value = 0;
+  pinch = {
+    startDistance: distance,
+    startScale: scale.value,
+    lastX: midpoint.x,
+    lastY: midpoint.y,
+  };
+}
+
+function startPan(pointerId: number, point: PointerPoint) {
+  drag = {
+    id: pointerId,
+    startX: point.x,
+    startY: point.y,
+    lastX: point.x,
+    lastY: point.y,
+    totalX: 0,
+    totalY: 0,
+    mode: "pan",
+    // A pinch just ended; the remaining finger must not become a tap.
+    moved: true,
+  };
+}
+
 function onStagePointerDown(event: PointerEvent) {
   if (trackAnimating.value) {
     return;
@@ -402,7 +509,11 @@ function onStagePointerDown(event: PointerEvent) {
   if (event.pointerType === "mouse" && event.button !== 0) {
     return;
   }
-  if (drag || isInteractiveTarget(event.target)) {
+  if (
+    activePointers.has(event.pointerId) ||
+    activePointers.size >= 2 ||
+    isInteractiveTarget(event.target)
+  ) {
     return;
   }
 
@@ -411,22 +522,63 @@ function onStagePointerDown(event: PointerEvent) {
     return;
   }
 
-  drag = {
-    id: event.pointerId,
-    startX: event.clientX,
-    startY: event.clientY,
-    lastX: event.clientX,
-    lastY: event.clientY,
-    totalX: 0,
-    totalY: 0,
-    mode: scale.value > 1 ? "pan" : "swipe",
-    moved: false,
+  const point: PointerPoint = {
+    x: event.clientX,
+    y: event.clientY,
+    type: event.pointerType,
   };
+  activePointers.set(event.pointerId, point);
   element.setPointerCapture(event.pointerId);
   event.preventDefault();
+
+  if (activePointers.size === 1) {
+    drag = {
+      id: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      lastX: event.clientX,
+      lastY: event.clientY,
+      totalX: 0,
+      totalY: 0,
+      mode: scale.value > 1 ? "pan" : "swipe",
+      moved: false,
+    };
+    return;
+  }
+
+  startPinch();
 }
 
 function onStagePointerMove(event: PointerEvent) {
+  const point = activePointers.get(event.pointerId);
+  if (!point) {
+    return;
+  }
+  point.x = event.clientX;
+  point.y = event.clientY;
+
+  if (pinch && activePointers.size >= 2) {
+    event.preventDefault();
+    const [first, second] = [...activePointers.values()];
+    const distance = pointerDistance(first, second);
+    if (pinch.startDistance <= 0 || distance <= 0) {
+      return;
+    }
+
+    const midpoint = pointerMidpoint(first, second);
+    // Pan by the midpoint movement first; then anchor the new scale at the
+    // moving midpoint so the image follows the fingers.
+    panBy(midpoint.x - pinch.lastX, midpoint.y - pinch.lastY);
+    setScale(
+      pinch.startScale * (distance / pinch.startDistance),
+      midpoint.x,
+      midpoint.y,
+    );
+    pinch.lastX = midpoint.x;
+    pinch.lastY = midpoint.y;
+    return;
+  }
+
   if (!drag || drag.id !== event.pointerId) {
     return;
   }
@@ -468,13 +620,30 @@ function releasePointer(event: PointerEvent) {
 }
 
 function onStagePointerUp(event: PointerEvent) {
+  if (!activePointers.delete(event.pointerId)) {
+    return;
+  }
+  releasePointer(event);
+
+  if (pinch) {
+    if (activePointers.size >= 2) {
+      return;
+    }
+    pinch = null;
+    const remaining = activePointers.entries().next();
+    if (!remaining.done) {
+      const [pointerId, point] = remaining.value;
+      startPan(pointerId, point);
+    }
+    return;
+  }
+
   if (!drag || drag.id !== event.pointerId) {
     return;
   }
 
   const current = drag;
   drag = null;
-  releasePointer(event);
 
   if (current.mode === "swipe" && current.moved) {
     const primary = horizontal.value ? current.totalX : current.totalY;
@@ -489,6 +658,12 @@ function onStagePointerUp(event: PointerEvent) {
         turnTo(target);
         return;
       }
+      if (forward) {
+        nextPage();
+      } else {
+        previousPage();
+      }
+      return;
     }
     snapBack();
     return;
@@ -504,11 +679,28 @@ function onStagePointerUp(event: PointerEvent) {
 }
 
 function onStagePointerCancel(event: PointerEvent) {
+  if (!activePointers.delete(event.pointerId)) {
+    return;
+  }
+  releasePointer(event);
+
+  if (pinch) {
+    if (activePointers.size >= 2) {
+      return;
+    }
+    pinch = null;
+    const remaining = activePointers.entries().next();
+    if (!remaining.done) {
+      const [pointerId, point] = remaining.value;
+      startPan(pointerId, point);
+    }
+    return;
+  }
+
   if (!drag || drag.id !== event.pointerId) {
     return;
   }
   drag = null;
-  releasePointer(event);
   snapBack();
 }
 
@@ -653,6 +845,8 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  activePointers.clear();
+  pinch = null;
   stage.value?.removeEventListener("wheel", onWheel);
   window.removeEventListener("keydown", onKeydown);
   window.removeEventListener("resize", onResize);
@@ -710,6 +904,12 @@ onBeforeUnmount(() => {
           {{ chapterTitle }}
         </span>
       </div>
+
+      <ReaderBattery
+        v-if="batteryPercent !== null"
+        :level="batteryPercent"
+        :label="batteryLabel"
+      />
 
       <span class="viewer__counter">
         {{ t("reader.pageIndicator", { current: counterPage, total }) }}
@@ -917,6 +1117,17 @@ onBeforeUnmount(() => {
       </div>
     </footer>
 
+    <div v-show="!chromeVisible" class="viewer__hud" aria-hidden="true">
+      <ReaderBattery
+        v-if="batteryPercent !== null"
+        :level="batteryPercent"
+        :label="batteryLabel"
+      />
+      <span class="viewer__hud-page">
+        {{ t("reader.pageIndicator", { current: counterPage, total }) }}
+      </span>
+    </div>
+
     <p class="sr-only" aria-live="polite">
       {{
         t("reader.pageAnnouncement", {
@@ -1021,6 +1232,30 @@ onBeforeUnmount(() => {
   font-size: 0.85rem;
   font-variant-numeric: tabular-nums;
   opacity: 0.7;
+}
+
+.viewer__hud {
+  position: absolute;
+  top: 0.5rem;
+  right: calc(0.75rem + var(--app-safe-area-right, 0px));
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid rgba(127, 127, 127, 0.18);
+  border-radius: 999px;
+  background: var(--app-background);
+  background: color-mix(in srgb, var(--app-background) 82%, transparent);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+  backdrop-filter: blur(8px);
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.viewer__hud-page {
+  opacity: 0.82;
 }
 
 .viewer__stage {

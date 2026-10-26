@@ -58,6 +58,7 @@ declare module 'vue' {
     NSwitch: typeof import('naive-ui')['NSwitch']
     NTag: typeof import('naive-ui')['NTag']
     PlatformPicker: typeof import('./components/PlatformPicker.vue')['default']
+    ReaderBattery: typeof import('./components/reader/ReaderBattery.vue')['default']
     ReaderPageImage: typeof import('./components/reader/ReaderPageImage.vue')['default']
     ResultCardShell: typeof import('./components/result-cards/ResultCardShell.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']

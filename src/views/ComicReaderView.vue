@@ -8,11 +8,19 @@ import { getReaderChapter } from "../api/reader";
 import ComicViewer from "../components/reader/ComicViewer.vue";
 import { useBackNavigation } from "../composables/useBackNavigation";
 import { useErrorMessage } from "../composables/useErrorMessage";
+import { useNextChapterPreload } from "../composables/useNextChapterPreload";
 import { useReadingHistory } from "../composables/useReadingHistory";
 import { AppError, toAppError } from "../errors";
 import { useAppI18n } from "../i18n";
 import { setWindowTitle, updateWindowTitle } from "../router";
-import { useSettingsStore } from "../stores/settings";
+import {
+  clampReaderPreloadCount,
+  useSettingsStore,
+} from "../stores/settings";
+
+/** Internal query value that lands on the last page after a chapter switch. */
+const LAST_PAGE_QUERY = "last";
+type ChapterPosition = "start" | "end";
 
 const route = useRoute();
 const router = useRouter();
@@ -25,6 +33,9 @@ const chapter = ref<ReaderChapter | null>(null);
 const loading = ref(true);
 const error = ref<AppError | null>(null);
 const page = ref(1);
+const preloadCount = computed(() =>
+  clampReaderPreloadCount(settings.readerPreloadCount),
+);
 let requestId = 0;
 let previousBodyOverflow = "";
 let recordedPage = 0;
@@ -48,6 +59,15 @@ const chapterId = computed(() => {
 // platform; the fallback keeps the prop non-nullable for the child component.
 const viewerPlatform = computed<ComicPlatform>(
   () => platform.value ?? "nhentai",
+);
+
+useNextChapterPreload(
+  chapter,
+  page,
+  platform,
+  id,
+  computed(() => settings.readerPreloadNextChapter),
+  preloadCount,
 );
 
 // The reader owns the page counter, so history simply mirrors it. The target
@@ -114,7 +134,10 @@ function goBack() {
   back({ name: "home" });
 }
 
-function goToChapter(target: ReaderChapter["previous"]) {
+function goToChapter(
+  target: ReaderChapter["previous"],
+  position: ChapterPosition = "start",
+) {
   if (!target || !platform.value || !id.value) {
     return;
   }
@@ -129,10 +152,40 @@ function goToChapter(target: ReaderChapter["previous"]) {
       id: id.value,
       chapterId: target.id,
     },
-    // A new chapter starts at its first page, not at the previous chapter's
-    // current page carried in the query string.
-    query: {},
+    // A previous chapter reached from the first page opens at its end so
+    // backward reading is continuous; the explicit chapter buttons still
+    // open the beginning.
+    query: position === "end" ? { page: LAST_PAGE_QUERY } : {},
   });
+}
+
+function openPreviousChapter() {
+  const target = chapter.value?.previous;
+  if (target) {
+    goToChapter(target, "start");
+    return;
+  }
+  goBack();
+}
+
+function openNextChapter() {
+  const target = chapter.value?.next;
+  if (target) {
+    goToChapter(target, "start");
+    return;
+  }
+  goBack();
+}
+
+function goFromPageBoundary(direction: "previous" | "next") {
+  const target =
+    direction === "previous" ? chapter.value?.previous : chapter.value?.next;
+  if (target) {
+    goToChapter(target, direction === "previous" ? "end" : "start");
+    return;
+  }
+  // The first/last chapter has nowhere else to go on that side.
+  goBack();
 }
 
 async function load() {
@@ -142,6 +195,7 @@ async function load() {
   const currentPlatform = platform.value;
   const currentId = id.value;
   const currentChapterId = chapterId.value;
+  const startAtEnd = route.query.page === LAST_PAGE_QUERY;
 
   loading.value = true;
   error.value = null;
@@ -213,7 +267,9 @@ async function load() {
       return;
     }
 
-    page.value = clampPage(requestedPage(), result.pages.length);
+    page.value = startAtEnd
+      ? result.pages.length
+      : clampPage(requestedPage(), result.pages.length);
     setWindowTitle(
       result.chapterTitle
         ? `${result.title} · ${result.chapterTitle} · ${t("app.name")}`
@@ -314,9 +370,11 @@ onBeforeUnmount(() => {
       :chapter-title="chapter.chapterTitle ?? undefined"
       :has-previous-chapter="chapter.previous !== null"
       :has-next-chapter="chapter.next !== null"
+      :preload-count="preloadCount"
       @close="goBack"
-      @previous-chapter="goToChapter(chapter.previous)"
-      @next-chapter="goToChapter(chapter.next)"
+      @previous-chapter="openPreviousChapter"
+      @next-chapter="openNextChapter"
+      @page-boundary="goFromPageBoundary"
     />
 
     <div v-else class="reader-state">
