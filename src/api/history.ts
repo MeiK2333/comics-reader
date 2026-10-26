@@ -42,16 +42,3 @@ export function listHistory(offset = 0, limit = 50): Promise<HistoryPage> {
 export function recordHistory(entry: HistoryInput): Promise<void> {
   return invoke("record_history", { entry });
 }
-
-/** Remove one work from history. */
-export function removeHistory(
-  platform: ComicPlatform,
-  id: string,
-): Promise<void> {
-  return invoke("remove_history", { platform, id });
-}
-
-/** Delete the whole reading history. */
-export function clearHistory(): Promise<void> {
-  return invoke("clear_history");
-}

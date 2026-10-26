@@ -32,8 +32,6 @@ pub fn run() {
             image::set_http_proxy,
             history::list_history,
             history::record_history,
-            history::remove_history,
-            history::clear_history,
             ech::fetch_ech_config,
             ech::probe_ech_handshake,
             ech::set_ech_enabled,

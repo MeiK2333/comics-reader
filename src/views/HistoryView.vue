@@ -2,14 +2,8 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import type { RouteLocationRaw } from "vue-router";
 import { RouterLink, useRouter } from "vue-router";
-import { useMessage } from "naive-ui";
 import type { ComicPlatform } from "../api/comics";
-import {
-  clearHistory,
-  listHistory,
-  removeHistory,
-  type HistoryEntry,
-} from "../api/history";
+import { listHistory, type HistoryEntry } from "../api/history";
 import ComicThumb from "../components/ComicThumb.vue";
 import { useErrorMessage } from "../composables/useErrorMessage";
 import { toAppError, type AppError } from "../errors";
@@ -19,7 +13,6 @@ import { useSettingsStore } from "../stores/settings";
 const PAGE_SIZE = 50;
 
 const router = useRouter();
-const message = useMessage();
 const settings = useSettingsStore();
 const { t } = useAppI18n();
 const formatError = useErrorMessage();
@@ -29,8 +22,6 @@ const total = ref(0);
 const page = ref(1);
 const loading = ref(true);
 const loadError = ref<AppError | null>(null);
-const removingKey = ref<string | null>(null);
-const clearing = ref(false);
 let requestId = 0;
 
 const pageCount = computed(() =>
@@ -126,51 +117,6 @@ function changePage(next: number) {
   void load();
 }
 
-async function remove(entry: HistoryEntry) {
-  if (removingKey.value !== null) {
-    return;
-  }
-
-  removingKey.value = entryKey(entry);
-  try {
-    await removeHistory(entry.platform, entry.id);
-    // Deleting the last row of the last page would leave an empty page; step
-    // back before asking for the replacement page.
-    const remaining = Math.max(0, total.value - 1);
-    const lastPage = Math.max(1, Math.ceil(remaining / PAGE_SIZE));
-    if (page.value > lastPage) {
-      page.value = lastPage;
-    }
-    await load();
-  } catch (cause) {
-    message.error(`${t("history.removeFailed")} ${formatError(cause)}`);
-  } finally {
-    removingKey.value = null;
-  }
-}
-
-async function clearAll() {
-  if (clearing.value) {
-    return;
-  }
-
-  clearing.value = true;
-  // Invalidate a list request that may still be in flight.
-  requestId++;
-  try {
-    await clearHistory();
-    page.value = 1;
-    total.value = 0;
-    entries.value = [];
-    message.success(t("history.cleared"));
-  } catch (cause) {
-    message.error(`${t("history.clearFailed")} ${formatError(cause)}`);
-  } finally {
-    loading.value = false;
-    clearing.value = false;
-  }
-}
-
 function goHome() {
   void router.push({ name: "home" });
 }
@@ -216,23 +162,6 @@ onBeforeUnmount(() => {
         </template>
       </NButton>
       <h1>{{ t("history.title") }}</h1>
-
-      <div class="history-clear">
-        <NPopconfirm @positive-click="clearAll">
-          <template #trigger>
-            <NButton
-              attr-type="button"
-              quaternary
-              type="error"
-              :disabled="total === 0 || loading"
-              :loading="clearing"
-            >
-              {{ t("history.clear") }}
-            </NButton>
-          </template>
-          {{ t("history.clearConfirm") }}
-        </NPopconfirm>
-      </div>
     </header>
 
     <NCard class="history-card" size="small">
@@ -325,37 +254,6 @@ onBeforeUnmount(() => {
               </svg>
             </span>
           </RouterLink>
-
-          <NButton
-            attr-type="button"
-            quaternary
-            circle
-            size="small"
-            class="history-entry__remove"
-            :loading="removingKey === entryKey(entry)"
-            :aria-label="t('history.remove')"
-            :title="t('history.remove')"
-            @click="remove(entry)"
-          >
-            <template #icon>
-              <svg
-                class="history-entry__trash"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-                focusable="false"
-              >
-                <path d="M4 7h16" />
-                <path d="M9 7V4h6v3" />
-                <path d="m6 7 1 13h10l1-13" />
-                <path d="M10 11v5M14 11v5" />
-              </svg>
-            </template>
-          </NButton>
         </div>
       </div>
 
@@ -401,10 +299,6 @@ onBeforeUnmount(() => {
   margin: 0;
   font-size: 1.25rem;
   font-weight: 600;
-}
-
-.history-clear {
-  margin-left: auto;
 }
 
 .history-card {
@@ -457,10 +351,6 @@ onBeforeUnmount(() => {
 }
 
 .history-entry {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 0.25rem;
   border-bottom: 1px solid rgba(128, 128, 128, 0.18);
 }
 
@@ -565,17 +455,6 @@ onBeforeUnmount(() => {
   display: block;
   width: 16px;
   height: 16px;
-}
-
-.history-entry__remove {
-  flex: none;
-  margin-right: 0.15rem;
-}
-
-.history-entry__trash {
-  display: block;
-  width: 18px;
-  height: 18px;
 }
 
 .history-pagination {

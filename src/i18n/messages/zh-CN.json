@@ -214,13 +214,7 @@
     "loadFailed": "无法读取阅读历史。",
     "retry": "重试",
     "progress": "第 {page} / {total} 页",
-    "resume": "继续阅读",
-    "remove": "从历史中删除",
-    "removeFailed": "无法删除该记录。",
-    "clear": "清空历史",
-    "clearConfirm": "确定清空全部阅读历史吗？此操作无法撤销。",
-    "cleared": "阅读历史已清空。",
-    "clearFailed": "无法清空阅读历史。"
+    "resume": "继续阅读"
   },
   "shortcut": {
     "placeholder": {

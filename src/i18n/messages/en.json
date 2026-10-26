@@ -214,13 +214,7 @@
     "loadFailed": "Could not load your reading history.",
     "retry": "Retry",
     "progress": "Page {page} / {total}",
-    "resume": "Continue reading",
-    "remove": "Remove from history",
-    "removeFailed": "Could not remove this entry.",
-    "clear": "Clear history",
-    "clearConfirm": "Clear all reading history? This cannot be undone.",
-    "cleared": "Reading history cleared.",
-    "clearFailed": "Could not clear your reading history."
+    "resume": "Continue reading"
   },
   "shortcut": {
     "placeholder": {

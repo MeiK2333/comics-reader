@@ -9,6 +9,8 @@
 //!
 //! History is auxiliary data: a malformed file is logged and treated as empty,
 //! and the reader-facing commands never block reading when a write fails.
+//! Entries are deliberately not deletable from the app: there is no remove or
+//! clear command, so a work only leaves the list when the cap evicts it.
 
 use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
@@ -128,7 +130,8 @@ impl HistoryInput {
 }
 
 /// One line of the event log. Record events carry the whole entry, so replay
-/// does not need to consult any other state.
+/// does not need to consult any other state. Remove events are only read for
+/// files written by older versions, and keep previously deleted works deleted.
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 enum HistoryEvent {
@@ -241,36 +244,6 @@ impl HistoryData {
         // the oldest work back, and `trim_to` drops it again at load time.
         self.trim_to(MAX_ENTRIES);
         self.maybe_compact(path);
-        Ok(())
-    }
-
-    fn remove(&mut self, path: &Path, platform: &str, id: &str) -> Result<()> {
-        let key = (platform.to_owned(), id.to_owned());
-        if !self.entries.contains_key(&key) {
-            return Ok(());
-        }
-
-        append_event(
-            path,
-            &HistoryEvent::Remove {
-                platform: key.0.clone(),
-                id: key.1.clone(),
-            },
-        )?;
-        self.entries.remove(&key);
-        self.events += 1;
-        self.maybe_compact(path);
-        Ok(())
-    }
-
-    fn clear(&mut self, path: &Path) -> Result<()> {
-        match fs::remove_file(path) {
-            Ok(()) => {}
-            Err(error) if error.kind() == ErrorKind::NotFound => {}
-            Err(error) => return Err(error.into()),
-        }
-        self.entries.clear();
-        self.events = 0;
         Ok(())
     }
 
@@ -432,30 +405,6 @@ pub(crate) async fn record_history(app: AppHandle, entry: HistoryInput) -> Resul
     .map_err(|error| AppError::Unexpected(format!("history task failed: {error}")))?
 }
 
-/// Remove one work from history. Removing an absent work is a no-op.
-#[tauri::command]
-pub(crate) async fn remove_history(app: AppHandle, platform: String, id: String) -> Result<()> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let path = history_path(&app)?;
-        let store = app.state::<HistoryStore>();
-        store.with_data(&path, |data, path| data.remove(path, &platform, &id))
-    })
-    .await
-    .map_err(|error| AppError::Unexpected(format!("history task failed: {error}")))?
-}
-
-/// Delete the history file and clear the in-memory index.
-#[tauri::command]
-pub(crate) async fn clear_history(app: AppHandle) -> Result<()> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let path = history_path(&app)?;
-        let store = app.state::<HistoryStore>();
-        store.with_data(&path, |data, path| data.clear(path))
-    })
-    .await
-    .map_err(|error| AppError::Unexpected(format!("history task failed: {error}")))?
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -555,22 +504,23 @@ mod tests {
     }
 
     #[test]
-    fn removes_and_clears_entries() {
-        let path = temp_path("remove");
+    fn replays_remove_events_written_by_older_versions() {
+        let path = temp_path("legacy-remove");
+        let record = serde_json::to_string(&HistoryEvent::Record {
+            entry: entry("1", 1_700_000_000_000),
+        })
+        .unwrap();
+        let remove = serde_json::json!({
+            "type": "remove",
+            "platform": "nhentai",
+            "id": "1",
+        });
+        fs::write(&path, format!("{record}\n{remove}\n")).unwrap();
+
         let mut data = HistoryData::default();
+        data.load(&path).unwrap();
 
-        data.record(&path, input("1")).unwrap();
-        data.remove(&path, "nhentai", "1").unwrap();
         assert!(data.entries.is_empty());
-
-        let mut reloaded = HistoryData::default();
-        reloaded.load(&path).unwrap();
-        assert!(reloaded.entries.is_empty());
-
-        data.record(&path, input("2")).unwrap();
-        data.clear(&path).unwrap();
-        assert!(data.entries.is_empty());
-        assert!(!path.exists());
 
         cleanup(&path);
     }
