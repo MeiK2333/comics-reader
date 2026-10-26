@@ -3,7 +3,7 @@ import type { Ref } from "vue";
 import type { ComicPlatform } from "../api/comics";
 import { prefetchCachedImages } from "../api/images";
 import type { ReaderChapter } from "../api/reader";
-import { getReaderChapter } from "../api/reader";
+import { prefetchReaderChapter } from "../api/reader";
 import { clampReaderPreloadCount } from "../stores/settings";
 
 /**
@@ -32,7 +32,7 @@ export function useNextChapterPreload(
     imageCount: number,
   ) {
     try {
-      const next = await getReaderChapter(
+      const next = await prefetchReaderChapter(
         currentPlatform,
         currentId,
         nextChapterId,

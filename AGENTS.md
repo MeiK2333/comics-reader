@@ -103,7 +103,8 @@
 - 首/尾页继续翻页自动切章：第一页上一页进入上一章最后一页（内部 `?page=last`，加载后替换为真实页码），最后一页下一页进入下一章第一页；没有上一/下一章时用 `useBackNavigation` 回详情。所有入口（按钮、点击区、滑动释放、滚轮、方向键）共用这条边界逻辑；底部“上一章/下一章”按钮仍从章节第一页打开。
 - 右侧 HUD 只在菜单隐藏时显示页码，顶部不占 stage 布局；使用 `--app-safe-area-right`，点击穿透。移动端电量用 `navigator.getBattery()`，菜单展开时放顶栏、隐藏时放 HUD；桌面或不支持时隐藏。
 - 移动端双指缩放只处理两个触摸指针，1x–4x；缩放中围绕两指中点平移，松开一指后转为单指平移，且不得触发 tap 翻页。桌面鼠标/触控板行为不变。
-- 章内预加载走 `fetchCachedImage`（同一 `platform + url` 合并请求），由 `useReaderPreload` 以 200ms 防抖、2 并发预热后续页；失败静默，切页/切章停止旧队列。末页的跨章预热由 `useNextChapterPreload` 调 `get_reader_chapter` 取下一章页源，再用 `prefetchCachedImages` 预热前 N 张；不把章节数据展示或写入历史。
+- 章内预加载走 `fetchCachedImage`（同一 `platform + url` 合并请求），由 `useReaderPreload` 以 200ms 防抖、2 并发预热后续页；失败静默，切页/切章停止旧队列。末页的跨章预热由 `useNextChapterPreload` 调 `prefetchReaderChapter` 取下一章页源，再用 `prefetchCachedImages` 预热前 N 张；不把章节数据展示或写入历史。
+- 为避免末页切章时“重新加载”：`src/api/reader.ts` 缓存最近 4 个 `ReaderChapter` 页源并共享 in-flight `get_reader_chapter`，`ComicReaderView` 命中时直接 apply；`src/api/images.ts` 缓存最近 64 个已解析图片路径，`useCachedImage` 命中时直接 `convertFileSrc`，不再进入 loading。页面列表/图片路径缓存都只在内存中有界保留。
 - 页图片仍走 `fetch_image`，不要直接用 CDN URL。缩放、全屏、`Home`/`End` 等现有行为不要破坏。
 - JM 章内用页源返回的 `previous`/`next` 导航，不要在前端自行拼接章节；manhuagui 也从页源解析上一/下一章，缺失时由详情页章节列表兜底。
 
@@ -202,6 +203,7 @@
 - 缓存没有自动清理/容量上限；图片格式和缓存键变更要提升版本。预加载设置只影响预热窗口，不改变这一点。
 - 阅读器边界切换必须走 `page-boundary` + `router.replace`；上一章末页用内部 `?page=last`，加载后必须换成真实页码，不能留在 URL 里。
 - `readerPreloadNextChapter` 只预热下一章图片，不改变末页自动跳章；跨章预热必须用 `get_reader_chapter` + `fetch_image`，失败静默且不能阻塞阅读。
+- 只预热磁盘而不复用 `ReaderChapter`/已解析路径，用户仍会看到章节 loading 与图片 spinner；跨章预加载必须同时走页源缓存和图片路径缓存。
 - 预加载也只能走 `fetch_image`，不要直接请求 CDN；同 URL 请求由 `src/api/images.ts` 合并，避免和可见槽位重复下载。
 - 双指手势结束后必须抑制随后的 click/tap，否则会误触左右翻页；电量 API 不可用时隐藏，不要显示假数据。
 - JM 域名常轮换；调用显式传 `platform: "jm"`；遇到 403 先确认走的是 APP API 而不是 HTML。

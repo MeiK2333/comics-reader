@@ -4,7 +4,11 @@ import { useRoute, useRouter } from "vue-router";
 import type { ComicPlatform } from "../api/comics";
 import { getComic, isComicPlatform } from "../api/comics";
 import type { ReaderChapter } from "../api/reader";
-import { getReaderChapter } from "../api/reader";
+import {
+  getCachedReaderChapter,
+  getPendingReaderChapter,
+  getReaderChapter,
+} from "../api/reader";
 import ComicViewer from "../components/reader/ComicViewer.vue";
 import { useBackNavigation } from "../composables/useBackNavigation";
 import { useErrorMessage } from "../composables/useErrorMessage";
@@ -188,6 +192,32 @@ function goFromPageBoundary(direction: "previous" | "next") {
   goBack();
 }
 
+function applyChapter(result: ReaderChapter, startAtEnd: boolean) {
+  chapter.value = result;
+  if (result.pages.length === 0) {
+    page.value = 1;
+    setWindowTitle(
+      result.chapterTitle
+        ? `${result.title} · ${result.chapterTitle} · ${t("app.name")}`
+        : `${result.title} · ${t("app.name")}`,
+    );
+    syncPageQuery(1);
+    return;
+  }
+
+  page.value = startAtEnd
+    ? result.pages.length
+    : clampPage(requestedPage(), result.pages.length);
+  setWindowTitle(
+    result.chapterTitle
+      ? `${result.title} · ${result.chapterTitle} · ${t("app.name")}`
+      : `${result.title} · ${t("app.name")}`,
+  );
+  syncPageQuery(page.value);
+  recordedPage = page.value;
+  readingHistory.record(page.value);
+}
+
 async function load() {
   // Capture the outgoing chapter's last page before clearing its state.
   readingHistory.flush();
@@ -197,19 +227,35 @@ async function load() {
   const currentChapterId = chapterId.value;
   const startAtEnd = route.query.page === LAST_PAGE_QUERY;
 
+  if (!currentPlatform || !currentId) {
+    loading.value = false;
+    chapter.value = null;
+    error.value = new AppError("invalidInput", "invalid reader route", {
+      field: "id",
+    });
+    updateWindowTitle();
+    return;
+  }
+
+  const cached = currentChapterId
+    ? getCachedReaderChapter(currentPlatform, currentId, currentChapterId)
+    : null;
+  if (cached) {
+    error.value = null;
+    loading.value = false;
+    applyChapter(cached, startAtEnd);
+    return;
+  }
+
+  const pending = currentChapterId
+    ? getPendingReaderChapter(currentPlatform, currentId, currentChapterId)
+    : null;
+
   loading.value = true;
   error.value = null;
   chapter.value = null;
   page.value = 1;
   updateWindowTitle();
-
-  if (!currentPlatform || !currentId) {
-    error.value = new AppError("invalidInput", "invalid reader route", {
-      field: "id",
-    });
-    loading.value = false;
-    return;
-  }
 
   try {
     const loadChapterId = currentChapterId;
@@ -246,38 +292,16 @@ async function load() {
       return;
     }
 
-    const result = await getReaderChapter(
-      currentPlatform,
-      currentId,
-      loadChapterId,
-    );
+    const result = pending
+      ? await pending.catch(() =>
+          getReaderChapter(currentPlatform, currentId, loadChapterId),
+        )
+      : await getReaderChapter(currentPlatform, currentId, loadChapterId);
     if (currentRequest !== requestId) {
       return;
     }
 
-    chapter.value = result;
-    if (result.pages.length === 0) {
-      page.value = 1;
-      setWindowTitle(
-        result.chapterTitle
-          ? `${result.title} · ${result.chapterTitle} · ${t("app.name")}`
-          : `${result.title} · ${t("app.name")}`,
-      );
-      syncPageQuery(1);
-      return;
-    }
-
-    page.value = startAtEnd
-      ? result.pages.length
-      : clampPage(requestedPage(), result.pages.length);
-    setWindowTitle(
-      result.chapterTitle
-        ? `${result.title} · ${result.chapterTitle} · ${t("app.name")}`
-        : `${result.title} · ${t("app.name")}`,
-    );
-    syncPageQuery(page.value);
-    recordedPage = page.value;
-    readingHistory.record(page.value);
+    applyChapter(result, startAtEnd);
   } catch (cause) {
     if (currentRequest !== requestId) {
       return;

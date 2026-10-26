@@ -16,8 +16,39 @@ export interface CachedImage {
 // the entry is removed as soon as the request settles so failures can retry.
 const inFlight = new Map<string, Promise<CachedImage>>();
 
+// Preloaded pages also keep their resolved path. That lets the next chapter
+// render with the asset URL immediately instead of showing the page spinner
+// while the same cache entry is looked up again.
+const RESOLVED_CACHE_LIMIT = 64;
+const resolvedImages = new Map<string, CachedImage>();
+
 function requestKey(platform: ComicPlatform, url: string): string {
   return `${platform}\u0000${url}`;
+}
+
+function rememberImage(key: string, image: CachedImage) {
+  resolvedImages.delete(key);
+  resolvedImages.set(key, image);
+  while (resolvedImages.size > RESOLVED_CACHE_LIMIT) {
+    const oldest = resolvedImages.keys().next().value;
+    if (oldest === undefined) {
+      break;
+    }
+    resolvedImages.delete(oldest);
+  }
+}
+
+/** Return a path that was already resolved for this image, if any. */
+export function getCachedImage(
+  platform: ComicPlatform,
+  url: string,
+): CachedImage | null {
+  return resolvedImages.get(requestKey(platform, url)) ?? null;
+}
+
+/** Drop a stale resolved path after an image decode failure. */
+export function forgetCachedImage(platform: ComicPlatform, url: string) {
+  resolvedImages.delete(requestKey(platform, url));
 }
 
 /**
@@ -29,6 +60,10 @@ export function fetchCachedImage(
   url: string,
 ): Promise<CachedImage> {
   const key = requestKey(platform, url);
+  const resolved = resolvedImages.get(key);
+  if (resolved) {
+    return Promise.resolve(resolved);
+  }
   const existing = inFlight.get(key);
   if (existing) {
     return existing;
@@ -36,7 +71,9 @@ export function fetchCachedImage(
 
   const request = (async () => {
     await waitForEchStartup();
-    return invoke<CachedImage>("fetch_image", { url, platform });
+    const image = await invoke<CachedImage>("fetch_image", { url, platform });
+    rememberImage(key, image);
+    return image;
   })();
   inFlight.set(key, request);
 

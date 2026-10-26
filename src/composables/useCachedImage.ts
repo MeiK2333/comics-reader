@@ -2,7 +2,11 @@ import { onScopeDispose, ref, watch } from "vue";
 import type { Ref } from "vue";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { ComicPlatform } from "../api/comics";
-import { fetchCachedImage } from "../api/images";
+import {
+  fetchCachedImage,
+  forgetCachedImage,
+  getCachedImage,
+} from "../api/images";
 
 /**
  * Resolve one remote image through the Rust cache and expose the asset-protocol
@@ -24,6 +28,14 @@ export function useCachedImage(
 
     if (!target) {
       src.value = "";
+      loading.value = false;
+      failed.value = false;
+      return;
+    }
+
+    const resolved = getCachedImage(platform.value, target);
+    if (resolved) {
+      src.value = convertFileSrc(resolved.path);
       loading.value = false;
       failed.value = false;
       return;
@@ -62,6 +74,7 @@ export function useCachedImage(
   }
 
   function fail() {
+    forgetCachedImage(platform.value, url.value.trim());
     src.value = "";
     loading.value = false;
     failed.value = true;
