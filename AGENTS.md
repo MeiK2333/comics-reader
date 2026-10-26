@@ -82,7 +82,7 @@
 - ECH 内部细节（`cloudflare-ech.com` 配置、Cloudflare DoH、TTL、fallback 缓存）以 `image/http.rs`、`ech/` 和测试为准。必须保留的约束：代理与 ECH 互斥；启动初始化要等待；非 Cloudflare 站点 plain TLS 回退是预期。
 - 平台集中在 `image/platform/`，实现 `Platform` trait（`id`/`matches`/`configure`/`note_request_outcome`/`prepare`，可选搜索/详情/阅读）。当前 `generic`/`manhuagui`/`jm`/`nhentai`。`platform` 参数可省略时按 host 识别；已知平台显式传，JM 尤其。JM 在首个搜索/详情/阅读命令前通过 `prepare` 请求 `/setting` 同步 `jm3_version`（进程一次，失败下次重试），`tokenparam` 使用运行时版本。
 - 搜索会话由 `search` store 管理；`/search` 不携带 query，刷新/深链会被守卫送回首页；首页图标固定回首页。
-- 详情 `/comic/:platform/:id` 不依赖搜索会话，直接 `get_comic`，刷新/深链可用；返回按钮只在搜索会话有效时回 `/search`，否则回首页。
+- 详情 `/comic/:platform/:id` 不依赖搜索会话，直接 `get_comic`，刷新/深链可用；返回目标是搜索会话有效时的 `/search`，否则首页，但必须走 `useBackNavigation`：上一页就是目标时 `router.back()`，否则 `router.replace`。
 - 搜索返回 `{ total, page_size, result: [{ id, title, thumb, platform, extra }] }`，详情 `{ platform, title, thumb, extra }`；`platform` 判别，`extra` 强类型（Rust `SearchExtra`/`DetailExtra`，前端判别联合）。不要退回 `Record<string, unknown>` 或 JSON 兜底。
 - 阅读页源 `get_reader_chapter(platform, id, chapterId?)`；目前 nhentai 与 JM 已实现，manhuagui 仍 unsupported。页图片仍逐页 `fetch_image`，不新增缓存目录。JM 页图在缓存前由 Rust 按 `scramble_id` 还原并重编码为 JPEG（缓存键带 `?decoded`，`scramble_id` 每章节请求一次并缓存）。
 - `nhentai.net` 在 AliDNS/360 的地址可能被污染；ECH 探针已通过 Cloudflare DoH 解析目标，可直连。JM 走移动端 APP API（`image/platform/jm_api.rs`）：HTML 站点在部分网络对搜索和专辑都返回 403，APP 域名可用；搜索/详情需要 token 签名与 AES 解密，封面由 album id 推导，不需要 Cookie 或 TLS 指纹。请求仍走 `HttpClient`。
@@ -166,7 +166,7 @@
 - 顶部安全区不能用页面 padding；阅读器底部安全区由覆盖栏自己处理。
 - 设置持久化没有迁移层；重命名字段必须迁移。
 - 历史不可删除/清空；不要加回 remove/clear。
-- 阅读器是单页模式；不要混入长条自由滚动或双页模式；页码用 `router.replace`。
+- 返回按钮不要用 `router.push`：用 `useBackNavigation` 在上一页等于目标时 pop，否则 replace；push 会把当前页留在历史栈，系统返回会重新进入刚离开的页面（搜索 → 漫画 → 返回 → 漫画）。阅读器切章同样用 `router.replace`。
 - 首页/结果页用 View Transition；不要用延迟 `router.push` 等动画；不支持时直接导航。
 - 生成文件不要手改；`README.md` 只是上游模板。
 - 缓存没有自动清理/容量上限；图片格式和缓存键变更要提升版本。
