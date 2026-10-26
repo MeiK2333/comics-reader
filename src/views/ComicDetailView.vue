@@ -111,7 +111,10 @@ const canRead = computed(() => {
   if (current.platform === "nhentai") {
     return true;
   }
-  return current.platform === "jm" && current.extra.chapters.length > 0;
+  return (
+    (current.platform === "jm" || current.platform === "manhuagui") &&
+    current.extra.chapters.length > 0
+  );
 });
 
 const favoriteButtonText = computed(() =>
@@ -220,9 +223,9 @@ function openReader() {
     return;
   }
 
-  // JM reads one chapter at a time; start at the first one and let the reader
-  // navigate from there.
-  if (current.platform === "jm") {
+  // Chaptered platforms start at the first chapter and let the reader navigate
+  // from there.
+  if (current.platform === "jm" || current.platform === "manhuagui") {
     const first = current.extra.chapters[0];
     if (first) {
       openChapter(first.id);
@@ -518,7 +521,11 @@ onBeforeUnmount(() => {
       </template>
     </NResult>
 
-    <ManhuaguiDetail v-else-if="manhuaguiDetail" :detail="manhuaguiDetail" />
+    <ManhuaguiDetail
+      v-else-if="manhuaguiDetail"
+      :detail="manhuaguiDetail"
+      @open-chapter="openChapter"
+    />
     <JmDetail v-else-if="jmDetail" :detail="jmDetail" @open-chapter="openChapter" />
     <NhentaiDetail v-else-if="nhentaiDetail" :detail="nhentaiDetail" />
 

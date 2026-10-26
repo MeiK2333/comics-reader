@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import type { ComicPlatform } from "../api/comics";
-import { isComicPlatform } from "../api/comics";
+import { getComic, isComicPlatform } from "../api/comics";
 import type { ReaderChapter } from "../api/reader";
 import { getReaderChapter } from "../api/reader";
 import ComicViewer from "../components/reader/ComicViewer.vue";
@@ -158,10 +158,42 @@ async function load() {
   }
 
   try {
+    const loadChapterId = currentChapterId;
+    if (currentPlatform === "manhuagui" && !loadChapterId) {
+      // A deep link without a chapter still has a valid work id. Resolve the
+      // first chapter from the detail page, then replace the URL so history and
+      // sharing keep the chapter id.
+      const detail = await getComic(currentPlatform, currentId);
+      if (currentRequest !== requestId) {
+        return;
+      }
+      const first =
+        detail.platform === "manhuagui" ? detail.extra.chapters[0] : undefined;
+      if (!first) {
+        error.value = new AppError(
+          "notFound",
+          "manhuagui work has no readable chapters",
+          {},
+        );
+        loading.value = false;
+        return;
+      }
+      await router.replace({
+        name: "comic-reader",
+        params: {
+          platform: currentPlatform,
+          id: currentId,
+          chapterId: first.id,
+        },
+        query: route.query,
+      });
+      return;
+    }
+
     const result = await getReaderChapter(
       currentPlatform,
       currentId,
-      currentChapterId,
+      loadChapterId,
     );
     if (currentRequest !== requestId) {
       return;

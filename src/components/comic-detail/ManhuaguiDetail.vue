@@ -10,9 +10,14 @@ const props = defineProps<{
   detail: ManhuaguiDetail;
 }>();
 
+const emit = defineEmits<{
+  openChapter: [chapterId: string];
+}>();
+
 const { t } = useAppI18n();
 
 const extra = computed(() => props.detail.extra);
+const chapters = computed(() => extra.value.chapters);
 
 const subtitle = computed(() => {
   const original = extra.value.originalTitle;
@@ -81,6 +86,25 @@ const infoItems = computed(() =>
     </DetailSection>
 
     <DetailSection
+      v-if="chapters.length > 0"
+      :title="t('detail.sections.chapters')"
+    >
+      <div class="chapter-list">
+        <NButton
+          v-for="chapter in chapters"
+          :key="chapter.id"
+          size="small"
+          type="primary"
+          secondary
+          class="chapter-item"
+          @click="emit('openChapter', chapter.id)"
+        >
+          <span class="chapter-name">{{ chapter.title }}</span>
+        </NButton>
+      </div>
+    </DetailSection>
+
+    <DetailSection
       v-if="extra.description"
       :title="t('detail.sections.description')"
     >
@@ -111,5 +135,22 @@ const infoItems = computed(() =>
   line-height: 1.7;
   opacity: 0.85;
   white-space: pre-line;
+}
+
+.chapter-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.chapter-name {
+  display: inline-block;
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+  white-space: nowrap;
 }
 </style>

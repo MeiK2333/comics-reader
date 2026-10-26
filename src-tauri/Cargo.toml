@@ -65,6 +65,9 @@ md-5 = "0.10"
 # re-encoding them needs a codec (`image/platform/jm_image.rs`); only the
 # formats JM actually serves are enabled to limit binary size.
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+# Manhuagui packs the chapter's image manifest as base64 LZString data inside
+# an obfuscated script; reading it server-side needs this decoder.
+lz-str = "0.2.1"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

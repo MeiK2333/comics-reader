@@ -67,7 +67,8 @@ impl SearchExtra {
     }
 }
 
-/// Fields both search and detail return for manhuagui.
+/// Fields both search and detail return for manhuagui. Search results leave
+/// `chapters` empty; the detail page fills it from the chapter list.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ManhuaguiExtra {
@@ -83,6 +84,15 @@ pub(crate) struct ManhuaguiExtra {
     pub description: Option<String>,
     pub score: Option<f32>,
     pub rating_count: Option<u64>,
+    pub chapters: Vec<ManhuaguiChapterRef>,
+}
+
+/// One chapter of a manhuagui work, in reading order.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ManhuaguiChapterRef {
+    pub id: String,
+    pub title: String,
 }
 
 /// Search results only expose the fields the APP search payload carries: it

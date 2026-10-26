@@ -18,6 +18,14 @@ export interface ManhuaguiExtra {
   description: string | null;
   score: number | null;
   ratingCount: number | null;
+  /** Chapters in reading order; empty on search results. */
+  chapters: ManhuaguiChapterRef[];
+}
+
+/** One chapter of a manhuagui work. */
+export interface ManhuaguiChapterRef {
+  id: string;
+  title: string;
 }
 
 /** JM's APP search payload carries no tags, only the author and category. */
