@@ -1,6 +1,9 @@
 :root {
   --app-background: #f6f6f6;
   --app-safe-area-top: env(safe-area-inset-top, 0px);
+  --app-safe-area-right: env(safe-area-inset-right, 0px);
+  --app-safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --app-safe-area-left: env(safe-area-inset-left, 0px);
   color-scheme: light;
   color: #0f0f0f;
   background-color: var(--app-background);
@@ -36,6 +39,16 @@ body {
   z-index: 10;
   height: var(--app-safe-area-top);
   background-color: var(--app-background);
+}
+
+/* Teleported Naive UI modals use a fixed full-viewport wrapper, so constrain
+   that wrapper instead of relying on page padding. The mask still covers the
+   whole screen; only the centered card is kept off the notch and home bar. */
+.n-modal-body-wrapper {
+  top: var(--app-safe-area-top) !important;
+  right: var(--app-safe-area-right) !important;
+  bottom: var(--app-safe-area-bottom) !important;
+  left: var(--app-safe-area-left) !important;
 }
 
 /* The search button and home control keep their view-transition-name across

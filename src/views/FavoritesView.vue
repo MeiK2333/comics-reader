@@ -604,7 +604,7 @@ onBeforeUnmount(() => {
       v-model:show="groupDialogShow"
       preset="card"
       :title="groupDialogTitle"
-      :style="{ width: 'min(420px, calc(100vw - 2rem))' }"
+      :style="{ width: 'min(420px, calc(100vw - var(--app-safe-area-left) - var(--app-safe-area-right) - 2rem))' }"
       :closable="!groupDialogSaving"
       :mask-closable="!groupDialogSaving"
       :close-on-esc="!groupDialogSaving"
@@ -644,7 +644,7 @@ onBeforeUnmount(() => {
       v-model:show="showGroupManager"
       preset="card"
       :title="t('favorites.group.manage')"
-      :style="{ width: 'min(520px, calc(100vw - 2rem))' }"
+      :style="{ width: 'min(520px, calc(100vw - var(--app-safe-area-left) - var(--app-safe-area-right) - 2rem))' }"
     >
       <div class="group-manager">
         <div class="group-manager__row group-manager__row--default">

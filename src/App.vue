@@ -11,6 +11,9 @@ const { naiveLocale, naiveDateLocale } = useLocale();
 // Naive UI needs its own theme object; `useTheme` stays the single source of
 // truth for the light/dark preference.
 const naiveTheme = computed(() => (isDark.value ? darkTheme : null));
+// Messages are teleported to <body>, outside the shell's safe-area strip.
+const messageContainerStyle =
+  "top: calc(var(--app-safe-area-top) + 12px); left: var(--app-safe-area-left); right: var(--app-safe-area-right);";
 </script>
 
 <template>
@@ -19,7 +22,7 @@ const naiveTheme = computed(() => (isDark.value ? darkTheme : null));
     :locale="naiveLocale"
     :date-locale="naiveDateLocale"
   >
-    <NMessageProvider>
+    <NMessageProvider placement="top" :container-style="messageContainerStyle">
       <!-- Shared by every route: the strip occupies the top safe area and
            stays above content while the page scrolls. -->
       <div class="safe-area-top" aria-hidden="true"></div>

@@ -154,7 +154,8 @@
 - 全局 reset/基础样式在 `src/styles/base.scss`；组件样式放 `<style scoped>`。
 - 优先 Naive UI 组件；自动导入已配置，不要手改 `components.d.ts`；`useMessage()` 必须在 `NMessageProvider` 下，`App.vue` 已提供。
 - 用现有主题机制（`NConfigProvider`、`darkTheme`），不要散落 CSS 变量/内联颜色。
-- 顶部安全区由 `App.vue` 的 `.safe-area-top` 统一负责：sticky、使用 `--app-safe-area-top` 和 `--app-background`。页面不要用 `env(safe-area-inset-top)` 的 margin/padding，也不要用 `max-width`/`pointer: coarse` 模拟。
+- 顶部安全区由 `App.vue` 的 `.safe-area-top` 统一负责：sticky、使用 `--app-safe-area-top` 和 `--app-background`。页面不要用 `env(safe-area-inset-top)` 的 margin/padding，也不要用 `max-width`/`pointer: coarse` 模拟。`index.html` 的 viewport 必须带 `viewport-fit=cover`，否则 `safe-area-inset-*` 全为 0。
+- 四边安全区统一暴露为 `--app-safe-area-top/right/bottom/left`。`NMessageProvider` 的 teleport container 用 `container-style` 避开顶部/左右；Modal 的 `.n-modal-body-wrapper` 用它约束四边。新增 toast、Modal、Popover 等浮层必须接入安全区，不能只给页面内容加 padding。
 - 阅读器底部覆盖栏用 `padding-bottom: env(safe-area-inset-bottom)`；不要再加独立占位条。
 - 设置项只保留简洁标签；设置导航项整行可点击；日志页返回按钮用无文字 chevron 图标，工具栏只用图标按钮（带本地化 `aria-label`/`title`），清空不弹确认，不显示日志路径。
 - 注释解释“为什么”，不复述代码；只写不易理解的决策。
@@ -211,7 +212,7 @@
   - 阅读器：nhentai 页图片、方向、滑动/滚轮/键盘、缩放、全屏、点击中间显隐/左右翻页、`?page=`、返回详情；JM 章节入口、前后章、页图还原无错位；manhuagui 分组折叠/展开全部/继续阅读所在组自动展开/开始阅读/前后章/页图去 `.webp`/无章节深链首章解析。
   - 历史：行进详情、详情返回历史、“继续阅读”恢复章节/页码、“开始阅读”从头、更新后返回详情。
   - 收藏分组：v1→v2 迁移、创建/重命名/删除、计数/筛选、短按默认、长按选择、右键 / `Shift+Enter`、从收藏进详情返回收藏。
-  - 移动端安全区：所有页面从安全区下方开始，滚动不盖状态栏。
+  - 移动端安全区：所有页面从安全区下方开始，滚动不盖状态栏；toast 与 Modal 也不越过顶部/左右/底部安全区。
 - 前端没有单元/E2E 测试和 CI；不要声称存在。新增测试体系要加 `package.json` 脚本并同步本文件。
 - Rust 测试数量和联网测试的实测结果会变化；以 `cargo test` 输出为准，不要把具体数字当契约。
 
