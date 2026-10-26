@@ -94,12 +94,13 @@ const stats = computed(() =>
         <NButton
           v-for="chapter in chapters"
           :key="chapter.id"
-          quaternary
-          block
+          size="small"
+          type="primary"
+          secondary
           class="chapter-item"
           @click="emit('openChapter', chapter.id)"
         >
-          {{ chapterLabel(chapter) }}
+          <span class="chapter-name">{{ chapterLabel(chapter) }}</span>
         </NButton>
       </div>
     </DetailSection>
@@ -136,16 +137,16 @@ const stats = computed(() =>
 
 .chapter-list {
   display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
+  flex-wrap: wrap;
+  gap: 0.4rem;
 }
 
-.chapter-item {
-  justify-content: flex-start;
-}
-
-.chapter-item :deep(.n-button__content) {
-  justify-content: flex-start;
-  text-align: left;
+.chapter-name {
+  display: inline-block;
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+  white-space: nowrap;
 }
 </style>
