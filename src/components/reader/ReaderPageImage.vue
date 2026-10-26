@@ -22,9 +22,11 @@ const emit = defineEmits<{
 const { t } = useAppI18n();
 const platform = computed(() => props.platform);
 const url = computed(() => props.page.url);
+const localPath = computed(() => props.page.localPath);
 const { src, loading, failed, load, retry, fail } = useCachedImage(
   platform,
   url,
+  localPath,
 );
 
 const image = ref<HTMLImageElement | null>(null);
@@ -45,7 +47,7 @@ function emitSize() {
 }
 
 watch(
-  [platform, url],
+  [platform, url, localPath],
   () => {
     void load();
   },

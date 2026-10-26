@@ -42,6 +42,7 @@ export function useNextChapterPreload(
       }
       const urls = next.pages
         .slice(0, imageCount)
+        .filter((item) => !item.localPath)
         .map((item) => item.url.trim())
         .filter((url) => url.length > 0);
       await prefetchCachedImages(currentPlatform, urls);

@@ -16,6 +16,7 @@ import {
 export function useCachedImage(
   platform: Ref<ComicPlatform>,
   url: Ref<string>,
+  localPath: Ref<string | null>,
 ) {
   const src = ref("");
   const loading = ref(false);
@@ -24,7 +25,17 @@ export function useCachedImage(
 
   async function load() {
     const target = url.value.trim();
+    const local = localPath.value?.trim() ?? "";
     const current = ++requestId;
+
+    // A downloaded page is already on disk; loading it must not touch the
+    // network or wait for the image cache.
+    if (local) {
+      src.value = convertFileSrc(local);
+      loading.value = false;
+      failed.value = false;
+      return;
+    }
 
     if (!target) {
       src.value = "";
@@ -74,13 +85,15 @@ export function useCachedImage(
   }
 
   function fail() {
-    forgetCachedImage(platform.value, url.value.trim());
+    if (!localPath.value?.trim()) {
+      forgetCachedImage(platform.value, url.value.trim());
+    }
     src.value = "";
     loading.value = false;
     failed.value = true;
   }
 
-  watch([platform, url], reset);
+  watch([platform, url, localPath], reset);
   onScopeDispose(() => {
     requestId++;
   });

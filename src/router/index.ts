@@ -44,8 +44,7 @@ const router = createRouter({
     {
       path: "/downloads",
       name: "downloads",
-      component: () => import("../views/ShortcutPlaceholderView.vue"),
-      props: { feature: "downloads" },
+      component: () => import("../views/DownloadsView.vue"),
       meta: { titleKey: "meta.downloads" },
     },
     {

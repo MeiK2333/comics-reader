@@ -20,7 +20,8 @@ use crate::logging;
 use cache::ImageFormat;
 pub(crate) use http::HttpClient;
 use http::HttpProxyConfig;
-use model::{ComicDetail, ReaderChapter, SearchResponse};
+pub(crate) use model::{ChapterRef, ReaderChapter, ReaderPage};
+use model::{ComicDetail, SearchResponse};
 use platform::{
     ImageDecode, descramble, find as find_platform, resolve as resolve_platform, scramble_id,
     segment_count, unknown_platform,
@@ -86,7 +87,7 @@ pub(crate) async fn fetch_image(
     result
 }
 
-async fn fetch_image_inner(
+pub(crate) async fn fetch_image_inner(
     app: &AppHandle,
     client: &HttpClient,
     url: String,
@@ -316,7 +317,7 @@ pub(crate) async fn get_reader_chapter(
     result
 }
 
-async fn get_reader_chapter_inner(
+pub(crate) async fn get_reader_chapter_inner(
     client: &HttpClient,
     platform: &str,
     id: &str,

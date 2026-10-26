@@ -1,3 +1,4 @@
+mod downloads;
 mod ech;
 pub mod error;
 mod favorites;
@@ -26,6 +27,7 @@ pub fn run() {
         .manage(image::HttpClient::default())
         .manage(history::HistoryStore::default())
         .manage(favorites::FavoritesStore::default())
+        .manage(downloads::DownloadsStore::default())
         .invoke_handler(tauri::generate_handler![
             image::fetch_image,
             image::search_comics,
@@ -43,6 +45,13 @@ pub fn run() {
             favorites::create_favorite_group,
             favorites::rename_favorite_group,
             favorites::delete_favorite_group,
+            downloads::start_download,
+            downloads::pause_download,
+            downloads::resume_download,
+            downloads::delete_download,
+            downloads::list_downloads,
+            downloads::get_download,
+            downloads::get_downloaded_chapter,
             ech::fetch_ech_config,
             ech::probe_ech_handshake,
             ech::set_ech_enabled,

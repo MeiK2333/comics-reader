@@ -68,6 +68,10 @@
     "backToFavorites": "返回收藏",
     "backToHistory": "返回历史",
     "read": "开始阅读",
+    "download": "下载",
+    "downloading": "下载中 {done}/{total}",
+    "resumeDownload": "继续下载",
+    "downloaded": "已下载",
     "continueReading": "继续阅读",
     "continueAt": "上次读到第 {page} / {total} 页",
     "chapterFallback": "第 {number} 章",
@@ -282,10 +286,34 @@
       "noCustomGroups": "还没有自定义分组。"
     }
   },
-  "shortcut": {
-    "placeholder": {
-      "description": "该功能正在开发中，敬请期待。",
-      "back": "返回首页"
+  "downloads": {
+    "title": "下载",
+    "back": "返回首页",
+    "count": "{count} 部作品",
+    "emptyDescription": "下载的漫画会出现在这里，可离线阅读。",
+    "loadFailed": "无法加载下载列表。",
+    "retry": "重试",
+    "read": "离线阅读",
+    "pause": "暂停",
+    "resume": "继续",
+    "delete": "删除",
+    "cancel": "取消",
+    "deleteConfirm": "删除这个下载及其文件？",
+    "deleted": "已删除下载。",
+    "pausedToast": "下载已暂停。",
+    "resumedToast": "下载已继续。",
+    "queuedToast": "下载已加入队列。",
+    "chapters": "{done} / {total} 章",
+    "chapterProgress": "第 {current} / {total} 章",
+    "pageProgress": "第 {page} / {total} 页",
+    "failedChapters": "{count} 章失败",
+    "status": {
+      "queued": "排队中",
+      "downloading": "下载中",
+      "paused": "已暂停",
+      "completed": "已下载",
+      "partial": "部分下载",
+      "failed": "下载失败"
     }
   },
   "notFound": {

@@ -244,10 +244,14 @@ pub(crate) struct ReaderChapter {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct ReaderPage {
     pub url: String,
     pub width: Option<u32>,
     pub height: Option<u32>,
+    /// Absolute path of a downloaded page. When set, the reader loads the
+    /// local file through the asset protocol instead of fetching `url`.
+    pub local_path: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -369,6 +373,7 @@ mod tests {
                 url: "https://cdn.example/1.jpg".into(),
                 width: Some(800),
                 height: Some(1200),
+                local_path: None,
             }],
             previous: Some(ChapterRef {
                 id: "11".into(),
@@ -383,6 +388,7 @@ mod tests {
         assert_eq!(value["chapterId"], "12");
         assert_eq!(value["chapterTitle"], "Chapter 12");
         assert_eq!(value["pages"][0]["width"], 800);
+        assert_eq!(value["pages"][0]["localPath"], serde_json::Value::Null);
         assert_eq!(value["previous"]["id"], "11");
         assert!(value["next"].is_null());
         assert!(value.get("chapter_id").is_none());

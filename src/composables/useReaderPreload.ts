@@ -55,7 +55,11 @@ export function useReaderPreload(
     const urls: string[] = [];
 
     for (let offset = 1; offset <= upcoming; offset += 1) {
-      const url = pages.value[start + offset]?.url.trim();
+      const page = pages.value[start + offset];
+      if (!page || page.localPath) {
+        continue;
+      }
+      const url = page.url.trim();
       if (url && !warmed.has(url)) {
         urls.push(url);
       }

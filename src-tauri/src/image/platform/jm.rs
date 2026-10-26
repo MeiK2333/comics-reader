@@ -395,6 +395,7 @@ impl Platform for Jm {
                 // them once the image loads.
                 width: None,
                 height: None,
+                local_path: None,
             })
             .collect::<Vec<_>>();
         if pages.is_empty() {

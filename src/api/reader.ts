@@ -1,11 +1,14 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { ComicPlatform } from "./comics";
+import { getDownloadedChapter } from "./downloads";
 import { waitForEchStartup } from "./ech";
 
 export interface ReaderPage {
   url: string;
   width: number | null;
   height: number | null;
+  /** Absolute downloaded file path; local pages skip the network entirely. */
+  localPath: string | null;
 }
 
 /** Navigation target for chaptered platforms; empty for single-work galleries. */
@@ -111,18 +114,37 @@ export function prefetchReaderChapter(
 }
 
 /**
- * Fetch the page list for a chapter. nhentai galleries are a single implicit
- * chapter, so `chapterId` is omitted there.
+ * Fetch the page list for a chapter. Downloads win over the network so an
+ * offline reader never waits for ECH or the platform. nhentai galleries are a
+ * single implicit chapter, so `chapterId` is omitted there.
  */
 export async function getReaderChapter(
   platform: ComicPlatform,
   id: string,
   chapterId?: string,
 ): Promise<ReaderChapter> {
+  try {
+    const local = await getDownloadedChapter(platform, id, chapterId);
+    if (local) {
+      return local;
+    }
+  } catch {
+    // Download lookup is an optimization. A broken index must not prevent the
+    // online reader from loading the same chapter.
+  }
+
   await waitForEchStartup();
   return invoke<ReaderChapter>("get_reader_chapter", {
     platform,
     id,
     chapterId: chapterId ?? null,
   });
+}
+
+/**
+ * Drop resolved chapter page lists after their download was deleted. The
+ * reader would otherwise keep pointing at files that no longer exist.
+ */
+export function clearReaderChapterCache() {
+  cachedChapters.clear();
 }

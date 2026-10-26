@@ -68,6 +68,10 @@
     "backToFavorites": "Back to favorites",
     "backToHistory": "Back to history",
     "read": "Start reading",
+    "download": "Download",
+    "downloading": "Downloading {done}/{total}",
+    "resumeDownload": "Resume download",
+    "downloaded": "Downloaded",
     "continueReading": "Continue reading",
     "continueAt": "Last read page {page} of {total}",
     "chapterFallback": "Chapter {number}",
@@ -282,10 +286,34 @@
       "noCustomGroups": "No custom groups yet."
     }
   },
-  "shortcut": {
-    "placeholder": {
-      "description": "This feature is coming soon.",
-      "back": "Back to home"
+  "downloads": {
+    "title": "Downloads",
+    "back": "Back to home",
+    "count": "{count} works",
+    "emptyDescription": "Comics you download appear here for offline reading.",
+    "loadFailed": "Could not load your downloads.",
+    "retry": "Retry",
+    "read": "Read offline",
+    "pause": "Pause",
+    "resume": "Resume",
+    "delete": "Delete",
+    "cancel": "Cancel",
+    "deleteConfirm": "Delete this download and its files?",
+    "deleted": "Download deleted.",
+    "pausedToast": "Download paused.",
+    "resumedToast": "Download resumed.",
+    "queuedToast": "Download queued.",
+    "chapters": "{done} / {total} chapters",
+    "chapterProgress": "Chapter {current} / {total}",
+    "pageProgress": "Page {page} / {total}",
+    "failedChapters": "{count} chapters failed",
+    "status": {
+      "queued": "Queued",
+      "downloading": "Downloading",
+      "paused": "Paused",
+      "completed": "Downloaded",
+      "partial": "Partially downloaded",
+      "failed": "Download failed"
     }
   },
   "notFound": {

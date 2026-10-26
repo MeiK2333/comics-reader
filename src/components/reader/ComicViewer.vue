@@ -932,7 +932,11 @@ onBeforeUnmount(() => {
       >
         <div
           v-for="(slot, index) in pageSlots"
-          :key="slot ? `${slot.number}:${slot.page.url}` : `empty:${index}`"
+          :key="
+            slot
+              ? `${slot.number}:${slot.page.localPath ?? slot.page.url}`
+              : `empty:${index}`
+          "
           class="viewer__slot"
           :class="{ 'viewer__slot--empty': slot === null }"
           :aria-hidden="slot?.number !== displayPage"

@@ -12,6 +12,13 @@ import type {
 } from "../api/comics";
 import { getComic, isComicPlatform } from "../api/comics";
 import {
+  getDownload,
+  isDownloadActive,
+  startDownload,
+  type DownloadChapterInput,
+  type DownloadSummary,
+} from "../api/downloads";
+import {
   addFavorite,
   getFavorite,
   removeFavorite,
@@ -20,6 +27,7 @@ import {
 import { getHistoryEntry, type HistoryEntry } from "../api/history";
 import FavoriteGroupPicker from "../components/favorites/FavoriteGroupPicker.vue";
 import FavoriteIcon from "../components/FavoriteIcon.vue";
+import ShortcutIcon from "../components/ShortcutIcon.vue";
 import ComicDetailSkeleton from "../components/comic-detail/ComicDetailSkeleton.vue";
 import JmDetail from "../components/comic-detail/JmDetail.vue";
 import ManhuaguiDetail from "../components/comic-detail/ManhuaguiDetail.vue";
@@ -50,8 +58,14 @@ const favoriteEntry = ref<FavoriteEntry | null>(null);
 const favoriteLoading = ref(false);
 const favoritePending = ref(false);
 const historyEntry = ref<HistoryEntry | null>(null);
+const download = ref<DownloadSummary | null>(null);
+const downloadLoading = ref(false);
+const downloadPending = ref(false);
 const showGroupPicker = ref(false);
 let requestId = 0;
+let downloadTimer: ReturnType<typeof setInterval> | undefined;
+
+const DOWNLOAD_POLL_MS = 1_500;
 
 const favorited = computed(() => favoriteEntry.value !== null);
 const currentGroupId = computed(() => favoriteEntry.value?.groupId ?? null);
@@ -123,6 +137,49 @@ const canRead = computed(() => {
     return manhuaguiChapters.value.length > 0;
   }
   return current.platform === "jm" && current.extra.chapters.length > 0;
+});
+
+const downloadChapters = computed<DownloadChapterInput[]>(() => {
+  const current = detail.value;
+  if (!current) {
+    return [];
+  }
+  if (current.platform === "manhuagui") {
+    return manhuaguiChapters.value.map((chapter) => ({
+      id: chapter.id,
+      title: chapter.title,
+    }));
+  }
+  if (current.platform === "jm") {
+    return current.extra.chapters.map((chapter) => ({
+      id: chapter.id,
+      title: chapter.title,
+    }));
+  }
+  return [];
+});
+
+const downloadInProgress = computed(
+  () => download.value !== null && isDownloadActive(download.value.status),
+);
+const downloadButtonLabel = computed(() => {
+  const entry = download.value;
+  if (!entry) {
+    return t("detail.download");
+  }
+  if (entry.status === "queued") {
+    return t("downloads.status.queued");
+  }
+  if (entry.status === "downloading") {
+    return t("detail.downloading", {
+      done: entry.completedChapters,
+      total: entry.totalChapters,
+    });
+  }
+  if (entry.status === "completed") {
+    return t("detail.downloaded");
+  }
+  return t("detail.resumeDownload");
 });
 
 const favoriteButtonText = computed(() =>
@@ -328,6 +385,107 @@ async function loadHistoryState(
   }
 }
 
+function clearDownloadPolling() {
+  if (downloadTimer !== undefined) {
+    clearInterval(downloadTimer);
+    downloadTimer = undefined;
+  }
+}
+
+function syncDownloadPolling() {
+  clearDownloadPolling();
+  const entry = download.value;
+  const currentPlatform = platform.value;
+  const currentId = id.value;
+  if (
+    !entry ||
+    !isDownloadActive(entry.status) ||
+    !currentPlatform ||
+    !currentId
+  ) {
+    return;
+  }
+
+  downloadTimer = setInterval(() => {
+    void loadDownloadState(currentPlatform, currentId, requestId, true);
+  }, DOWNLOAD_POLL_MS);
+}
+
+async function loadDownloadState(
+  comicPlatform: ComicPlatform,
+  comicId: string,
+  currentRequest: number,
+  silent = false,
+) {
+  if (!silent) {
+    downloadLoading.value = true;
+  }
+
+  try {
+    const saved = await getDownload(comicPlatform, comicId);
+    if (currentRequest === requestId) {
+      download.value = saved;
+    }
+  } catch {
+    // Download status is auxiliary. The detail page stays usable when the
+    // index is unavailable, and the download action reports its own errors.
+    if (currentRequest === requestId && !silent) {
+      download.value = null;
+    }
+  } finally {
+    if (currentRequest === requestId) {
+      if (!silent) {
+        downloadLoading.value = false;
+      }
+      syncDownloadPolling();
+    }
+  }
+}
+
+async function onDownloadClick() {
+  const current = detail.value;
+  if (
+    !current ||
+    platform.value === null ||
+    downloadLoading.value ||
+    downloadPending.value
+  ) {
+    return;
+  }
+
+  const entry = download.value;
+  if (entry && (downloadInProgress.value || entry.status === "completed")) {
+    void router.push({ name: "downloads" });
+    return;
+  }
+
+  const currentRequest = requestId;
+  downloadPending.value = true;
+
+  try {
+    const saved = await startDownload({
+      platform: current.platform,
+      id: id.value,
+      title: current.title,
+      thumb: current.thumb,
+      chapters: downloadChapters.value,
+    });
+    if (currentRequest === requestId) {
+      download.value = saved;
+      message.success(t("downloads.queuedToast"));
+      syncDownloadPolling();
+    }
+  } catch (cause) {
+    if (currentRequest === requestId) {
+      message.error(formatError(cause));
+    }
+  } finally {
+    if (currentRequest === requestId) {
+      downloadPending.value = false;
+    }
+  }
+}
+
 function handleFavoriteClick() {
   if (longPress.consumeClick()) {
     return;
@@ -391,6 +549,10 @@ async function load() {
   favoriteLoading.value = false;
   favoritePending.value = false;
   historyEntry.value = null;
+  download.value = null;
+  downloadLoading.value = false;
+  downloadPending.value = false;
+  clearDownloadPolling();
   showGroupPicker.value = false;
   // Drop a previous comic's dynamic title while the next request is running.
   updateWindowTitle();
@@ -414,6 +576,7 @@ async function load() {
     setWindowTitle(`${result.title} · ${t("app.name")}`);
     void loadFavoriteState(currentPlatform, currentId, currentRequest);
     void loadHistoryState(currentPlatform, currentId, currentRequest);
+    void loadDownloadState(currentPlatform, currentId, currentRequest);
   } catch (cause) {
     if (currentRequest !== requestId) {
       return;
@@ -431,6 +594,7 @@ watch([platform, id], () => void load(), { immediate: true });
 
 onBeforeUnmount(() => {
   requestId++;
+  clearDownloadPolling();
 });
 </script>
 
@@ -489,6 +653,22 @@ onBeforeUnmount(() => {
             <span class="favorite-button__label">{{ favoriteButtonText }}</span>
           </NButton>
         </span>
+        <NButton
+          v-if="canRead"
+          attr-type="button"
+          secondary
+          :loading="downloadPending"
+          :disabled="downloadLoading || downloadPending"
+          :aria-label="downloadButtonLabel"
+          :title="downloadButtonLabel"
+          class="download-button"
+          @click="onDownloadClick"
+        >
+          <template #icon>
+            <ShortcutIcon name="downloads" />
+          </template>
+          <span class="download-button__label">{{ downloadButtonLabel }}</span>
+        </NButton>
         <NButton
           v-if="canRead"
           attr-type="button"
@@ -604,8 +784,14 @@ onBeforeUnmount(() => {
   -webkit-touch-callout: none;
 }
 
-.favorite-button__label {
+.favorite-button__label,
+.download-button__label {
   white-space: nowrap;
+}
+
+.download-button :deep(.shortcut-icon-svg) {
+  width: 18px;
+  height: 18px;
 }
 
 .detail-result {
@@ -623,15 +809,17 @@ onBeforeUnmount(() => {
     padding-top: 0.75rem;
   }
 
-  .favorite-button__label {
+  .favorite-button__label,
+  .download-button__label {
     display: none;
   }
 
   /* With the label hidden, Naive UI's icon margin and horizontal padding make
-     the bookmark look off-center in the still-wide button. Collapse it to a
-     square icon target and hide the empty content flex item so only the icon
-     (or loading spinner) remains centered. */
-  .favorite-button {
+     the icon look off-center in the still-wide button. Collapse it to a square
+     icon target and hide the empty content flex item so only the icon (or
+     loading spinner) remains centered. */
+  .favorite-button,
+  .download-button {
     width: 34px;
     min-width: 34px;
     height: 34px;
@@ -639,11 +827,13 @@ onBeforeUnmount(() => {
     justify-content: center;
   }
 
-  .favorite-button :deep(.n-button__content) {
+  .favorite-button :deep(.n-button__content),
+  .download-button :deep(.n-button__content) {
     display: none;
   }
 
-  .favorite-button :deep(.n-button__icon) {
+  .favorite-button :deep(.n-button__icon),
+  .download-button :deep(.n-button__icon) {
     margin: 0;
   }
 }

@@ -8,6 +8,8 @@ const props = defineProps<{
   platform: ComicPlatform;
   thumb: string;
   title: string;
+  /** Downloaded cover path; when present it wins over the remote thumbnail. */
+  localPath?: string;
 }>();
 
 interface CachedImage {
@@ -21,12 +23,18 @@ let observer: IntersectionObserver | null = null;
 let requestId = 0;
 
 async function loadThumb() {
+  const local = props.localPath?.trim() ?? "";
   const url = props.thumb.trim();
-  if (!url || failed.value) {
+  if ((!local && !url) || failed.value) {
     return;
   }
 
   const id = ++requestId;
+  if (local) {
+    src.value = convertFileSrc(local);
+    return;
+  }
+
   try {
     await waitForEchStartup();
     // The platform headers and on-disk cache live in Rust, so thumbnails use
@@ -51,7 +59,11 @@ function onImageError() {
 }
 
 function startLoading() {
-  if (src.value || failed.value || !props.thumb.trim()) {
+  if (
+    src.value ||
+    failed.value ||
+    (!props.thumb.trim() && !props.localPath?.trim())
+  ) {
     return;
   }
 
@@ -86,7 +98,7 @@ function reset() {
   startLoading();
 }
 
-watch(() => [props.platform, props.thumb], reset);
+watch(() => [props.platform, props.thumb, props.localPath], reset);
 onMounted(startLoading);
 onBeforeUnmount(() => {
   requestId++;

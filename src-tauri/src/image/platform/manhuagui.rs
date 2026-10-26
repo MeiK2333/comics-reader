@@ -490,6 +490,7 @@ fn manifest_pages(data: &ManhuaguiPageData) -> Vec<ReaderPage> {
                 url: url.to_string(),
                 width: None,
                 height: None,
+                local_path: None,
             })
         })
         .collect()

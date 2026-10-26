@@ -182,6 +182,7 @@ fn parse_gallery(id: &str, body: &[u8]) -> Result<(ComicDetail, Vec<ReaderPage>)
             url: page_url(&page.path),
             width: page.width,
             height: page.height,
+            local_path: None,
         })
         .collect();
 
