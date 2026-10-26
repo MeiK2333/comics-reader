@@ -18,7 +18,14 @@ export interface ManhuaguiExtra {
   description: string | null;
   score: number | null;
   ratingCount: number | null;
-  /** Chapters in reading order; empty on search results. */
+  /** Chapter groups in reading order; empty on search results. */
+  chapterGroups: ManhuaguiChapterGroup[];
+}
+
+/** A site chapter group such as a volume or a one-shot collection. */
+export interface ManhuaguiChapterGroup {
+  /** Empty when the page did not label the group. */
+  title: string;
   chapters: ManhuaguiChapterRef[];
 }
 

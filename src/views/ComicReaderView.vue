@@ -168,7 +168,9 @@ async function load() {
         return;
       }
       const first =
-        detail.platform === "manhuagui" ? detail.extra.chapters[0] : undefined;
+        detail.platform === "manhuagui"
+          ? detail.extra.chapterGroups.flatMap((group) => group.chapters)[0]
+          : undefined;
       if (!first) {
         error.value = new AppError(
           "notFound",

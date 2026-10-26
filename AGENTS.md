@@ -85,14 +85,15 @@
 - 详情 `/comic/:platform/:id` 不依赖搜索会话，直接 `get_comic`，刷新/深链可用；返回目标是上一页为 `/favorites` 或 `/history` 时回对应页面，否则搜索会话有效时 `/search`，否则首页，但必须走 `useBackNavigation`：上一页就是目标时 `router.back()`，否则 `router.replace`。
 - 搜索返回 `{ total, page_size, result: [{ id, title, thumb, platform, extra }] }`，详情 `{ platform, title, thumb, extra }`；`platform` 判别，`extra` 强类型（Rust `SearchExtra`/`DetailExtra`，前端判别联合）。不要退回 `Record<string, unknown>` 或 JSON 兜底。
 - 阅读页源 `get_reader_chapter(platform, id, chapterId?)`；nhentai、JM、manhuagui 均已实现。页图片仍逐页 `fetch_image`，不新增缓存目录。JM 页图在缓存前由 Rust 按 `scramble_id` 还原并重编码为 JPEG（缓存键带 `?decoded`，`scramble_id` 每章节请求一次并缓存）。
-- manhuagui 详情优先解 `#__VIEWSTATE`（R18/隐藏列表，LZString），失败再读 `.chapter-list`；每个 `ul` 内的 `li` 逆序得到阅读顺序。`ManhuaguiExtra.chapters` 供详情列表；搜索结果的 `chapters` 为空。阅读页地址 `/comic/{id}/{chapterId}.html`，`chapterId` 必需；详情“开始阅读”传首章，`ComicReaderView` 对无章节深链先取详情首章并 `router.replace`。
+- manhuagui 详情优先解 `#__VIEWSTATE`（R18/隐藏列表，LZString），失败再读 `.chapter-list`；`h4` 与 `.chapter-list` 配对成 `ManhuaguiExtra.chapterGroups`，每个 `ul` 内的 `li` 逆序得到阅读顺序；无标题分组传空标题由前端本地化。搜索结果 `chapterGroups` 为空。阅读页地址 `/comic/{id}/{chapterId}.html`，`chapterId` 必需；详情“开始阅读”取分组扁平化后的首章，`ComicReaderView` 对无章节深链先取详情首章并 `router.replace`。
+- 详情章节用 `NCollapse` 按分组展示，默认展开继续阅读所在组、否则首组，并提供展开全部/收起全部；不要恢复单块 `max-height` 内滚动。
 - manhuagui 页源按 `lanyeeee/manhuagui-downloader` 的 `decrypt.rs` 算法：正则提取 packed payload、`a/c` 与压缩字典，`lz_str` 解压字典后按 token 替换，解析 `files/path/bname/cname/bpic/nextId/prevId`。图片为 `https://i.hamreus.com{path}{file}`，先去掉文件名的 `.webp` 后缀且不带 query（`cf.hamreus.com` 备用）；`cache_version` 因 URL 归一化改为 3。上一/下一章优先用 `nextId/prevId`，缺失才解析 HTML 链接；不要在前端拼 manhuagui 图片地址。
 - `nhentai.net` 在 AliDNS/360 的地址可能被污染；ECH 探针已通过 Cloudflare DoH 解析目标，可直连。JM 走移动端 APP API（`image/platform/jm_api.rs`）：HTML 站点在部分网络对搜索和专辑都返回 403，APP 域名可用；搜索/详情需要 token 签名与 AES 解密，封面由 album id 推导，不需要 Cookie 或 TLS 指纹。请求仍走 `HttpClient`。
 - Nhentai 详情封面用 `t.nhentai.net` 缩略图：`i.nhentai.net` 在部分网络不可达，240px 封面足够。
 
 ### 阅读器
 
-- 路由 `/comic/:platform/:id/read/:chapterId?`，适用 nhentai、JM 与 manhuagui；`ComicReaderView` 负责加载页源、写 `?page=`、返回详情和错误态。JM 详情页在多章时列出章节并传入所选 id，单章本子直接进第一章；省略 `chapterId` 时后端退化为用 album id 作为章节。manhuagui 详情始终列出章节并把首章传给“开始阅读”，阅读器对缺失章节的深链会先解析首章。
+- 路由 `/comic/:platform/:id/read/:chapterId?`，适用 nhentai、JM 与 manhuagui；`ComicReaderView` 负责加载页源、写 `?page=`、返回详情和错误态。JM 详情页在多章时列出章节并传入所选 id，单章本子直接进第一章；省略 `chapterId` 时后端退化为用 album id 作为章节。manhuagui 详情按分组折叠列出章节并把扁平化首章传给“开始阅读”，阅读器对缺失章节的深链会先解析首章。
 - 单页视口：上/中/下三页槽位组成 3 倍轨道，当前页居中；翻页整体滑动，无背景缝。
 - `readerDirection` 决定轨道轴和手势/方向键：`ltr` 横向、`rtl` 横向反向（下一页在左）、`ttb` 纵向；缩放后拖拽平移，滚轮翻页。
 - 上下栏是绝对定位覆盖层，默认隐藏，不占 stage 布局；点击中间 1/3 切换显隐，左右 1/3 按方向翻页；不要在滑动、滚轮或翻页时自动唤出。
@@ -207,7 +208,7 @@
   - 搜索 → 结果 → 详情 → 返回；缩略图/分页/空态/错误。
   - 设置：主题/语言立即生效并重启恢复；代理保存/关闭；ECH 切换与启动恢复。
   - 日志：开关、日志页图标、导出、清空、重启恢复。
-  - 阅读器：nhentai 页图片、方向、滑动/滚轮/键盘、缩放、全屏、点击中间显隐/左右翻页、`?page=`、返回详情；JM 章节入口、前后章、页图还原无错位；manhuagui 章节列表/开始阅读/前后章/页图去 `.webp`/无章节深链首章解析。
+  - 阅读器：nhentai 页图片、方向、滑动/滚轮/键盘、缩放、全屏、点击中间显隐/左右翻页、`?page=`、返回详情；JM 章节入口、前后章、页图还原无错位；manhuagui 分组折叠/展开全部/继续阅读所在组自动展开/开始阅读/前后章/页图去 `.webp`/无章节深链首章解析。
   - 历史：行进详情、详情返回历史、“继续阅读”恢复章节/页码、“开始阅读”从头、更新后返回详情。
   - 收藏分组：v1→v2 迁移、创建/重命名/删除、计数/筛选、短按默认、长按选择、右键 / `Shift+Enter`、从收藏进详情返回收藏。
   - 移动端安全区：所有页面从安全区下方开始，滚动不盖状态栏。

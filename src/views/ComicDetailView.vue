@@ -101,8 +101,15 @@ const backLabel = computed(() => {
   }
   return t(canReturnToSearch.value ? "detail.backToSearch" : "detail.backHome");
 });
-// nhentai has a single implicit chapter; jm exposes chapters through the
-// detail payload, so the entry only appears once a chapter exists.
+const manhuaguiChapters = computed(() => {
+  const current = detail.value;
+  return current?.platform === "manhuagui"
+    ? current.extra.chapterGroups.flatMap((group) => group.chapters)
+    : [];
+});
+
+// nhentai has a single implicit chapter; jm and manhuagui expose chapters
+// through the detail payload, so the entry only appears once one exists.
 const canRead = computed(() => {
   const current = detail.value;
   if (!current || platform.value === null) {
@@ -111,10 +118,10 @@ const canRead = computed(() => {
   if (current.platform === "nhentai") {
     return true;
   }
-  return (
-    (current.platform === "jm" || current.platform === "manhuagui") &&
-    current.extra.chapters.length > 0
-  );
+  if (current.platform === "manhuagui") {
+    return manhuaguiChapters.value.length > 0;
+  }
+  return current.platform === "jm" && current.extra.chapters.length > 0;
 });
 
 const favoriteButtonText = computed(() =>
@@ -136,6 +143,13 @@ const resumeChapterId = computed<string | null>(() => {
 
   if (current.platform === "jm") {
     const chapters = current.extra.chapters;
+    if (entry.chapterId && chapters.some((chapter) => chapter.id === entry.chapterId)) {
+      return entry.chapterId;
+    }
+    return chapters[0]?.id ?? null;
+  }
+  if (current.platform === "manhuagui") {
+    const chapters = manhuaguiChapters.value;
     if (entry.chapterId && chapters.some((chapter) => chapter.id === entry.chapterId)) {
       return entry.chapterId;
     }
@@ -225,8 +239,15 @@ function openReader() {
 
   // Chaptered platforms start at the first chapter and let the reader navigate
   // from there.
-  if (current.platform === "jm" || current.platform === "manhuagui") {
+  if (current.platform === "jm") {
     const first = current.extra.chapters[0];
+    if (first) {
+      openChapter(first.id);
+    }
+    return;
+  }
+  if (current.platform === "manhuagui") {
+    const first = manhuaguiChapters.value[0];
     if (first) {
       openChapter(first.id);
     }
@@ -524,6 +545,7 @@ onBeforeUnmount(() => {
     <ManhuaguiDetail
       v-else-if="manhuaguiDetail"
       :detail="manhuaguiDetail"
+      :resume-chapter-id="resumeChapterId"
       @open-chapter="openChapter"
     />
     <JmDetail v-else-if="jmDetail" :detail="jmDetail" @open-chapter="openChapter" />

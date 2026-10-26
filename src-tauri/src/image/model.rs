@@ -68,7 +68,7 @@ impl SearchExtra {
 }
 
 /// Fields both search and detail return for manhuagui. Search results leave
-/// `chapters` empty; the detail page fills it from the chapter list.
+/// `chapter_groups` empty; the detail page fills it from the chapter list.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ManhuaguiExtra {
@@ -84,6 +84,15 @@ pub(crate) struct ManhuaguiExtra {
     pub description: Option<String>,
     pub score: Option<f32>,
     pub rating_count: Option<u64>,
+    pub chapter_groups: Vec<ManhuaguiChapterGroup>,
+}
+
+/// A site chapter group such as a volume or one-shot collection. `title` is
+/// empty when the page did not label the group; the frontend localizes it.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ManhuaguiChapterGroup {
+    pub title: String,
     pub chapters: Vec<ManhuaguiChapterRef>,
 }
 
@@ -317,6 +326,36 @@ mod tests {
         assert_eq!(value["extra"]["pageCount"], 20);
         // The discriminant is a sibling of `extra`, not a duplicate inside it.
         assert!(value["extra"].get("platform").is_none());
+    }
+
+    #[test]
+    fn manhuagui_extra_serializes_chapter_groups() {
+        let extra = ManhuaguiExtra {
+            original_title: None,
+            authors: Vec::new(),
+            status: None,
+            latest_chapter: None,
+            updated_at: None,
+            year: None,
+            region: None,
+            categories: Vec::new(),
+            aliases: Vec::new(),
+            description: None,
+            score: None,
+            rating_count: None,
+            chapter_groups: vec![ManhuaguiChapterGroup {
+                title: "单话".into(),
+                chapters: vec![ManhuaguiChapterRef {
+                    id: "1".into(),
+                    title: "第1话".into(),
+                }],
+            }],
+        };
+
+        let value = serde_json::to_value(extra).unwrap();
+        assert_eq!(value["chapterGroups"][0]["title"], "单话");
+        assert_eq!(value["chapterGroups"][0]["chapters"][0]["id"], "1");
+        assert!(value.get("chapters").is_none());
     }
 
     #[test]

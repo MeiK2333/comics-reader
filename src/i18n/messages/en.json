@@ -85,6 +85,13 @@
       "categories": "Categories",
       "aliases": "Also known as"
     },
+    "chapterGroups": {
+      "all": "All chapters",
+      "other": "Other {index}",
+      "count": "{count} chapters",
+      "expandAll": "Expand all",
+      "collapseAll": "Collapse all"
+    },
     "fields": {
       "authors": "Authors",
       "latestChapter": "Latest chapter",

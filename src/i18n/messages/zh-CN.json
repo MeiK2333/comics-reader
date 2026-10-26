@@ -85,6 +85,13 @@
       "categories": "分类",
       "aliases": "别名"
     },
+    "chapterGroups": {
+      "all": "全部章节",
+      "other": "其他 {index}",
+      "count": "{count} 章",
+      "expandAll": "展开全部",
+      "collapseAll": "收起全部"
+    },
     "fields": {
       "authors": "作者",
       "latestChapter": "最新话",

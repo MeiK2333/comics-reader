@@ -9,8 +9,8 @@ use url::Url;
 
 use crate::error::{AppError, Result};
 use crate::image::model::{
-    ChapterRef, ComicDetail, DetailExtra, ManhuaguiChapterRef, ManhuaguiExtra, ReaderChapter,
-    ReaderPage, SearchExtra, SearchItem, SearchResponse,
+    ChapterRef, ComicDetail, DetailExtra, ManhuaguiChapterGroup, ManhuaguiChapterRef,
+    ManhuaguiExtra, ReaderChapter, ReaderPage, SearchExtra, SearchItem, SearchResponse,
 };
 
 use super::{Platform, RequestSpec, absolute_url, collapse_whitespace, host_matches, numeric_id};
@@ -174,7 +174,7 @@ impl Platform for Manhuagui {
                 .map(|text| clean_description(&text)),
             score: None,
             rating_count: None,
-            chapters: parse_chapters(root, id),
+            chapter_groups: parse_chapter_groups(root, id),
         };
 
         Ok(ComicDetail::new(
@@ -263,30 +263,51 @@ struct ManhuaguiPageData {
     prev_id: i64,
 }
 
-fn parse_chapters(root: ElementRef<'_>, comic_id: &str) -> Vec<ManhuaguiChapterRef> {
+fn parse_chapter_groups(root: ElementRef<'_>, comic_id: &str) -> Vec<ManhuaguiChapterGroup> {
     // R18/hidden works put the real chapter list in a compressed __VIEWSTATE
     // field; prefer it over the visible placeholder when it decodes.
     if let Some(encoded) = attr_of(root, "#__VIEWSTATE", "value")
         && let Some(decoded) = decode_lz_string(&encoded)
     {
         let fragment = Html::parse_fragment(&decoded);
-        let chapters = parse_chapter_markup(fragment.root_element(), comic_id);
-        if !chapters.is_empty() {
-            return chapters;
+        let groups = parse_chapter_groups_markup(fragment.root_element(), comic_id);
+        if !groups.is_empty() {
+            return groups;
         }
     }
 
-    parse_chapter_markup(root, comic_id)
+    parse_chapter_groups_markup(root, comic_id)
 }
 
-fn parse_chapter_markup(root: ElementRef<'_>, comic_id: &str) -> Vec<ManhuaguiChapterRef> {
-    let mut sections: Vec<_> = root.select(&selector(".chapter-list")).collect();
+fn parse_chapter_groups_markup(root: ElementRef<'_>, comic_id: &str) -> Vec<ManhuaguiChapterGroup> {
+    let mut scope = root.select(&selector(".chapter")).next().unwrap_or(root);
+    let mut sections: Vec<_> = scope.select(&selector(".chapter-list")).collect();
     if sections.is_empty() {
-        sections = root.select(&selector("[id^=chapter-list-]")).collect();
+        sections = scope.select(&selector("[id^=chapter-list-]")).collect();
+    }
+    if sections.is_empty() {
+        // Some layouts wrap only the heading in `.chapter`; retry at the root.
+        scope = root;
+        sections = root.select(&selector(".chapter-list")).collect();
+        if sections.is_empty() {
+            return Vec::new();
+        }
     }
 
-    let mut chapters = Vec::new();
-    for section in sections {
+    let mut titles: Vec<String> = scope
+        .select(&selector("h4"))
+        .map(|heading| collapse_whitespace(&heading.text().collect::<String>()))
+        .collect();
+    // The page sometimes emits a volume heading without a matching list (or
+    // vice versa); keep the DOM order and use an empty title for the gap.
+    while titles.len() < sections.len() {
+        titles.push(String::new());
+    }
+    titles.truncate(sections.len());
+
+    let mut groups = Vec::new();
+    for (title, section) in titles.into_iter().zip(sections) {
+        let mut chapters = Vec::new();
         for page in section.select(&selector("ul")) {
             let mut links: Vec<_> = page.select(&selector("li a[href]")).collect();
             // manhuagui lists the newest chapter first inside each volume.
@@ -297,9 +318,12 @@ fn parse_chapter_markup(root: ElementRef<'_>, comic_id: &str) -> Vec<ManhuaguiCh
                 }
             }
         }
+        if !chapters.is_empty() {
+            groups.push(ManhuaguiChapterGroup { title, chapters });
+        }
     }
 
-    chapters
+    groups
 }
 
 fn chapter_from_link(link: ElementRef<'_>, comic_id: &str) -> Option<ManhuaguiChapterRef> {
@@ -725,7 +749,7 @@ fn parse_search_item(item: ElementRef<'_>) -> Option<SearchItem> {
         score: text_of(item, ".book-score .score-avg strong").and_then(|text| text.parse().ok()),
         rating_count: text_of(item, ".book-score .score-num strong")
             .and_then(|text| text.replace(',', "").parse().ok()),
-        chapters: Vec::new(),
+        chapter_groups: Vec::new(),
     };
 
     Some(SearchItem::new(
@@ -847,10 +871,18 @@ mod tests {
   <li class="status"><span><strong>漫画状态：</strong><span class="dgreen">已完结</span>。最近于 [<span class="red">2026-01-02</span>] 更新至 [ <a class="blue">第12话</a> ]。</span></li>
 </ul>
 <div class="book-intro"><div id="intro-cut">简介文本</div></div>
-<div class="chapter-list cf mt10" id="chapter-list-0"><ul style="display:block">
-  <li><a class="status0" href="/comic/1/102.html" title="第2话"><span>第2话<i>20p</i></span></a></li>
-  <li><a class="status0" href="/comic/1/101.html" title="第1话"><span>第1话<i>18p</i></span></a></li>
-</ul></div>
+<div class="chapter">
+  <h4>单话</h4>
+  <div class="chapter-list cf mt10" id="chapter-list-0"><ul style="display:block">
+    <li><a class="status0" href="/comic/1/102.html" title="第2话"><span>第2话<i>20p</i></span></a></li>
+    <li><a class="status0" href="/comic/1/101.html" title="第1话"><span>第1话<i>18p</i></span></a></li>
+  </ul></div>
+  <h4>单行本</h4>
+  <div class="chapter-list cf mt10" id="chapter-list-1"><ul style="display:block">
+    <li><a class="status0" href="/comic/1/202.html" title="第2卷"><span>第2卷<i>40p</i></span></a></li>
+    <li><a class="status0" href="/comic/1/201.html" title="第1卷"><span>第1卷<i>38p</i></span></a></li>
+  </ul></div>
+</div>
 "#;
 
     fn packed_reader_html() -> String {
@@ -923,6 +955,7 @@ mod tests {
         assert_eq!(extra.description.as_deref(), Some("一个示例故事。"));
         assert_eq!(extra.score, Some(8.5));
         assert_eq!(extra.rating_count, Some(123));
+        assert!(extra.chapter_groups.is_empty());
     }
 
     #[test]
@@ -942,11 +975,15 @@ mod tests {
         assert_eq!(extra.updated_at.as_deref(), Some("2026-01-02"));
         assert_eq!(extra.categories, ["冒险", "奇幻"]);
         assert_eq!(extra.description.as_deref(), Some("简介文本"));
-        assert_eq!(extra.chapters.len(), 2);
-        assert_eq!(extra.chapters[0].id, "101");
-        assert_eq!(extra.chapters[0].title, "第1话");
-        assert_eq!(extra.chapters[1].id, "102");
-        assert_eq!(extra.chapters[1].title, "第2话");
+        assert_eq!(extra.chapter_groups.len(), 2);
+        assert_eq!(extra.chapter_groups[0].title, "单话");
+        assert_eq!(extra.chapter_groups[0].chapters.len(), 2);
+        assert_eq!(extra.chapter_groups[0].chapters[0].id, "101");
+        assert_eq!(extra.chapter_groups[0].chapters[0].title, "第1话");
+        assert_eq!(extra.chapter_groups[0].chapters[1].id, "102");
+        assert_eq!(extra.chapter_groups[1].title, "单行本");
+        assert_eq!(extra.chapter_groups[1].chapters[0].id, "201");
+        assert_eq!(extra.chapter_groups[1].chapters[1].id, "202");
     }
 
     #[test]
@@ -1007,13 +1044,13 @@ mod tests {
         let html =
             format!(r#"<html><body><input id="__VIEWSTATE" value="{encoded}"></body></html>"#);
         let document = Html::parse_document(&html);
-        let chapters = parse_chapters(document.root_element(), "1");
+        let groups = parse_chapter_groups(document.root_element(), "1");
 
-        assert_eq!(chapters.len(), 2);
-        assert_eq!(chapters[0].id, "101");
-        assert_eq!(chapters[0].title, "第1话");
-        assert_eq!(chapters[1].id, "102");
-        assert_eq!(chapters[1].title, "第2话");
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].title, "");
+        assert_eq!(groups[0].chapters.len(), 2);
+        assert_eq!(groups[0].chapters[0].id, "101");
+        assert_eq!(groups[0].chapters[1].id, "102");
     }
 
     #[test]
