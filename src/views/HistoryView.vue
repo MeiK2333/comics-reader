@@ -125,31 +125,12 @@ onBeforeUnmount(() => {
 <template>
   <main class="history-page">
     <header class="history-header">
-      <NButton
-        attr-type="button"
-        quaternary
-        circle
-        size="large"
-        class="history-back"
-        :aria-label="t('history.back')"
-        :title="t('history.back')"
-        @click="goHome"
-      >
+      <NButton attr-type="button" quaternary circle size="large" class="history-back" :aria-label="t('history.back')"
+        :title="t('history.back')" @click="goHome">
         <template #icon>
-          <svg
-            class="history-back-icon"
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-            focusable="false"
-          >
-            <path
-              d="M15 5l-7 7 7 7"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
+          <svg class="history-back-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+              stroke-linejoin="round" />
           </svg>
         </template>
       </NButton>
@@ -163,12 +144,7 @@ onBeforeUnmount(() => {
 
       <NDivider class="history-divider" />
 
-      <NAlert
-        v-if="loadError"
-        class="history-alert"
-        type="error"
-        :bordered="false"
-      >
+      <NAlert v-if="loadError" class="history-alert" type="error" :bordered="false">
         <div class="history-alert__body">
           <span>{{ errorText }}</span>
           <NButton size="small" @click="load">
@@ -181,35 +157,21 @@ onBeforeUnmount(() => {
         <NSpin size="medium" />
       </div>
 
-      <NEmpty
-        v-else-if="!entries.length && !loadError"
-        class="history-empty"
-        :description="t('history.emptyDescription')"
-      />
+      <NEmpty v-else-if="!entries.length && !loadError" class="history-empty"
+        :description="t('history.emptyDescription')" />
 
       <div v-else-if="entries.length" class="history-list">
-        <div
-          v-for="entry in entries"
-          :key="entryKey(entry)"
-          class="history-entry"
-        >
+        <div v-for="entry in entries" :key="entryKey(entry)" class="history-entry">
           <RouterLink class="history-entry__main" :to="detailTarget(entry)">
             <span class="history-entry__cover">
-              <ComicThumb
-                :platform="entry.platform"
-                :thumb="entry.thumb ?? ''"
-                :title="entry.title"
-              />
+              <ComicThumb :platform="entry.platform" :thumb="entry.thumb ?? ''" :title="entry.title" />
             </span>
 
             <span class="history-entry__body">
               <span class="history-entry__title" :title="entry.title">
                 {{ entry.title }}
               </span>
-              <span
-                v-if="entry.chapterTitle"
-                class="history-entry__chapter"
-              >
+              <span v-if="entry.chapterTitle" class="history-entry__chapter">
                 {{ entry.chapterTitle }}
               </span>
               <span class="history-entry__meta">
@@ -230,33 +192,13 @@ onBeforeUnmount(() => {
               </span>
             </span>
 
-            <span class="history-entry__resume" aria-hidden="true">
-              {{ t("history.openDetail") }}
-              <svg
-                class="history-entry__chevron"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                focusable="false"
-              >
-                <path d="m9 5 7 7-7 7" />
-              </svg>
-            </span>
           </RouterLink>
         </div>
       </div>
 
       <div v-if="total > PAGE_SIZE" class="history-pagination">
-        <NPagination
-          :page="page"
-          :page-count="pageCount"
-          :page-slot="7"
-          :disabled="loading"
-          @update:page="changePage"
-        />
+        <NPagination :page="page" :page-count="pageCount" :page-slot="7" :disabled="loading"
+          @update:page="changePage" />
       </div>
     </NCard>
   </main>
@@ -434,15 +376,6 @@ onBeforeUnmount(() => {
   font-variant-numeric: tabular-nums;
 }
 
-.history-entry__resume {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.15rem;
-  font-size: 0.78rem;
-  white-space: nowrap;
-  opacity: 0.65;
-}
-
 .history-entry__chevron {
   display: block;
   width: 16px;
@@ -467,10 +400,6 @@ onBeforeUnmount(() => {
 
   .history-entry__cover {
     width: 52px;
-  }
-
-  .history-entry__resume {
-    display: none;
   }
 
   .history-entry__meta time {
