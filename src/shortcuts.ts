@@ -16,8 +16,8 @@ export interface ShortcutDefinition {
 }
 
 export const SHORTCUTS: readonly ShortcutDefinition[] = [
+  { feature: "history", path: "/history" },
   { feature: "favorites", path: "/favorites" },
   { feature: "downloads", path: "/downloads" },
-  { feature: "history", path: "/history" },
   { feature: "settings", path: "/settings" },
 ];
