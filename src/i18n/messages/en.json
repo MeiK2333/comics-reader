@@ -75,6 +75,7 @@
     "notFound": "Comic not found",
     "notFoundDescription": "This comic may have been removed, or the link is invalid.",
     "loadFailed": "Could not load this comic",
+    "loading": "Loading comic details…",
     "sections": {
       "info": "Details",
       "chapters": "Chapters",

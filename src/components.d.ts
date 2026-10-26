@@ -11,6 +11,7 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    ComicDetailSkeleton: typeof import('./components/comic-detail/ComicDetailSkeleton.vue')['default']
     ComicResultCard: typeof import('./components/ComicResultCard.vue')['default']
     ComicSearchBar: typeof import('./components/ComicSearchBar.vue')['default']
     ComicSearchResults: typeof import('./components/ComicSearchResults.vue')['default']
@@ -52,6 +53,7 @@ declare module 'vue' {
     NResult: typeof import('naive-ui')['NResult']
     NScrollbar: typeof import('naive-ui')['NScrollbar']
     NSelect: typeof import('naive-ui')['NSelect']
+    NSkeleton: typeof import('naive-ui')['NSkeleton']
     NSpin: typeof import('naive-ui')['NSpin']
     NSwitch: typeof import('naive-ui')['NSwitch']
     NTag: typeof import('naive-ui')['NTag']

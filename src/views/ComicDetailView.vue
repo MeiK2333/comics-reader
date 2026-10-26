@@ -20,6 +20,7 @@ import {
 import { getHistoryEntry, type HistoryEntry } from "../api/history";
 import FavoriteGroupPicker from "../components/favorites/FavoriteGroupPicker.vue";
 import FavoriteIcon from "../components/FavoriteIcon.vue";
+import ComicDetailSkeleton from "../components/comic-detail/ComicDetailSkeleton.vue";
 import JmDetail from "../components/comic-detail/JmDetail.vue";
 import ManhuaguiDetail from "../components/comic-detail/ManhuaguiDetail.vue";
 import NhentaiDetail from "../components/comic-detail/NhentaiDetail.vue";
@@ -507,6 +508,10 @@ onBeforeUnmount(() => {
           {{ t("detail.continueReading") }}
         </NButton>
       </div>
+      <div v-if="loading" class="detail-topbar-actions" aria-hidden="true">
+        <NSkeleton round width="96px" height="34px" />
+        <NSkeleton round width="80px" height="34px" />
+      </div>
     </header>
 
     <FavoriteGroupPicker
@@ -521,9 +526,7 @@ onBeforeUnmount(() => {
       @saved="onGroupSaved"
     />
 
-    <div v-if="loading" class="detail-loading" aria-busy="true">
-      <NSpin size="large" />
-    </div>
+    <ComicDetailSkeleton v-if="loading" />
 
     <NResult
       v-else-if="error"
@@ -605,12 +608,6 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
-.detail-loading {
-  display: flex;
-  justify-content: center;
-  padding: 4rem 1rem;
-}
-
 .detail-result {
   padding: 2rem 0;
 }
@@ -628,6 +625,26 @@ onBeforeUnmount(() => {
 
   .favorite-button__label {
     display: none;
+  }
+
+  /* With the label hidden, Naive UI's icon margin and horizontal padding make
+     the bookmark look off-center in the still-wide button. Collapse it to a
+     square icon target and hide the empty content flex item so only the icon
+     (or loading spinner) remains centered. */
+  .favorite-button {
+    width: 34px;
+    min-width: 34px;
+    height: 34px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .favorite-button :deep(.n-button__content) {
+    display: none;
+  }
+
+  .favorite-button :deep(.n-button__icon) {
+    margin: 0;
   }
 }
 </style>

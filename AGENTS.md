@@ -152,7 +152,7 @@
 ### UI / 样式 / 安全区
 
 - 全局 reset/基础样式在 `src/styles/base.scss`；组件样式放 `<style scoped>`。
-- 优先 Naive UI 组件；自动导入已配置，不要手改 `components.d.ts`；`useMessage()` 必须在 `NMessageProvider` 下，`App.vue` 已提供。
+- 优先 Naive UI 组件；自动导入已配置，不要手改 `components.d.ts`；`useMessage()` 必须在 `NMessageProvider` 下，`App.vue` 已提供。详情加载态用 `ComicDetailSkeleton`（`NSkeleton`）并保持 hero/body 布局，不要退回通用 `NSpin`。
 - 用现有主题机制（`NConfigProvider`、`darkTheme`），不要散落 CSS 变量/内联颜色。
 - 顶部安全区由 `App.vue` 的 `.safe-area-top` 统一负责：sticky、使用 `--app-safe-area-top` 和 `--app-background`。页面不要用 `env(safe-area-inset-top)` 的 margin/padding，也不要用 `max-width`/`pointer: coarse` 模拟。`index.html` 的 viewport 必须带 `viewport-fit=cover`，否则 `safe-area-inset-*` 全为 0。
 - 四边安全区统一暴露为 `--app-safe-area-top/right/bottom/left`。`NMessageProvider` 的 teleport container 用 `container-style` 避开顶部/左右；Modal 的 `.n-modal-body-wrapper` 用它约束四边。新增 toast、Modal、Popover 等浮层必须接入安全区，不能只给页面内容加 padding。
