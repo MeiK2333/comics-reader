@@ -992,4 +992,39 @@ mod tests {
         let download = download_image(&http, platform, &thumb).await.unwrap();
         assert!(!download.bytes.is_empty());
     }
+
+    #[test]
+    fn mirror_errors_are_the_ones_another_host_can_fix() {
+        assert!(is_mirror_error(&AppError::Network {
+            url: "https://example.com".into(),
+            reason: "timeout".into(),
+        }));
+        assert!(is_mirror_error(&AppError::EmptyResponse {
+            url: "https://example.com".into(),
+        }));
+
+        for status in [403u16, 429, 500, 502, 520] {
+            assert!(is_mirror_error(&AppError::HttpStatus {
+                url: "https://example.com".into(),
+                status,
+            }));
+        }
+        for status in [400u16, 401, 404, 410] {
+            assert!(!is_mirror_error(&AppError::HttpStatus {
+                url: "https://example.com".into(),
+                status,
+            }));
+        }
+
+        // A valid but unusable body is not a mirror problem for documents;
+        // the image pipeline adds `notImage` separately.
+        assert!(!is_mirror_error(&AppError::NotImage {
+            url: "https://example.com".into(),
+            content_type: "text/html".into(),
+        }));
+        assert!(!is_mirror_error(&AppError::TooLarge {
+            url: "https://example.com".into(),
+            limit: 1,
+        }));
+    }
 }
