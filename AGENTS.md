@@ -14,8 +14,11 @@
 - Node `^20.19.0 || >=22.12.0`，只用 pnpm（不要 npm/yarn）；Rust stable 1.85+（edition 2024），并安装各平台 Tauri 环境依赖（Windows 需 WebView2）。移动端另需 Android SDK/NDK/JDK。Python 只用于本地 `scripts/`，不参与构建。
 - 前端命令在仓库根目录，Rust 命令在 `src-tauri/`：
   - `pnpm build`：`vue-tsc --noEmit` + Vite 构建；不编译 Rust。
+  - `pnpm test`：Vitest 跑一次前端单元测试；`pnpm test:watch` 监听。测试与源码同级（`src/**/*.test.ts`），必须用 `@tauri-apps/api/mocks` 模拟 IPC。
+  - `pnpm test:e2e`：构建 E2E 调试包并跑 `e2e/` 下的 WebDriver 套件；需要 `tauri-driver` 和 `e2e/.drivers/msedgedriver.exe`（版本匹配 WebView2，已 gitignore）。只预置并清理 `%APPDATA%\com.meik.comics-reader.e2e`，不碰真实数据；无 CI。
   - `pnpm tauri dev`：完整应用；验证 IPC、图片、路由、主题等必须用它。
   - `cargo test`、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`：Rust 门禁。
+  - Windows 下若 `PATH` 里的 Android JDK `bin` 排在 `System32` 前，测试二进制会加载其中的 `api-ms-win-crt-*` 桩 DLL 并以 `STATUS_ENTRYPOINT_NOT_FOUND`（0xc0000139）退出；先从 `PATH` 移除该目录再跑。Rust 侧只用单元测试，不要引入 `tauri/test` mock runtime：它会把 wry/comctl32 链进测试二进制，需要额外 manifest。
   - `pnpm tauri <args>`：透传 CLI；`pnpm tauri build` 的 `bundle.active` 为 false，不生成安装包。
 - `pnpm dev` 和 `pnpm preview` 只有前端，没有 Tauri API。
 - 端口固定 1420（`strictPort`）；`vite.config.ts` 与 `tauri.conf.json` 的 `build.devUrl` 必须一致。
@@ -29,6 +32,8 @@
 - `src/stores/`：`settings`（唯一持久化）、`search`（内存态）、`runtime`（ECH 启动状态）。
 - `src/composables/`：主题、语言、错误文案、图片缓存、缩放、长按手势、阅读历史写入。
 - `src/api/`：Tauri invoke 封装（含 `favorites.ts`、`downloads.ts`）；`src/i18n/`：类型化语言包；`src/router/`：hash 路由、守卫、窗口标题。
+- `src/test/setup.ts`：Vitest 全局 setup（WebCrypto polyfill、每例 `clearMocks()`）；测试配置在 `vitest.config.ts`。
+- `e2e/`：WebDriver 配置、离线种子数据与 specs；`run.mjs` 启动 tauri-driver 并清理测试数据。`src-tauri/tauri.e2e.conf.json` 覆盖 identifier。
 - `src-tauri/src/`：
   - `lib.rs`：Builder、插件、命令注册；`error.rs`：AppError/ErrorCode。
   - `image/`：HTTP、缓存、平台搜索/详情/阅读页源。
@@ -225,12 +230,13 @@
 - 下载不是按章选择；详情页提交完整章节列表，nhentai 传空列表。不要把下载文件写进图片缓存目录，也不要用缓存淘汰逻辑管理下载。
 - `get_reader_chapter` 的本地查询必须先于 `waitForEchStartup`，否则离线阅读会被网络初始化卡住；本地页的 `localPath` 必须让 `useReaderPreload` 跳过。
 - 重启后遗留的 `queued/downloading` 必须转 `paused`，不能自动联网续传；暂停/续传必须用 run id 防止旧 worker 覆盖新状态。
-- 无 CI；`cargo test`、`pnpm build` 等本地检查是唯一门禁。
+- 无 CI；`pnpm test`、`cargo test`、`pnpm build` 等本地检查是唯一门禁。
 
 ## 验证
 
-- 前端改动：`pnpm build`。
+- 前端改动：`pnpm test` + `pnpm build`。
 - Rust 改动：在 `src-tauri/` 运行 `cargo test`、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`。
+- E2E（本地 Windows）：`pnpm test:e2e`；只使用 `e2e/` 预置的离线下载/收藏，不访问上游。
 - IPC、图片缓存、搜索、主题、i18n、路由、阅读器、历史、收藏分组、下载：`pnpm tauri dev` 真实窗口冒烟；`pnpm dev` 不够。
 - Android：模拟器/真机 `pnpm tauri android dev`。
 - 手动冒烟（按改动选做）：
@@ -243,14 +249,15 @@
   - 收藏分组：v1→v2 迁移、创建/重命名/删除、计数/筛选、短按默认、长按选择、右键 / `Shift+Enter`、从收藏进详情返回收藏。
   - 下载：三平台各下载一本、封面/页图、详情按钮状态、暂停/继续/删除、重启后恢复为暂停；下载页点条目进详情，断网后详情回退显示已下载章节，开始阅读/继续阅读（含历史页码）可用；删除后阅读器不再命中旧本地页。
   - 移动端安全区：所有页面从安全区下方开始，滚动不盖状态栏；toast 与 Modal 也不越过顶部/左右/底部安全区。
-- 前端没有单元/E2E 测试和 CI；不要声称存在。新增测试体系要加 `package.json` 脚本并同步本文件。
+- 前端已有 Vitest 单元测试（`src/**/*.test.ts`），覆盖错误契约、图片/章节缓存时序、预加载、长按、返回栈、设置持久化，并有少量组件测试（电量、详情骨架、阅读页图片）；`e2e/` 另有本地 WebDriver 套件，仍无 CI，不要声称存在。新增测试体系要加 `package.json` 脚本并同步本文件。
+- 前端测试跑在 jsdom、不启动 Tauri；Pinia 4 把插件排队到 `app.use(pinia)` 之后，测试里创建 store 前要先 `createApp(...).use(pinia)`，否则持久化插件不生效。
 - Rust 测试数量和联网测试的实测结果会变化；以 `cargo test` 输出为准，不要把具体数字当契约。
 
 ## 尚未实现
 
 - **JM 域名自动更新**：域名列表内置，失败会换域名但不会拉取 JM 发布的最新域名；如需更新，从发布页获取，不要搬 Python 登录/收藏/下载框架。
 - **按章下载/导出**：v1 只支持按作品下载整部章节；按章勾选、CBZ/文件夹导出未实现。存储模型已按章组织，扩展时不需要改索引版本。
-- **更多平台**：按平台改动入口实现；先确认接口、登录/付费/地区限制与抓取许可；至少补搜索/详情 fixture；保持判别联合的编译期安全。
+- **更多平台**：按平台改动入口实现；先确认接口、登录/付费/地区限制与抓取许可；至少补搜索/详情 fixture；保持判别联合的编译期安全。计划中的平台见 `ROADMAP.md`。
 
 ## 提交
 
