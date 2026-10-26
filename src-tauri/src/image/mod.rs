@@ -231,6 +231,7 @@ async fn search_comics_inner(
     }
 
     let spec = platform.search_request(query, page)?;
+    platform.prepare(client).await;
     let body = http::fetch_document(client, platform, &spec).await?;
     platform.parse_search(query, page, &body)
 }
@@ -276,6 +277,7 @@ async fn get_comic_inner(client: &HttpClient, platform: &str, id: &str) -> Resul
     }
 
     let spec = platform.detail_request(id)?;
+    platform.prepare(client).await;
     let body = http::fetch_document(client, platform, &spec).await?;
     platform.parse_detail(id, &body)
 }
@@ -332,6 +334,7 @@ async fn get_reader_chapter_inner(
     let chapter_id = chapter_id.map(str::trim).filter(|value| !value.is_empty());
 
     let spec = platform.reader_chapter_request(id, chapter_id)?;
+    platform.prepare(client).await;
     let body = http::fetch_document(client, platform, &spec).await?;
     platform.parse_reader_chapter(id, chapter_id, &body)
 }

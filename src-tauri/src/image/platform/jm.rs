@@ -5,6 +5,8 @@
 //! protocol details (signing, decryption, URL rules) live in [`super::jm_api`].
 
 use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{LazyLock, Mutex};
 
@@ -18,6 +20,7 @@ use crate::image::model::{
     ChapterRef, ComicDetail, DetailExtra, JmChapterRef, JmDetailExtra, JmExtra, ReaderChapter,
     ReaderPage, SearchExtra, SearchItem, SearchResponse,
 };
+use crate::logging;
 
 use super::jm_api::{self, Album, Chapter, SearchPage};
 use super::{ImageDecode, Platform, RequestSpec, host_matches, jm_id};
@@ -139,6 +142,19 @@ impl Platform for Jm {
     fn image_decode(&self, url: &Url) -> Option<ImageDecode> {
         jm_api::page_image(url)
             .map(|(photo_id, filename)| ImageDecode::JmScramble { photo_id, filename })
+    }
+
+    fn prepare<'a>(
+        &'a self,
+        client: &'a HttpClient,
+    ) -> Pin<Box<dyn Future<Output = ()> + Send + 'a>> {
+        Box::pin(async move {
+            if let Err(error) = ensure_app_version(client, self).await {
+                // The request itself can still succeed with the built-in
+                // version, so a failed sync must not block the command.
+                logging::warn("jm", format!("failed to sync the jm app version: {error}"));
+            }
+        })
     }
 
     /// Photo and cover images are served from interchangeable CDNs and the
@@ -399,6 +415,50 @@ impl Platform for Jm {
     }
 }
 
+/// Refresh the signed app version once per process. `/setting` is the same
+/// call the APP makes on startup; a failure leaves the built-in version in
+/// place and is retried by the next command.
+static VERSION_SYNC: tokio::sync::OnceCell<()> = tokio::sync::OnceCell::const_new();
+
+async fn ensure_app_version(client: &HttpClient, platform: &dyn Platform) -> Result<()> {
+    VERSION_SYNC
+        .get_or_try_init(|| async { sync_app_version(client, platform).await })
+        .await
+        .map(|_| ())
+}
+
+async fn sync_app_version(client: &HttpClient, platform: &dyn Platform) -> Result<()> {
+    let ts = jm_api::timestamp();
+    let mut urls = jm_api::API_DOMAINS
+        .iter()
+        .map(|domain| jm_api::setting_url(domain));
+    let primary = urls
+        .next()
+        .ok_or_else(|| AppError::Unexpected("jm has no API domain".into()))??;
+    let fallbacks = urls.collect::<Result<Vec<_>>>()?;
+    let spec = RequestSpec::json(primary)
+        .with_headers(jm_api::document_headers(ts))
+        .with_fallbacks(fallbacks);
+
+    let body = http::fetch_document(client, platform, &spec).await?;
+    let Some(setting) = jm_api::decode::<jm_api::Setting>(&body, ts)? else {
+        return Ok(());
+    };
+    let Some(version) = setting
+        .jm3_version
+        .map(|version| version.trim().to_string())
+        .filter(|version| !version.is_empty())
+    else {
+        return Ok(());
+    };
+
+    if jm_api::version_is_newer(&version, &jm_api::app_version()) {
+        jm_api::set_app_version(&version);
+        logging::info("jm", format!("using jm app version {version}"));
+    }
+    Ok(())
+}
+
 /// Look up the album's scramble threshold, caching it for the process. One
 /// extra request per chapter is enough: pages in a chapter share the album.
 pub(crate) async fn scramble_id(
@@ -427,7 +487,22 @@ pub(crate) async fn scramble_id(
         .with_fallbacks(fallbacks);
 
     let body = http::fetch_document(client, platform, &spec).await?;
-    let value = jm_api::parse_scramble_id(&body).unwrap_or(jm_api::DEFAULT_SCRAMBLE_ID);
+    let value = match jm_api::parse_scramble_id(&body) {
+        Some(value) => value,
+        None => {
+            // Falling back keeps pages readable, but a missing variable means
+            // the endpoint changed and should show up in the log.
+            logging::warn(
+                "jm",
+                format!(
+                    "scramble_id missing in a {}-byte response; using {}",
+                    body.len(),
+                    jm_api::DEFAULT_SCRAMBLE_ID
+                ),
+            );
+            jm_api::DEFAULT_SCRAMBLE_ID
+        }
+    };
 
     if let Ok(mut cache) = SCRAMBLE_IDS.lock() {
         cache.insert(photo_id.to_string(), value);

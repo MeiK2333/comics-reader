@@ -8,7 +8,7 @@
 //!
 //! Only protocol details live here; [`super::jm`] owns the platform plumbing.
 
-use std::sync::LazyLock;
+use std::sync::{LazyLock, RwLock};
 
 use aes::Aes256;
 use aes::cipher::{BlockDecrypt, KeyInit};
@@ -22,9 +22,13 @@ use url::Url;
 
 use crate::error::{AppError, Result};
 
-/// Version reported in `tokenparam`. JM rejects tokens signed for an app
-/// version that is too old, so this has to follow the upstream constant.
-const APP_VERSION: &str = "2.1.12";
+/// Version signed into `tokenparam` at build time. JM keeps raising the
+/// minimum it accepts, so the effective version is refreshed from `/setting`
+/// at runtime instead of being trusted forever.
+const BUILTIN_APP_VERSION: &str = "2.1.12";
+/// Set once `/setting` reports a newer app version.
+static APP_VERSION: LazyLock<RwLock<String>> =
+    LazyLock::new(|| RwLock::new(BUILTIN_APP_VERSION.to_string()));
 /// APP API hosts. They are interchangeable and rotate between releases.
 pub(super) const API_DOMAINS: &[&str] = &[
     "www.cdnhjk.net",
@@ -89,9 +93,39 @@ pub(super) const fn accept_language() -> &'static str {
     APP_ACCEPT_LANGUAGE
 }
 
+/// App version currently signed into `tokenparam`.
+pub(super) fn app_version() -> String {
+    APP_VERSION
+        .read()
+        .map(|version| version.clone())
+        .unwrap_or_else(|_| BUILTIN_APP_VERSION.to_string())
+}
+
+pub(super) fn set_app_version(version: &str) {
+    if let Ok(mut current) = APP_VERSION.write() {
+        *current = version.to_string();
+    }
+}
+
+/// Compare dotted versions numerically; a malformed candidate is never newer,
+/// so a bad `/setting` response cannot downgrade the signed version.
+pub(super) fn version_is_newer(candidate: &str, current: &str) -> bool {
+    fn parts(version: &str) -> Option<Vec<u64>> {
+        version.split('.').map(|part| part.parse().ok()).collect()
+    }
+
+    let (Some(mut candidate), Some(mut current)) = (parts(candidate), parts(current)) else {
+        return false;
+    };
+    let length = candidate.len().max(current.len());
+    candidate.resize(length, 0);
+    current.resize(length, 0);
+    candidate > current
+}
+
 /// `{ ts, version }` pair JM expects in the `tokenparam` header.
 fn tokenparam(ts: u64) -> String {
-    format!("{ts},{APP_VERSION}")
+    format!("{ts},{}", app_version())
 }
 
 /// `md5(ts + secret)` in lowercase hex.
@@ -144,6 +178,11 @@ pub(super) fn search_url(domain: &str, query: &str, page: u32) -> Result<Url> {
 
 pub(super) fn album_url(domain: &str, id: &str) -> Result<Url> {
     parse_url(&format!("https://{domain}/album?id={id}"))
+}
+
+/// `/setting` reports the app version JM currently expects.
+pub(super) fn setting_url(domain: &str) -> Result<Url> {
+    parse_url(&format!("https://{domain}/setting"))
 }
 
 pub(super) fn chapter_url(domain: &str, id: &str) -> Result<Url> {
@@ -481,6 +520,12 @@ pub(super) struct Chapter {
 }
 
 #[derive(Debug, Deserialize)]
+pub(super) struct Setting {
+    #[serde(default)]
+    pub jm3_version: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 pub(super) struct SearchPage {
     #[serde(default)]
     pub total: Option<Scalar>,
@@ -695,6 +740,31 @@ mod tests {
             cover_url("1480638"),
             "https://cdn-msp.jmapiproxy1.cc/media/albums/1480638_3x4.jpg"
         );
+    }
+
+    #[test]
+    fn compares_dotted_versions() {
+        assert!(version_is_newer("2.1.13", "2.1.12"));
+        assert!(version_is_newer("2.10.0", "2.9.9"));
+        assert!(version_is_newer("3", "2.99.99"));
+        assert!(!version_is_newer("2.1.12", "2.1.12"));
+        assert!(!version_is_newer("2.1.11", "2.1.12"));
+        // A malformed response must not downgrade the signed version.
+        assert!(!version_is_newer("not-a-version", "2.1.12"));
+        assert!(!version_is_newer("2.1.13", "not-a-version"));
+    }
+
+    #[test]
+    fn decodes_the_setting_version() {
+        let ts = 1_700_000_000;
+        let payload = r#"{"jm3_version":"2.1.20","app_img_shunt":1}"#;
+        let body = format!(
+            r#"{{"code":200,"data":"{}"}}"#,
+            encrypt_for_test(payload, ts)
+        );
+
+        let setting: Setting = decode(body.as_bytes(), ts).unwrap().unwrap();
+        assert_eq!(setting.jm3_version.as_deref(), Some("2.1.20"));
     }
 
     #[test]

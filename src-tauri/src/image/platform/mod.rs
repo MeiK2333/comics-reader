@@ -15,11 +15,15 @@ mod nhentai;
 pub(crate) use jm::scramble_id;
 pub(crate) use jm_image::{descramble, segment_count};
 
+use std::future::Future;
+use std::pin::Pin;
+
 use reqwest::RequestBuilder;
 use reqwest::header::HeaderMap;
 use url::Url;
 
 use crate::error::{AppError, Result};
+use crate::image::HttpClient;
 use crate::image::model::{ComicDetail, ReaderChapter, SearchResponse};
 
 use generic::Generic;
@@ -114,6 +118,16 @@ pub(crate) trait Platform: Send + Sync {
     /// platform with interchangeable origins can remember which one works;
     /// single-origin platforms keep the default no-op.
     fn note_request_outcome(&self, _url: &Url, _success: bool) {}
+
+    /// Optional async work before a command serves its request. JM uses it to
+    /// refresh the app version it signs with; other platforms have nothing to
+    /// prepare and resolve immediately.
+    fn prepare<'a>(
+        &'a self,
+        _client: &'a HttpClient,
+    ) -> Pin<Box<dyn Future<Output = ()> + Send + 'a>> {
+        Box::pin(std::future::ready(()))
+    }
 
     /// Alternative hosts for the same image. The image pipeline tries them in
     /// order when the current host fails with a retryable error.
