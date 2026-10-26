@@ -2,3 +2,9 @@
 # its own file watching, so its install script is not needed.
 allowBuilds:
   '@parcel/watcher': false
+  # WebdriverIO's bundled driver managers are unused: e2e/run.mjs starts
+  # tauri-driver with the Edge Driver downloaded into e2e/.drivers.
+  edgedriver: false
+  geckodriver: false
+  # esbuild's install script only validates its platform binary.
+  esbuild: true
