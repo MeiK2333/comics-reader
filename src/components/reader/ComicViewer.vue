@@ -59,8 +59,7 @@ const root = ref<HTMLElement | null>(null);
 const stage = ref<HTMLElement | null>(null);
 const imageSize = ref<ReaderImageSize | null>(null);
 const pageSizes = new Map<number, ReaderImageSize>();
-const chromeVisible = ref(true);
-const chromeHover = ref(false);
+const chromeVisible = ref(false);
 const isFullscreen = ref(false);
 
 const total = computed(() => props.pages.length);
@@ -223,7 +222,6 @@ function turnTo(target: number) {
     cancelTurn();
     displayPage.value = next;
     emit("update:page", next);
-    showChrome();
     return;
   }
 
@@ -241,7 +239,6 @@ function turnTo(target: number) {
       ? (forward ? span : -span)
       : (forward ? -span : span);
   animateTrackTo(targetOffset, () => finishTurn(next));
-  showChrome();
 }
 
 function goToPage(next: number) {
@@ -258,17 +255,14 @@ function nextPage() {
 
 function zoomIn() {
   zoomStep(1);
-  showChrome();
 }
 
 function zoomOut() {
   zoomStep(-1);
-  showChrome();
 }
 
 function resetZoom() {
   reset();
-  showChrome();
 }
 
 function onSlotSize(number: number, size: ReaderImageSize) {
@@ -320,38 +314,47 @@ watch(
   },
 );
 
-let hideTimer: ReturnType<typeof setTimeout> | undefined;
+// The stage is split into three tap zones: the middle one toggles the overlay
+// chrome, while the sides turn pages. A third of the width is wide enough for
+// thumbs and leaves the image itself unobstructed.
+const TAP_ZONE_RATIO = 1 / 3;
 
-function clearHideTimer() {
-  if (hideTimer) {
-    clearTimeout(hideTimer);
-    hideTimer = undefined;
+function toggleChrome() {
+  chromeVisible.value = !chromeVisible.value;
+}
+
+function turnFromTap(side: "left" | "right") {
+  const forward =
+    props.direction === "rtl" ? side === "left" : side === "right";
+  if (forward) {
+    nextPage();
+  } else {
+    previousPage();
   }
 }
 
-function scheduleHide() {
-  clearHideTimer();
-  if (chromeHover.value) {
+function onStageTap(event: PointerEvent) {
+  const element = stage.value;
+  if (!element) {
     return;
   }
-  hideTimer = setTimeout(() => {
-    chromeVisible.value = false;
-  }, 2600);
-}
 
-function showChrome() {
-  chromeVisible.value = true;
-  scheduleHide();
-}
+  const rect = element.getBoundingClientRect();
+  if (rect.width === 0) {
+    return;
+  }
 
-function holdChrome() {
-  chromeHover.value = true;
-  clearHideTimer();
-}
+  const ratio = (event.clientX - rect.left) / rect.width;
+  if (ratio < TAP_ZONE_RATIO) {
+    turnFromTap("left");
+    return;
+  }
+  if (ratio > 1 - TAP_ZONE_RATIO) {
+    turnFromTap("right");
+    return;
+  }
 
-function releaseChrome() {
-  chromeHover.value = false;
-  scheduleHide();
+  toggleChrome();
 }
 
 function onFullscreenChange() {
@@ -420,12 +423,10 @@ function onStagePointerDown(event: PointerEvent) {
     moved: false,
   };
   element.setPointerCapture(event.pointerId);
-  showChrome();
   event.preventDefault();
 }
 
 function onStagePointerMove(event: PointerEvent) {
-  showChrome();
   if (!drag || drag.id !== event.pointerId) {
     return;
   }
@@ -495,7 +496,7 @@ function onStagePointerUp(event: PointerEvent) {
 
   if (!current.moved) {
     trackOffset.value = 0;
-    showChrome();
+    onStageTap(event);
     return;
   }
 
@@ -517,7 +518,6 @@ let lastNavigationAt = 0;
 
 function onWheel(event: WheelEvent) {
   event.preventDefault();
-  showChrome();
 
   if (trackAnimating.value) {
     wheelAccumulator = 0;
@@ -650,7 +650,6 @@ onMounted(() => {
   window.addEventListener("keydown", onKeydown);
   window.addEventListener("resize", onResize);
   document.addEventListener("fullscreenchange", onFullscreenChange);
-  showChrome();
 });
 
 onBeforeUnmount(() => {
@@ -659,7 +658,6 @@ onBeforeUnmount(() => {
   window.removeEventListener("resize", onResize);
   document.removeEventListener("fullscreenchange", onFullscreenChange);
   cancelTurn();
-  clearHideTimer();
   if (document.fullscreenElement === root.value) {
     void document.exitFullscreen().catch(() => undefined);
   }
@@ -675,10 +673,8 @@ onBeforeUnmount(() => {
   >
     <header
       class="viewer__bar viewer__bar--top"
-      @pointerenter="holdChrome"
-      @pointerleave="releaseChrome"
-      @focusin="holdChrome"
-      @focusout="releaseChrome"
+      :aria-hidden="!chromeVisible"
+      :inert="!chromeVisible || undefined"
     >
       <NButton
         attr-type="button"
@@ -761,10 +757,8 @@ onBeforeUnmount(() => {
 
     <footer
       class="viewer__bar viewer__bar--bottom"
-      @pointerenter="holdChrome"
-      @pointerleave="releaseChrome"
-      @focusin="holdChrome"
-      @focusout="releaseChrome"
+      :aria-hidden="!chromeVisible"
+      :inert="!chromeVisible || undefined"
     >
       <div class="viewer__nav">
         <NButton
@@ -923,8 +917,6 @@ onBeforeUnmount(() => {
       </div>
     </footer>
 
-    <div class="viewer__safe-bottom" aria-hidden="true"></div>
-
     <p class="sr-only" aria-live="polite">
       {{
         t("reader.pageAnnouncement", {
@@ -953,10 +945,11 @@ onBeforeUnmount(() => {
 }
 
 .viewer__bar {
-  position: relative;
+  position: absolute;
+  right: 0;
+  left: 0;
   z-index: 3;
   display: flex;
-  flex: none;
   align-items: center;
   gap: 0.75rem;
   padding: 0.4rem 0.75rem;
@@ -967,12 +960,15 @@ onBeforeUnmount(() => {
 }
 
 .viewer__bar--top {
+  top: 0;
   min-height: 56px;
   border-bottom: 1px solid rgba(127, 127, 127, 0.12);
 }
 
 .viewer__bar--bottom {
+  bottom: 0;
   min-height: 60px;
+  padding-bottom: calc(0.4rem + env(safe-area-inset-bottom, 0px));
   border-top: 1px solid rgba(127, 127, 127, 0.12);
 }
 
@@ -1121,12 +1117,6 @@ onBeforeUnmount(() => {
   font-size: 0.85rem;
   font-variant-numeric: tabular-nums;
   opacity: 0.7;
-}
-
-.viewer__safe-bottom {
-  flex: none;
-  height: env(safe-area-inset-bottom, 0px);
-  background: var(--app-background);
 }
 
 .sr-only {
