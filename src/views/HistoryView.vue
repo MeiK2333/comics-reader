@@ -65,19 +65,10 @@ function entryKey(entry: HistoryEntry): string {
   return `${entry.platform}:${entry.id}`;
 }
 
-function resumeTarget(entry: HistoryEntry): RouteLocationRaw {
-  const params: Record<string, string> = {
-    platform: entry.platform,
-    id: entry.id,
-  };
-  if (entry.chapterId) {
-    params.chapterId = entry.chapterId;
-  }
-
+function detailTarget(entry: HistoryEntry): RouteLocationRaw {
   return {
-    name: "comic-reader",
-    params,
-    query: entry.page > 1 ? { page: String(entry.page) } : {},
+    name: "comic-detail",
+    params: { platform: entry.platform, id: entry.id },
   };
 }
 
@@ -202,7 +193,7 @@ onBeforeUnmount(() => {
           :key="entryKey(entry)"
           class="history-entry"
         >
-          <RouterLink class="history-entry__main" :to="resumeTarget(entry)">
+          <RouterLink class="history-entry__main" :to="detailTarget(entry)">
             <span class="history-entry__cover">
               <ComicThumb
                 :platform="entry.platform"
@@ -240,7 +231,7 @@ onBeforeUnmount(() => {
             </span>
 
             <span class="history-entry__resume" aria-hidden="true">
-              {{ t("history.resume") }}
+              {{ t("history.openDetail") }}
               <svg
                 class="history-entry__chevron"
                 viewBox="0 0 24 24"

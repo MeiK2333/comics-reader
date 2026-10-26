@@ -247,6 +247,11 @@ impl HistoryData {
         Ok(())
     }
 
+    fn get(&self, platform: &str, id: &str) -> Result<Option<HistoryEntry>> {
+        let key = history_key(platform, id)?;
+        Ok(self.entries.get(&key).cloned())
+    }
+
     fn list(&self, offset: usize, limit: usize) -> HistoryPage {
         let mut entries: Vec<HistoryEntry> = self.entries.values().cloned().collect();
         entries.sort_by(|left, right| {
@@ -364,6 +369,20 @@ fn invalid(field: &'static str, reason: &str) -> AppError {
     }
 }
 
+fn history_key(platform: &str, id: &str) -> Result<HistoryKey> {
+    let platform = platform.trim();
+    if !KNOWN_PLATFORMS.contains(&platform) {
+        return Err(invalid("platform", "must be a supported platform"));
+    }
+
+    let id = id.trim();
+    if id.is_empty() {
+        return Err(invalid("id", "must not be empty"));
+    }
+
+    Ok((platform.to_owned(), id.to_owned()))
+}
+
 fn now_millis() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -400,6 +419,22 @@ pub(crate) async fn record_history(app: AppHandle, entry: HistoryInput) -> Resul
         let path = history_path(&app)?;
         let store = app.state::<HistoryStore>();
         store.with_data(&path, |data, path| data.record(path, entry))
+    })
+    .await
+    .map_err(|error| AppError::Unexpected(format!("history task failed: {error}")))?
+}
+
+/// Look up the current progress for one work.
+#[tauri::command]
+pub(crate) async fn get_history_entry(
+    app: AppHandle,
+    platform: String,
+    id: String,
+) -> Result<Option<HistoryEntry>> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let path = history_path(&app)?;
+        let store = app.state::<HistoryStore>();
+        store.with_data(&path, |data, _| data.get(&platform, &id))
     })
     .await
     .map_err(|error| AppError::Unexpected(format!("history task failed: {error}")))?
@@ -583,6 +618,22 @@ mod tests {
         assert_eq!(page.total, 3);
         assert_eq!(page.entries.len(), 1);
         assert_eq!(page.entries[0].id, "c");
+    }
+
+    #[test]
+    fn reads_one_entry_by_work_key() {
+        let path = temp_path("get");
+        let mut data = HistoryData::default();
+        data.record(&path, input("1")).unwrap();
+
+        assert!(data.get("nhentai", "1").unwrap().is_some());
+        assert!(data.get("nhentai", "2").unwrap().is_none());
+        assert_eq!(
+            data.get("unknown", "1").unwrap_err().code(),
+            ErrorCode::InvalidInput
+        );
+
+        cleanup(&path);
     }
 
     #[test]

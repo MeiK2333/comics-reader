@@ -38,6 +38,14 @@ export function listHistory(offset = 0, limit = 50): Promise<HistoryPage> {
   return invoke<HistoryPage>("list_history", { offset, limit });
 }
 
+/** Read the saved progress for one work, or `null` if it was never read. */
+export function getHistoryEntry(
+  platform: ComicPlatform,
+  id: string,
+): Promise<HistoryEntry | null> {
+  return invoke<HistoryEntry | null>("get_history_entry", { platform, id });
+}
+
 /** Insert or update the current progress for one work. */
 export function recordHistory(entry: HistoryInput): Promise<void> {
   return invoke("record_history", { entry });

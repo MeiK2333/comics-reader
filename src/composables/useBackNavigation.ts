@@ -7,7 +7,7 @@ import type { RouteLocationRaw } from "vue-router";
  * the previous page is already the parent it wants, instead of pushing a
  * duplicate that the system back button would later revisit.
  */
-function previousPath(): string | null {
+export function previousPath(): string | null {
   const back = (window.history.state as { back?: unknown } | null)?.back;
   if (typeof back !== "string" || back.length === 0) {
     return null;

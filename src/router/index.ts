@@ -38,8 +38,7 @@ const router = createRouter({
     {
       path: "/favorites",
       name: "favorites",
-      component: () => import("../views/ShortcutPlaceholderView.vue"),
-      props: { feature: "favorites" },
+      component: () => import("../views/FavoritesView.vue"),
       meta: { titleKey: "meta.favorites" },
     },
     {

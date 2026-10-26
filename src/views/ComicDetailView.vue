@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import type { RouteLocationRaw } from "vue-router";
+import { useMessage } from "naive-ui";
 import type {
   ComicDetail,
   ComicPlatform,
@@ -9,11 +11,24 @@ import type {
   NhentaiDetail as NhentaiDetailData,
 } from "../api/comics";
 import { getComic, isComicPlatform } from "../api/comics";
+import {
+  addFavorite,
+  getFavorite,
+  removeFavorite,
+  type FavoriteEntry,
+} from "../api/favorites";
+import { getHistoryEntry, type HistoryEntry } from "../api/history";
+import FavoriteGroupPicker from "../components/favorites/FavoriteGroupPicker.vue";
+import FavoriteIcon from "../components/FavoriteIcon.vue";
 import JmDetail from "../components/comic-detail/JmDetail.vue";
 import ManhuaguiDetail from "../components/comic-detail/ManhuaguiDetail.vue";
 import NhentaiDetail from "../components/comic-detail/NhentaiDetail.vue";
-import { useBackNavigation } from "../composables/useBackNavigation";
+import {
+  previousPath,
+  useBackNavigation,
+} from "../composables/useBackNavigation";
 import { useErrorMessage } from "../composables/useErrorMessage";
+import { useLongPress } from "../composables/useLongPress";
 import { AppError, toAppError } from "../errors";
 import { useAppI18n } from "../i18n";
 import { setWindowTitle, updateWindowTitle } from "../router";
@@ -24,12 +39,38 @@ const router = useRouter();
 const search = useSearchStore();
 const { t } = useAppI18n();
 const formatError = useErrorMessage();
+const message = useMessage();
 const { goBack: back } = useBackNavigation();
 
 const detail = ref<ComicDetail | null>(null);
 const loading = ref(true);
 const error = ref<AppError | null>(null);
+const favoriteEntry = ref<FavoriteEntry | null>(null);
+const favoriteLoading = ref(false);
+const favoritePending = ref(false);
+const historyEntry = ref<HistoryEntry | null>(null);
+const showGroupPicker = ref(false);
 let requestId = 0;
+
+const favorited = computed(() => favoriteEntry.value !== null);
+const currentGroupId = computed(() => favoriteEntry.value?.groupId ?? null);
+
+// Remember where the detail page was opened from before a reader can push
+// another entry on top of it.
+const previous = previousPath();
+const cameFromFavorites = previous === "/favorites";
+const cameFromHistory = previous === "/history";
+
+// Long-press opens the group picker; the short press is handled by click.
+const longPress = useLongPress({
+  disabled: () =>
+    !detail.value || favoriteLoading.value || favoritePending.value,
+  onLongPress: () => {
+    if (detail.value) {
+      showGroupPicker.value = true;
+    }
+  },
+});
 
 const platform = computed<ComicPlatform | null>(() => {
   const value = route.params.platform;
@@ -42,12 +83,24 @@ const id = computed(() => {
 });
 
 const canReturnToSearch = computed(() => search.active);
-const backTarget = computed(() =>
-  canReturnToSearch.value ? { name: "search" } : { name: "home" },
-);
-const backLabel = computed(() =>
-  t(canReturnToSearch.value ? "detail.backToSearch" : "detail.backHome"),
-);
+const backTarget = computed<RouteLocationRaw>(() => {
+  if (cameFromFavorites) {
+    return { name: "favorites" };
+  }
+  if (cameFromHistory) {
+    return { name: "history" };
+  }
+  return canReturnToSearch.value ? { name: "search" } : { name: "home" };
+});
+const backLabel = computed(() => {
+  if (cameFromFavorites) {
+    return t("detail.backToFavorites");
+  }
+  if (cameFromHistory) {
+    return t("detail.backToHistory");
+  }
+  return t(canReturnToSearch.value ? "detail.backToSearch" : "detail.backHome");
+});
 // nhentai has a single implicit chapter; jm exposes chapters through the
 // detail payload, so the entry only appears once a chapter exists.
 const canRead = computed(() => {
@@ -59,6 +112,60 @@ const canRead = computed(() => {
     return true;
   }
   return current.platform === "jm" && current.extra.chapters.length > 0;
+});
+
+const favoriteButtonText = computed(() =>
+  favorited.value ? t("favorites.added") : t("favorites.add"),
+);
+const favoriteActionLabel = computed(() =>
+  favorited.value ? t("favorites.remove") : t("favorites.addTitle"),
+);
+
+const canResume = computed(
+  () => canRead.value && historyEntry.value !== null,
+);
+const resumeChapterId = computed<string | null>(() => {
+  const entry = historyEntry.value;
+  const current = detail.value;
+  if (!entry || !current) {
+    return null;
+  }
+
+  if (current.platform === "jm") {
+    const chapters = current.extra.chapters;
+    if (entry.chapterId && chapters.some((chapter) => chapter.id === entry.chapterId)) {
+      return entry.chapterId;
+    }
+    return chapters[0]?.id ?? null;
+  }
+  return entry.chapterId;
+});
+const resumePage = computed(() => {
+  const entry = historyEntry.value;
+  const current = detail.value;
+  if (!entry || !current) {
+    return 1;
+  }
+
+  // A removed JM chapter cannot continue its old page; start the fallback
+  // chapter at page one instead of showing an out-of-range page.
+  if (
+    current.platform === "jm" &&
+    entry.chapterId &&
+    !current.extra.chapters.some((chapter) => chapter.id === entry.chapterId)
+  ) {
+    return 1;
+  }
+  return entry.page;
+});
+const resumeTitle = computed(() => {
+  const entry = historyEntry.value;
+  return entry
+    ? t("detail.continueAt", {
+        page: resumePage.value,
+        total: entry.totalPages,
+      })
+    : t("detail.continueReading");
 });
 
 const manhuaguiDetail = computed<ManhuaguiDetailData | null>(() =>
@@ -129,6 +236,124 @@ function openReader() {
   });
 }
 
+function openResume() {
+  const current = detail.value;
+  const entry = historyEntry.value;
+  if (!current || !entry) {
+    return;
+  }
+
+  const params: Record<string, string> = {
+    platform: current.platform,
+    id: id.value,
+  };
+  const chapterId = resumeChapterId.value;
+  if (chapterId) {
+    params.chapterId = chapterId;
+  }
+  const page = resumePage.value;
+
+  void router.push({
+    name: "comic-reader",
+    params,
+    query: page > 1 ? { page: String(page) } : {},
+  });
+}
+
+async function loadFavoriteState(
+  comicPlatform: ComicPlatform,
+  comicId: string,
+  currentRequest: number,
+) {
+  favoriteLoading.value = true;
+
+  try {
+    const saved = await getFavorite(comicPlatform, comicId);
+    if (currentRequest === requestId) {
+      favoriteEntry.value = saved;
+    }
+  } catch {
+    // The status lookup is auxiliary. The toggle is idempotent, so a failure
+    // should leave the button usable instead of blocking the detail page.
+    if (currentRequest === requestId) {
+      favoriteEntry.value = null;
+    }
+  } finally {
+    if (currentRequest === requestId) {
+      favoriteLoading.value = false;
+    }
+  }
+}
+
+async function loadHistoryState(
+  comicPlatform: ComicPlatform,
+  comicId: string,
+  currentRequest: number,
+) {
+  try {
+    const entry = await getHistoryEntry(comicPlatform, comicId);
+    if (currentRequest === requestId) {
+      historyEntry.value = entry;
+    }
+  } catch {
+    // History only adds a convenience button; never block the detail page.
+    if (currentRequest === requestId) {
+      historyEntry.value = null;
+    }
+  }
+}
+
+function handleFavoriteClick() {
+  if (longPress.consumeClick()) {
+    return;
+  }
+  void toggleFavorite();
+}
+
+async function toggleFavorite() {
+  const current = detail.value;
+  if (!current || favoriteLoading.value || favoritePending.value) {
+    return;
+  }
+
+  const currentRequest = requestId;
+  favoritePending.value = true;
+
+  try {
+    if (favorited.value) {
+      await removeFavorite(current.platform, id.value);
+      if (currentRequest === requestId) {
+        favoriteEntry.value = null;
+        message.success(t("favorites.removedToast"));
+      }
+    } else {
+      const saved = await addFavorite({
+        platform: current.platform,
+        id: id.value,
+        title: current.title,
+        thumb: current.thumb,
+      });
+      if (currentRequest === requestId) {
+        favoriteEntry.value = saved;
+        message.success(t("favorites.addedToast"));
+      }
+    }
+  } catch (cause) {
+    if (currentRequest === requestId) {
+      message.error(formatError(cause));
+    }
+  } finally {
+    if (currentRequest === requestId) {
+      favoritePending.value = false;
+    }
+  }
+}
+
+function onGroupSaved(entry: FavoriteEntry) {
+  favoriteEntry.value = entry;
+  showGroupPicker.value = false;
+}
+
 async function load() {
   const currentRequest = ++requestId;
   const currentPlatform = platform.value;
@@ -137,6 +362,11 @@ async function load() {
   loading.value = true;
   error.value = null;
   detail.value = null;
+  favoriteEntry.value = null;
+  favoriteLoading.value = false;
+  favoritePending.value = false;
+  historyEntry.value = null;
+  showGroupPicker.value = false;
   // Drop a previous comic's dynamic title while the next request is running.
   updateWindowTitle();
 
@@ -157,6 +387,8 @@ async function load() {
     }
     detail.value = result;
     setWindowTitle(`${result.title} · ${t("app.name")}`);
+    void loadFavoriteState(currentPlatform, currentId, currentRequest);
+    void loadHistoryState(currentPlatform, currentId, currentRequest);
   } catch (cause) {
     if (currentRequest !== requestId) {
       return;
@@ -208,15 +440,62 @@ onBeforeUnmount(() => {
           </svg>
         </template>
       </NButton>
-      <NButton
-        v-if="canRead"
-        attr-type="button"
-        type="primary"
-        @click="openReader"
-      >
-        {{ t("detail.read") }}
-      </NButton>
+
+      <div v-if="detail" class="detail-topbar-actions">
+        <span class="favorite-trigger" v-on="longPress.handlers">
+          <NButton
+            attr-type="button"
+            :type="favorited ? 'primary' : 'default'"
+            secondary
+            :loading="favoriteLoading || favoritePending"
+            :disabled="favoriteLoading || favoritePending"
+            :aria-pressed="favorited"
+            :aria-label="favoriteActionLabel"
+            :aria-description="t('favorites.longPressHint')"
+            aria-haspopup="dialog"
+            aria-keyshortcuts="Shift+Enter"
+            :title="favoriteActionLabel"
+            class="favorite-button"
+            @click="handleFavoriteClick"
+          >
+            <template #icon>
+              <FavoriteIcon :filled="favorited" />
+            </template>
+            <span class="favorite-button__label">{{ favoriteButtonText }}</span>
+          </NButton>
+        </span>
+        <NButton
+          v-if="canRead"
+          attr-type="button"
+          :type="canResume ? 'default' : 'primary'"
+          :secondary="canResume"
+          @click="openReader"
+        >
+          {{ t("detail.read") }}
+        </NButton>
+        <NButton
+          v-if="canResume"
+          attr-type="button"
+          type="primary"
+          :title="resumeTitle"
+          @click="openResume"
+        >
+          {{ t("detail.continueReading") }}
+        </NButton>
+      </div>
     </header>
+
+    <FavoriteGroupPicker
+      v-if="detail"
+      v-model:show="showGroupPicker"
+      :platform="detail.platform"
+      :id="id"
+      :title="detail.title"
+      :thumb="detail.thumb"
+      :favorited="favorited"
+      :current-group-id="currentGroupId"
+      @saved="onGroupSaved"
+    />
 
     <div v-if="loading" class="detail-loading" aria-busy="true">
       <NSpin size="large" />
@@ -278,6 +557,25 @@ onBeforeUnmount(() => {
   height: 20px;
 }
 
+.detail-topbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.favorite-trigger {
+  display: inline-flex;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.favorite-button__label {
+  white-space: nowrap;
+}
+
 .detail-loading {
   display: flex;
   justify-content: center;
@@ -297,6 +595,10 @@ onBeforeUnmount(() => {
 @media (max-width: 560px) {
   .detail-page {
     padding-top: 0.75rem;
+  }
+
+  .favorite-button__label {
+    display: none;
   }
 }
 </style>

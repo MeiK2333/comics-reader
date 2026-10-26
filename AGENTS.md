@@ -5,8 +5,8 @@
 ## 项目速览
 
 - 早期 Tauri 2 漫画阅读器：Vue 3.5 + TypeScript + Vite 8，Rust 后端；桌面端与移动端（Android 已初始化，iOS 未初始化）。
-- 已有：manhuagui/JM/nhentai 搜索与详情；nhentai 与 JM 单页阅读器；阅读历史；设置（主题、语言、阅读方向、HTTP 代理、ECH、日志）；日志页。
-- 尚无：漫画库、通用章节列表、下载器、数据库、manhuagui 阅读；收藏/下载仍是占位页。不要按已存在处理。
+- 已有：manhuagui/JM/nhentai 搜索与详情；nhentai 与 JM 单页阅读器；阅读历史；收藏；设置（主题、语言、阅读方向、HTTP 代理、ECH、日志）；日志页。
+- 尚无：漫画库、通用章节列表、下载器、数据库、manhuagui 阅读；下载仍是占位页。不要按已存在处理。
 - README 是上游模板，不可信。以本文件、`package.json`、`src-tauri/Cargo.toml`、`tauri.conf.json` 和代码为准。
 
 ## 环境与命令
@@ -24,15 +24,15 @@
 ## 代码地图
 
 - `src/main.ts`：启动顺序；挂载前恢复主题、语言、日志、代理、ECH。
-- `src/App.vue`：Naive UI Provider、消息/对话框 Provider、顶部安全区、RouterView。
-- `src/views/`：页面；`src/components/`：搜索、结果卡片、详情、阅读器。
+- `src/App.vue`：Naive UI Provider、消息 Provider、顶部安全区、RouterView；没有 NDialogProvider，删除确认用 `NPopconfirm`/`NModal`。
+- `src/views/`：页面（含收藏列表）；`src/components/`：搜索、结果卡片、收藏分组选择器、详情、阅读器。
 - `src/stores/`：`settings`（唯一持久化）、`search`（内存态）、`runtime`（ECH 启动状态）。
-- `src/composables/`：主题、语言、错误文案、图片缓存、缩放、阅读历史写入。
-- `src/api/`：Tauri invoke 封装；`src/i18n/`：类型化语言包；`src/router/`：hash 路由、守卫、窗口标题。
+- `src/composables/`：主题、语言、错误文案、图片缓存、缩放、长按手势、阅读历史写入。
+- `src/api/`：Tauri invoke 封装（含 `favorites.ts`）；`src/i18n/`：类型化语言包；`src/router/`：hash 路由、守卫、窗口标题。
 - `src-tauri/src/`：
   - `lib.rs`：Builder、插件、命令注册；`error.rs`：AppError/ErrorCode。
   - `image/`：HTTP、缓存、平台搜索/详情/阅读页源。
-  - `ech/`：ECH bootstrap、DoH、TLS；`history.rs`、`logging.rs`：JSONL 持久化。
+  - `ech/`：ECH bootstrap、DoH、TLS；`history.rs`（JSONL 历史）、`favorites.rs`（v2 JSON 收藏与分组）、`logging.rs`（JSONL 日志）。
 - `capabilities/default.json`：窗口权限；`tauri.conf.json`：窗口、构建、资产协议、打包。
 - 忽略：`node_modules/`、`dist/`、`src-tauri/target/`、`src-tauri/gen/**/build/`、`scripts/.venv/`。
 
@@ -43,7 +43,7 @@
 - UI 只通过 `invoke`、`convertFileSrc` 和窗口 API 与 Rust 交互。
 - Rust 命令返回 `Result<T, AppError>`；用户文案只在前端语言包，Rust 不返回展示字符串。
 - 设置保存在 localStorage 的 `comics-reader:settings`（插件前缀 `comics-reader:`）；`settings` 是唯一持久化 store。Rust 不持久化设置，代理/ECH/日志开关是运行时状态，启动和设置变更时用 `set_http_proxy`、`set_ech_enabled`、`set_logging_enabled` 同步。
-- 应用数据：历史 `app_data_dir()/history.jsonl`，日志 `app_log_dir()/app.log`，图片缓存 `app_cache_dir()/images/`。历史与日志内容不能放 localStorage（日志开关偏好仍属于 `settings`）；图片缓存是可丢弃数据。
+- 应用数据：历史 `app_data_dir()/history.jsonl`，收藏 `app_data_dir()/favorites.json`（version 2，含分组），日志 `app_log_dir()/app.log`，图片缓存 `app_cache_dir()/images/`。历史、收藏与日志内容不能放 localStorage（日志开关偏好仍属于 `settings`）；图片缓存是可丢弃数据。
 - 主题写入 `document.documentElement.dataset.theme`（`light`/`dark`），`App.vue` 同时传 Naive UI 的 `darkTheme`。
 - Tauri 不会自动同步 `document.title`；`router/index.ts` 显式 `setTitle`，切换语言后 `useLocale` 再次调用。
 - 路由用 `createWebHashHistory()`；不要改 web history。
@@ -82,7 +82,7 @@
 - ECH 内部细节（`cloudflare-ech.com` 配置、Cloudflare DoH、TTL、fallback 缓存）以 `image/http.rs`、`ech/` 和测试为准。必须保留的约束：代理与 ECH 互斥；启动初始化要等待；非 Cloudflare 站点 plain TLS 回退是预期。
 - 平台集中在 `image/platform/`，实现 `Platform` trait（`id`/`matches`/`configure`/`note_request_outcome`/`prepare`，可选搜索/详情/阅读）。当前 `generic`/`manhuagui`/`jm`/`nhentai`。`platform` 参数可省略时按 host 识别；已知平台显式传，JM 尤其。JM 在首个搜索/详情/阅读命令前通过 `prepare` 请求 `/setting` 同步 `jm3_version`（进程一次，失败下次重试），`tokenparam` 使用运行时版本。
 - 搜索会话由 `search` store 管理；`/search` 不携带 query，刷新/深链会被守卫送回首页；首页图标固定回首页。
-- 详情 `/comic/:platform/:id` 不依赖搜索会话，直接 `get_comic`，刷新/深链可用；返回目标是搜索会话有效时的 `/search`，否则首页，但必须走 `useBackNavigation`：上一页就是目标时 `router.back()`，否则 `router.replace`。
+- 详情 `/comic/:platform/:id` 不依赖搜索会话，直接 `get_comic`，刷新/深链可用；返回目标是上一页为 `/favorites` 或 `/history` 时回对应页面，否则搜索会话有效时 `/search`，否则首页，但必须走 `useBackNavigation`：上一页就是目标时 `router.back()`，否则 `router.replace`。
 - 搜索返回 `{ total, page_size, result: [{ id, title, thumb, platform, extra }] }`，详情 `{ platform, title, thumb, extra }`；`platform` 判别，`extra` 强类型（Rust `SearchExtra`/`DetailExtra`，前端判别联合）。不要退回 `Record<string, unknown>` 或 JSON 兜底。
 - 阅读页源 `get_reader_chapter(platform, id, chapterId?)`；目前 nhentai 与 JM 已实现，manhuagui 仍 unsupported。页图片仍逐页 `fetch_image`，不新增缓存目录。JM 页图在缓存前由 Rust 按 `scramble_id` 还原并重编码为 JPEG（缓存键带 `?decoded`，`scramble_id` 每章节请求一次并缓存）。
 - `nhentai.net` 在 AliDNS/360 的地址可能被污染；ECH 探针已通过 Cloudflare DoH 解析目标，可直连。JM 走移动端 APP API（`image/platform/jm_api.rs`）：HTML 站点在部分网络对搜索和专辑都返回 403，APP 域名可用；搜索/详情需要 token 签名与 AES 解密，封面由 album id 推导，不需要 Cookie 或 TLS 指纹。请求仍走 `HttpClient`。
@@ -102,10 +102,24 @@
 
 - 按作品 `platform + id` 记录，只保留最后章节/页码；进入阅读器成功加载页源时写入，翻页防抖，离开/切章 flush；只浏览详情不产生记录。
 - Rust 拥有：`app_data_dir()/history.jsonl`，每行 `record`（旧版 `remove` 仍重放）；首次命令加载时重放为内存索引；上限 10,000 条，超出丢最旧；事件数超过 2 倍上限或加载时裁剪过会压缩；读取过滤未知平台/空字段/非法页码，按 `updatedAt` 倒序。
-- 命令只有 `list_history(offset?, limit?)` 与 `record_history(entry)`；每页默认 50、最大 200；只取当前页，不把全部条目传前端。
+- 命令：`list_history(offset?, limit?)`、`get_history_entry(platform, id)`、`record_history(entry)`；每页默认 50、最大 200；只取当前页，不把全部条目传前端。
+- 历史行点击进入漫画详情，不再直接进阅读器；详情页用 `get_history_entry` 展示“继续阅读”，恢复时带历史的 `chapterId`/`page` 进 `comic-reader`，JM 章节失效时回退第一章。
 - 历史不可删除/清空：没有 `remove_history`/`clear_history` 命令和前端入口；不要以“管理历史”为由恢复。作品只在超过上限时被挤出。
 - 历史文件是应用数据，不是设置：不要放 localStorage，不要每次翻页重写整个 JSON，不要全量传前端。记录失败静默（Rust 记日志），不能影响阅读。
 - `ReaderChapter.thumb` 仅供历史封面，仍走 `ComicThumb` 缓存。当前无单实例插件，多实例并发写不保证一致。
+
+### 收藏
+
+- 按作品 `platform + id` 收藏，键与历史相同；只存快照 `title`、`thumb`、`addedAt`、`groupId`，不做远程元数据刷新；上游作品被删除后收藏仍保留，用户可手动取消。
+- Rust 拥有：`app_data_dir()/favorites.json`，`version: 2`，包含 `groups` 与 `entries`；首次命令加载为内存索引，整表原子重写（临时文件 + `sync_all` + rename），不要改成每次设置读取或 localStorage。v1 无分组数据在加载时迁移到默认分组并写回 v2，不能丢旧收藏。
+- 一个作品只属于一个分组；移动分组就是更新 `groupId`。默认分组 id 固定为 `default`，名称存空字符串并由前端按语言显示；默认分组不可改名/删除。
+- 命令：`list_favorites(offset?, limit?, groupId?)`、`get_favorite(platform, id)`、`add_favorite(entry) -> FavoriteEntry`、`remove_favorite`、`list_favorite_groups`、`create_favorite_group(name)`、`rename_favorite_group(groupId, name)`、`delete_favorite_group(groupId)`；每页默认 50、最大 200。
+- `add` 幂等：新条目无 `groupId` 进默认分组；已有条目无 `groupId` 保留原分组；显式传 `groupId` 则移动；始终保留 `addedAt` 并刷新标题/封面，返回保存后的 entry。删除分组把其中收藏移到默认分组。
+- 收藏页支持“全部 / 默认分组 / 自定义分组”筛选、计数、创建/重命名/删除分组；列表按 `addedAt` 倒序，点击条目进详情，取消收藏不弹确认；缩略图仍走 `ComicThumb`，不要为每条收藏请求远程详情。
+- 详情页收藏按钮：短按 toggle（未收藏进默认分组，已收藏取消收藏）；长按（或右键 / `Shift+Enter`）打开分组选择器，未收藏时选择后加入，已收藏时移动。长按 500ms，移动/取消/离开要取消，长按后的 click 必须抑制，否则会误取消收藏；选择器含新建分组并提示长按用法。
+- 详情页先 `get_favorite` 取当前分组；查询失败按未收藏处理，`add` 的幂等语义保证不会误移分组。请求带 token，切换作品丢弃旧结果。
+- 从收藏页进详情返回收藏；从历史页进详情返回历史；`previousPath()` 优先于 `search.active`。收藏页自身返回首页。
+- 文件损坏按空列表并备份 `.bak`；更高 `version` 返回 `unexpected` 并拒绝写入。收藏不用新增错误码，复用 `invalidInput`/`io`/`json`/`tauri`/`unexpected`。
 
 ### 安全与生成文件
 
@@ -154,6 +168,7 @@
 | 新平台 | `image/platform/` 实现 trait 并注册；`model.rs` + `src/api/comics.ts` 判别联合；`PlatformPicker`、结果卡片、详情组件、图标、fixture、`cache_version`。 |
 | 改设置 | `stores/settings.ts` + `SettingsView.vue`；若同步 Rust，加对应 `src/api/*.ts` 与命令。 |
 | 改阅读器/页源 | `components/reader/`、`views/ComicReaderView.vue`、`router/index.ts`、`api/reader.ts`、`image/model.rs`、`image/platform/`、`image/mod.rs`。 |
+| 改收藏 | `src-tauri/src/favorites.rs`、`src/api/favorites.ts`、`FavoritesView.vue`、`ComicDetailView.vue`、`FavoriteGroupPicker.vue`、`useLongPress.ts`、两个语言包。 |
 | 改图片/网络 | `src-tauri/src/image/`、`src-tauri/tauri.conf.json`（资产 scope）；请求必须走 `HttpClient`。 |
 
 ## 易错点
@@ -166,6 +181,11 @@
 - 顶部安全区不能用页面 padding；阅读器底部安全区由覆盖栏自己处理。
 - 设置持久化没有迁移层；重命名字段必须迁移。
 - 历史不可删除/清空；不要加回 remove/clear。
+- 收藏可取消；不要照搬历史的不可删除约束。收藏列表项进详情，不直接进阅读器；不要为每条收藏请求远程详情。
+- 一个作品只属于一个分组；默认分组 id 固定 `default`，不可删除/改名。收藏 v1 文件必须迁移到 v2，不要只改 version。
+- 详情页收藏按钮是短按 toggle + 长按分组；长按必须抑制随后的 click，否则会误取消。右键 / `Shift+Enter` 也要能打开选择器。
+- 从收藏/历史进详情，返回来源用 `previousPath()` 判断，收藏/历史优先于 `search.active`。
+- 历史行进详情，不直接进阅读器；详情“继续阅读”用 `get_history_entry` 的 `chapterId`/`page`，JM 章节失效时回退第一章。
 - 返回按钮不要用 `router.push`：用 `useBackNavigation` 在上一页等于目标时 pop，否则 replace；push 会把当前页留在历史栈，系统返回会重新进入刚离开的页面（搜索 → 漫画 → 返回 → 漫画）。阅读器切章同样用 `router.replace`。
 - 首页/结果页用 View Transition；不要用延迟 `router.push` 等动画；不支持时直接导航。
 - 生成文件不要手改；`README.md` 只是上游模板。
@@ -178,14 +198,15 @@
 
 - 前端改动：`pnpm build`。
 - Rust 改动：在 `src-tauri/` 运行 `cargo test`、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`。
-- IPC、图片缓存、搜索、主题、i18n、路由、阅读器、历史：`pnpm tauri dev` 真实窗口冒烟；`pnpm dev` 不够。
+- IPC、图片缓存、搜索、主题、i18n、路由、阅读器、历史、收藏分组：`pnpm tauri dev` 真实窗口冒烟；`pnpm dev` 不够。
 - Android：模拟器/真机 `pnpm tauri android dev`。
 - 手动冒烟（按改动选做）：
   - 搜索 → 结果 → 详情 → 返回；缩略图/分页/空态/错误。
   - 设置：主题/语言立即生效并重启恢复；代理保存/关闭；ECH 切换与启动恢复。
   - 日志：开关、日志页图标、导出、清空、重启恢复。
   - 阅读器：nhentai 页图片、方向、滑动/滚轮/键盘、缩放、全屏、点击中间显隐/左右翻页、`?page=`、返回详情、不支持平台错误；JM 章节入口、前后章、页图还原无错位。
-  - 历史：产生/更新、分页/续读、无删除/清空入口、重启恢复。
+  - 历史：行进详情、详情返回历史、“继续阅读”恢复章节/页码、“开始阅读”从头、更新后返回详情。
+  - 收藏分组：v1→v2 迁移、创建/重命名/删除、计数/筛选、短按默认、长按选择、右键 / `Shift+Enter`、从收藏进详情返回收藏。
   - 移动端安全区：所有页面从安全区下方开始，滚动不盖状态栏。
 - 前端没有单元/E2E 测试和 CI；不要声称存在。新增测试体系要加 `package.json` 脚本并同步本文件。
 - Rust 测试数量和联网测试的实测结果会变化；以 `cargo test` 输出为准，不要把具体数字当契约。
@@ -193,7 +214,7 @@
 ## 尚未实现
 
 - **JM 域名自动更新**：域名列表内置，失败会换域名但不会拉取 JM 发布的最新域名；如需更新，从发布页获取，不要搬 Python 登录/收藏/下载框架。
-- **收藏与下载**：`/favorites`、`/downloads` 仍是占位页。先定产品边界；Rust 持久化到 `app_data_dir()`，下载不放 `app_cache_dir()`；离线阅读用本地路径 + 资产协议；替换占位页时同步 `shortcuts.ts`、route meta、语言包与本文件。
+- **下载**：`/downloads` 仍是占位页。先定产品边界；Rust 持久化到 `app_data_dir()`，下载不放 `app_cache_dir()`；离线阅读用本地路径 + 资产协议；替换占位页时同步 `shortcuts.ts`、route meta、语言包与本文件。
 - **manhuagui 阅读**：实现 `reader_chapter_request`/`parse_reader_chapter` 并补 fixture；详情入口改为能力判断；复用阅读路由、方向和历史；页源只返回 URL/尺寸，图片仍走 `fetch_image`。
 - **更多平台**：按平台改动入口实现；先确认接口、登录/付费/地区限制与抓取许可；至少补搜索/详情 fixture；保持判别联合的编译期安全。
 

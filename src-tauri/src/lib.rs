@@ -1,5 +1,6 @@
 mod ech;
 pub mod error;
+mod favorites;
 mod history;
 mod image;
 mod logging;
@@ -24,6 +25,7 @@ pub fn run() {
         })
         .manage(image::HttpClient::default())
         .manage(history::HistoryStore::default())
+        .manage(favorites::FavoritesStore::default())
         .invoke_handler(tauri::generate_handler![
             image::fetch_image,
             image::search_comics,
@@ -32,6 +34,15 @@ pub fn run() {
             image::set_http_proxy,
             history::list_history,
             history::record_history,
+            history::get_history_entry,
+            favorites::list_favorites,
+            favorites::get_favorite,
+            favorites::add_favorite,
+            favorites::remove_favorite,
+            favorites::list_favorite_groups,
+            favorites::create_favorite_group,
+            favorites::rename_favorite_group,
+            favorites::delete_favorite_group,
             ech::fetch_ech_config,
             ech::probe_ech_handshake,
             ech::set_ech_enabled,
