@@ -90,6 +90,21 @@ function goBack() {
   void router.push(backTarget.value);
 }
 
+function openChapter(chapterId: string) {
+  const current = detail.value;
+  if (!current || platform.value === null) {
+    return;
+  }
+  void router.push({
+    name: "comic-reader",
+    params: {
+      platform: current.platform,
+      id: id.value,
+      chapterId,
+    },
+  });
+}
+
 function openReader() {
   const current = detail.value;
   if (!current || platform.value === null) {
@@ -98,16 +113,17 @@ function openReader() {
 
   // JM reads one chapter at a time; start at the first one and let the reader
   // navigate from there.
-  const chapterId =
-    current.platform === "jm" ? current.extra.chapters[0]?.id : undefined;
+  if (current.platform === "jm") {
+    const first = current.extra.chapters[0];
+    if (first) {
+      openChapter(first.id);
+    }
+    return;
+  }
 
   void router.push({
     name: "comic-reader",
-    params: {
-      platform: current.platform,
-      id: id.value,
-      ...(chapterId ? { chapterId } : {}),
-    },
+    params: { platform: current.platform, id: id.value },
   });
 }
 
@@ -222,7 +238,7 @@ onBeforeUnmount(() => {
     </NResult>
 
     <ManhuaguiDetail v-else-if="manhuaguiDetail" :detail="manhuaguiDetail" />
-    <JmDetail v-else-if="jmDetail" :detail="jmDetail" />
+    <JmDetail v-else-if="jmDetail" :detail="jmDetail" @open-chapter="openChapter" />
     <NhentaiDetail v-else-if="nhentaiDetail" :detail="nhentaiDetail" />
 
     <NResult

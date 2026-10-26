@@ -10,9 +10,21 @@ const props = defineProps<{
   detail: JmDetail;
 }>();
 
+const emit = defineEmits<{
+  openChapter: [chapterId: string];
+}>();
+
 const { t } = useAppI18n();
 
 const extra = computed(() => props.detail.extra);
+const chapters = computed(() => extra.value.chapters);
+
+function chapterLabel(chapter: JmDetail["extra"]["chapters"][number]) {
+  const title = chapter.title.trim();
+  return title.length > 0
+    ? title
+    : t("detail.chapterFallback", { number: chapter.sort });
+}
 
 const infoItems = computed(() =>
   [
@@ -23,15 +35,6 @@ const infoItems = computed(() =>
     {
       label: t("detail.fields.pages"),
       value: extra.value.pageCount?.toString() ?? "",
-    },
-    {
-      label: t("detail.fields.chapters"),
-      // A single-chapter album is the common case; only show a count when the
-      // album actually has multiple chapters.
-      value:
-        extra.value.chapters.length > 1
-          ? String(extra.value.chapters.length)
-          : "",
     },
     {
       label: t("detail.fields.publishedAt"),
@@ -83,6 +86,24 @@ const stats = computed(() =>
       </NDescriptions>
     </DetailSection>
 
+    <DetailSection
+      v-if="chapters.length > 1"
+      :title="t('detail.sections.chapters')"
+    >
+      <div class="chapter-list">
+        <NButton
+          v-for="chapter in chapters"
+          :key="chapter.id"
+          quaternary
+          block
+          class="chapter-item"
+          @click="emit('openChapter', chapter.id)"
+        >
+          {{ chapterLabel(chapter) }}
+        </NButton>
+      </div>
+    </DetailSection>
+
     <DetailTagGroup :title="t('detail.sections.works')" :tags="extra.works" />
     <DetailTagGroup :title="t('detail.sections.actors')" :tags="extra.actors" />
     <DetailTagGroup :title="t('detail.sections.tags')" :tags="extra.tags" />
@@ -111,5 +132,20 @@ const stats = computed(() =>
 .detail-stat strong {
   font-size: 1.1rem;
   font-weight: 600;
+}
+
+.chapter-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.chapter-item {
+  justify-content: flex-start;
+}
+
+.chapter-item :deep(.n-button__content) {
+  justify-content: flex-start;
+  text-align: left;
 }
 </style>
