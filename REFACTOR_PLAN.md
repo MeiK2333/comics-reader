@@ -1,6 +1,6 @@
 # 重构与修复计划（待办）
 
-> **状态**：P1、P2-1~P2-8、P3-2、P3-4、P4-1~P4-8 已完成并从本文件移除（历史见 git log）。剩余：P4-9（条件项）、P3-1（可选）、P3-3（条件项）。
+> **状态**：P1、P2-1~P2-8、P3-2、P3-4、P4-1~P4-8 已完成并从本文件移除（历史见 git log）；P4-9 评估后关闭（不抽取）。剩余：P3-1（可选）、P3-3（条件项）。
 > **基线**：2026-10-27，master（P4-1~P4-8 后）；`pnpm test` 35 files / 229 tests、`cargo test` 170 passed / 10 ignored。
 > **适用对象**：后续接手本仓库的编码智能体。
 > **配套文档**：[AGENTS.md](AGENTS.md)（契约、命令、易错点，优先于本文件）、[ROADMAP.md](ROADMAP.md)（功能方向）。
@@ -12,12 +12,12 @@
 
 主体重构已经结束。当前维护成本集中在：
 
-1. **条件/按需项**：P4-9 阅读器编排抽取（先评估）、P3-1 其余 DTO（只在 wire 变化时补）、P3-3 分页索引（只在有 benchmark 时做）。
+1. **按需项**：P3-1 其余 DTO（只在 wire 变化时补）、P3-3 分页索引（只在有 benchmark 时做）。
 
 执行顺序：
 
-1. P4-9 先评估收益；不要为了覆盖率强行拆阅读器。
-2. P3-1 / P3-3 按需推进。
+1. P3-1 随 wire 变化推进。
+2. P3-3 有性能证据再做。
 
 一次只做一个任务卡，独立提交；先加失败用例再修缺陷；结构拆分、行为修复、测试补齐不要混在同一提交。
 
@@ -38,6 +38,7 @@
 - 不重做 downloads/http 模块拆分；不拆 `favorites.rs`/`manhuagui.rs`/`FavoritesView.vue`（要拆先加任务卡）。
 - 不改 IPC wire、错误码、i18n key、持久化版本、资产协议 scope、缓存键语义（除非任务明确要求 version bump）。
 - 不为三平台抽公共 HTML 解析框架；不引入 TanStack Query/ORM/状态机库/UI 框架/生成器。
+- 不为可测性重排 `ComicReaderView` 的章节/URL/历史编排；P4-9 评估结论是保持现状，必要时加组件级测试，不要先拆 composable。
 - 不把 `history` 并入通用 JSON store；不给 favorites/downloads 做通用 Repository trait。
 - 不做与任务无关的重命名/格式化/文件移动。
 
@@ -116,19 +117,6 @@ BUG-1~BUG-10、BUG-12、BUG-13 的已修复项不再保留；需要追溯时看 
 - **做法**：store 内维护按 `addedAt/updatedAt` 排序的 `Vec<Key>`，写时增量更新；或记录 benchmark 后接受现状。
 - **验收**：有 benchmark/profiling 数据；分页结果顺序不变。
 
-### P4：剩余可选与条件项
-
-> P4 主线（P4-1~P4-7）与 P4-8 已完成并从本文件移除；这里只保留条件项。
-> 测试约定沿用现有测试：jsdom + `vi.mock`/`@tauri-apps/api/mocks`、`NMessageProvider` harness、`effectScope`；测试不联网、不启动 Tauri。
-
-#### P4-9 阅读器路由编排可测化（conditional）
-
-- **状态**：conditional（未开始；先评估收益再决定是否抽取）
-- **证据**：`ComicReaderView.vue` 约 463 行，包含缓存/在途页源选择、manhuagui 无章节深链解析首章、`?page=last`、URL query 同步、历史记录去抖 gate、body overflow；这些逻辑没有单测。
-- **做法**：抽出 `useReaderChapterSource`（或等价 composable）负责“路由参数 → 章节数据/页码/URL/历史”的编排，视图只做渲染；用 mock 的 router + api 测。若评估认为抽取会破坏既定阅读器行为，保持现状并在任务卡记录理由，不要强行拆。
-- **验收**：抽取后 `pnpm test`、`pnpm build` 通过；若环境可用，E2E 行为不变。
-- **建议提交**：`refactor(reader): extract chapter source orchestration`
-
 ---
 
 ## 6. 验证与提交
@@ -141,7 +129,7 @@ BUG-1~BUG-10、BUG-12、BUG-13 的已修复项不再保留；需要追溯时看 
 | Rust | `cargo test` + `cargo fmt --check` + `cargo clippy --all-targets -- -D warnings` |
 | 前端 + Rust | 上面两组都跑 |
 
-P4 只按自动化门禁验收；真实窗口冒烟（`pnpm tauri dev`）建议在发布前做，但不阻塞 P4 任务。手动冒烟清单以 `AGENTS.md` 的“验证”章节为准。
+真实窗口冒烟（`pnpm tauri dev`）建议在发布前做；手动冒烟清单以 `AGENTS.md` 的“验证”章节为准。
 
 ### 6.2 E2E 与 CI
 
@@ -164,7 +152,7 @@ P4 只按自动化门禁验收；真实窗口冒烟（`pnpm tauri dev`）建议�
 - [x] P4-1~P4-7（测试补强主线）完成；`pnpm test` 35 files / 229 tests、`pnpm build` 通过。
 - [x] BUG-13（下载 pending 泄漏）已修复并有回归测试。
 - [x] P4-8（`KNOWN_PLATFORMS` 共享）完成；`cargo test` 170 passed / 10 ignored。
-- [ ] P4-9 条件项按需推进。
+- [x] P4-9 评估后关闭：不抽取 `useReaderChapterSource`；需要补覆盖时优先组件级测试。
 - [ ] P3-1 只在 wire 变化时按需推进；P3-3 有 benchmark 证据再做。
 - [x] 下一次新增列表页/平台/下载能力可以复用现有 composable、trait 和契约测试。
 
@@ -174,4 +162,5 @@ P4 只按自动化门禁验收；真实窗口冒烟（`pnpm tauri dev`）建议�
 
 > 只记录当前未完成任务的偏离与结论；完成的任务随任务卡一起删除。
 
+- 2026-10-27 / P4-9 / 评估结论：不抽取 `useReaderChapterSource`。阅读器编排的风险高于可测性收益；已有 reader-navigation、usePageTurn、手势/缩放/预加载测试和 E2E 覆盖主要路径，剩余深链/`?page=last` 若要补，优先组件级测试。
 - 2026-10-27 / P4 规划 / 现状复核：前端 130 个测试、Rust 169 个测试均通过；临时 spike 验证了 jsdom 下伪造 PointerEvent + stub pointer capture 可驱动手势，`NMessageProvider` 包裹可测详情动作（spike 已删除）。未改动业务代码。
