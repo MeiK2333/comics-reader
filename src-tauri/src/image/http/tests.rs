@@ -1,5 +1,11 @@
+use super::client::{ACCEPT_VALUE, USER_AGENT_VALUE, base_headers, ech_fallback_key};
 use super::fetch::is_mirror_error;
 use super::*;
+use crate::error::AppError;
+use reqwest::header::{ACCEPT, USER_AGENT};
+use std::sync::Arc;
+use std::time::{Duration, SystemTime};
+use url::Url;
 
 fn proxy(host: &str, port: u16) -> HttpProxyConfig {
     HttpProxyConfig {
