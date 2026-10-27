@@ -1,0 +1,63 @@
+{
+  "search": {
+    "id": "lianaidaixing",
+    "title": "戀愛代理",
+    "thumb": "https://sl.mangafunb.fun/l/lianaidaixing/cover/1700201434.jpg.328x422.jpg",
+    "platform": "copymanga",
+    "extra": {
+      "originalTitle": "恋爱代理",
+      "authors": ["西沢5㍉", "赤坂アカ"],
+      "status": null,
+      "latestChapter": null,
+      "updatedAt": null,
+      "region": null,
+      "categories": ["愛情"],
+      "aliases": ["恋爱代理", "恋爱代行", "恋愛代行"],
+      "description": null,
+      "popularity": 364200,
+      "chapterGroups": []
+    }
+  },
+  "detail": {
+    "title": "戀愛代理",
+    "thumb": "https://sl.mangafunb.fun/l/lianaidaixing/cover/1700201434.jpg.328x422.jpg",
+    "platform": "copymanga",
+    "chapters": [
+      {
+        "id": "b9741745-e439-11ed-9b25-024352452ce0",
+        "title": "第01話"
+      },
+      {
+        "id": "a036001e-ef46-11ed-8221-024352452ce0",
+        "title": "第02話"
+      }
+    ],
+    "extra": {
+      "originalTitle": "恋爱代理",
+      "authors": ["西沢5㍉", "赤坂アカ"],
+      "status": "連載中",
+      "latestChapter": "第39話",
+      "updatedAt": "2024-09-20",
+      "region": "日本",
+      "categories": ["愛情", "歡樂向", "校园"],
+      "aliases": ["恋爱代理", "恋爱代行", "恋愛代行"],
+      "description": "赤坂明&西澤5㍉老師搭檔創作的戀愛喜劇新作",
+      "popularity": 364200,
+      "chapterGroups": [
+        {
+          "title": "默認",
+          "chapters": [
+            {
+              "id": "b9741745-e439-11ed-9b25-024352452ce0",
+              "title": "第01話"
+            },
+            {
+              "id": "a036001e-ef46-11ed-8221-024352452ce0",
+              "title": "第02話"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

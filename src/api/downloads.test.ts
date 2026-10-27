@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 
+import copymangaWire from "../platforms/copymanga/fixtures/wire.json";
 import jmWire from "../platforms/jm/fixtures/wire.json";
 import manhuaguiWire from "../platforms/manhuagui/fixtures/wire.json";
 import nhentaiWire from "../platforms/nhentai/fixtures/wire.json";
 import type {
   ComicDetail,
+  CopymangaDetail,
   JmDetail,
   ManhuaguiDetail,
   NhentaiDetail,
@@ -42,6 +44,16 @@ describe("createDownloadDetailSnapshot", () => {
     expect(nhentai.platform).toBe("nhentai");
     if (nhentai.platform === "nhentai") {
       expect(nhentai.extra.tags.length).toBeGreaterThan(0);
+    }
+
+    const copymanga = createDownloadDetailSnapshot(
+      copymangaWire.detail as CopymangaDetail,
+    );
+    expectNoChapters(copymanga);
+    expect(copymanga.platform).toBe("copymanga");
+    if (copymanga.platform === "copymanga") {
+      expect(copymanga.extra.chapterGroups).toEqual([]);
+      expect(copymanga.extra.authors.length).toBeGreaterThan(0);
     }
   });
 });

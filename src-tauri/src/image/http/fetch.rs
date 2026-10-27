@@ -103,11 +103,14 @@ pub(crate) struct FetchedDocument {
 /// Mirrors are tried only for errors that another host can plausibly fix: a
 /// transport failure, an empty body, or a 403/429/5xx. Parse errors are final
 /// because the body already arrived from a host that answered.
-pub(crate) async fn fetch_document(
+pub(crate) async fn fetch_document<P>(
     http: &HttpClient,
-    platform: &dyn Catalog,
+    platform: &P,
     spec: &RequestSpec,
-) -> Result<FetchedDocument> {
+) -> Result<FetchedDocument>
+where
+    P: Catalog + ?Sized,
+{
     let mut last_error = None;
 
     for url in spec.urls() {
@@ -133,12 +136,15 @@ pub(crate) async fn fetch_document(
     Err(last_error.unwrap_or_else(|| AppError::Unexpected("request has no URL to try".into())))
 }
 
-async fn fetch_document_once(
+async fn fetch_document_once<P>(
     http: &HttpClient,
-    platform: &dyn Catalog,
+    platform: &P,
     spec: &RequestSpec,
     url: &Url,
-) -> Result<Vec<u8>> {
+) -> Result<Vec<u8>>
+where
+    P: Catalog + ?Sized,
+{
     let mut response = http
         .send(url, |client| {
             platform

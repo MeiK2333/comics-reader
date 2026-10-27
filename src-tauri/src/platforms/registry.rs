@@ -4,6 +4,7 @@ use url::Url;
 
 use crate::error::{AppError, Result};
 
+use super::copymanga::Copymanga;
 use super::generic::Generic;
 use super::jm::Jm;
 use super::manhuagui::Manhuagui;
@@ -35,12 +36,14 @@ static GENERIC: Generic = Generic;
 static MANHUAGUI: Manhuagui = Manhuagui;
 static JM: Jm = Jm::new();
 static NHENTAI: Nhentai = Nhentai;
+static COPYMANGA: Copymanga = Copymanga;
 
-static REGISTRY: [Registration; 4] = [
+static REGISTRY: [Registration; 5] = [
     Registration::image_only(&GENERIC),
     Registration::catalog(&MANHUAGUI, &MANHUAGUI),
     Registration::catalog(&JM, &JM),
     Registration::catalog(&NHENTAI, &NHENTAI),
+    Registration::catalog(&COPYMANGA, &COPYMANGA),
 ];
 
 /// Resolve an explicit image profile id, or detect one from the image URL.
@@ -121,7 +124,7 @@ mod tests {
 
     #[test]
     fn recognizes_only_persistable_platforms() {
-        for platform in ["manhuagui", "jm", "nhentai"] {
+        for platform in ["manhuagui", "jm", "nhentai", "copymanga"] {
             assert!(is_known_platform(platform));
         }
 
@@ -142,6 +145,7 @@ mod tests {
         assert!(find_catalog("nhentai").unwrap().single_chapter());
         assert!(!find_catalog("jm").unwrap().single_chapter());
         assert!(!find_catalog("manhuagui").unwrap().single_chapter());
+        assert!(!find_catalog("copymanga").unwrap().single_chapter());
 
         assert_eq!(
             find_catalog("jm")
@@ -156,6 +160,19 @@ mod tests {
                 .normalize_work_id("0042")
                 .unwrap(),
             "0042"
+        );
+        assert_eq!(
+            find_catalog("copymanga")
+                .unwrap()
+                .normalize_work_id("lianaidaixing")
+                .unwrap(),
+            "lianaidaixing"
+        );
+        assert!(
+            find_catalog("copymanga")
+                .unwrap()
+                .normalize_work_id("../bad")
+                .is_err()
         );
     }
 }

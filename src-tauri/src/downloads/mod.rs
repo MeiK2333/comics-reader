@@ -49,7 +49,6 @@ const DOCUMENT_VERSION: u32 = 1;
 const MANIFEST_VERSION: u32 = 1;
 const MANIFEST_FILE_NAME: &str = "manifest.json";
 const MAX_CHAPTERS: usize = 5_000;
-const MAX_ID_CHARS: usize = 64;
 const MAX_TITLE_CHARS: usize = 2_000;
 const MAX_THUMB_CHARS: usize = 4_096;
 
@@ -99,7 +98,13 @@ fn normalize_input_chapters(
     platform: &str,
     chapters: Vec<DownloadChapterInput>,
 ) -> Result<Vec<DownloadChapter>> {
-    if find_catalog(platform).is_some_and(|catalog| catalog.single_chapter()) {
+    let Some(catalog) = find_catalog(platform.trim()) else {
+        return Err(AppError::InvalidInput {
+            field: "platform",
+            reason: "must be a supported platform".into(),
+        });
+    };
+    if catalog.single_chapter() {
         return Ok(vec![DownloadChapter {
             id: None,
             title: None,
@@ -131,7 +136,7 @@ fn normalize_input_chapters(
                 reason: "must not be empty".into(),
             });
         };
-        let id = numeric_id(id, "chapterId")?;
+        let id = catalog.normalize_chapter_id(id)?;
         if !seen.insert(id.clone()) {
             continue;
         }
@@ -153,6 +158,18 @@ fn normalize_input_chapters(
     Ok(normalized)
 }
 
+/// Normalize a chapter id with the platform's own rules. Copymanga uses UUIDs
+/// while the other catalog platforms use numeric ids.
+fn normalize_chapter_id(platform: &str, id: &str) -> Result<String> {
+    let Some(catalog) = find_catalog(platform.trim()) else {
+        return Err(AppError::InvalidInput {
+            field: "platform",
+            reason: "must be a supported platform".into(),
+        });
+    };
+    catalog.normalize_chapter_id(id)
+}
+
 fn download_key(platform: &str, id: &str) -> Result<DownloadKey> {
     let platform = platform.trim();
     let Some(catalog) = find_catalog(platform) else {
@@ -164,23 +181,6 @@ fn download_key(platform: &str, id: &str) -> Result<DownloadKey> {
 
     let id = catalog.normalize_work_id(id)?;
     Ok((platform.to_owned(), id))
-}
-
-fn numeric_id(value: &str, field: &'static str) -> Result<String> {
-    let value = value.trim();
-    if value.is_empty() || !value.chars().all(|character| character.is_ascii_digit()) {
-        return Err(AppError::InvalidInput {
-            field,
-            reason: "must be numeric".into(),
-        });
-    }
-    if value.chars().count() > MAX_ID_CHARS {
-        return Err(AppError::InvalidInput {
-            field,
-            reason: "is too long".into(),
-        });
-    }
-    Ok(value.to_owned())
 }
 
 fn validate_title(value: &str) -> Result<String> {
@@ -448,6 +448,38 @@ mod tests {
 
         assert_eq!(chapters.len(), 1);
         assert!(chapters[0].id.is_none());
+    }
+
+    #[test]
+    fn copymanga_accepts_path_word_and_uuid_ids() {
+        assert_eq!(
+            download_key("copymanga", "lianaidaixing").unwrap(),
+            ("copymanga".into(), "lianaidaixing".into())
+        );
+
+        let chapters = normalize_input_chapters(
+            "copymanga",
+            vec![DownloadChapterInput {
+                id: Some(" b9741745-e439-11ed-9b25-024352452ce0 ".into()),
+                title: Some("第01話".into()),
+            }],
+        )
+        .unwrap();
+        assert_eq!(
+            chapters[0].id.as_deref(),
+            Some("b9741745-e439-11ed-9b25-024352452ce0")
+        );
+
+        assert!(
+            normalize_input_chapters(
+                "copymanga",
+                vec![DownloadChapterInput {
+                    id: Some("../bad".into()),
+                    title: None,
+                }],
+            )
+            .is_err()
+        );
     }
 
     #[test]

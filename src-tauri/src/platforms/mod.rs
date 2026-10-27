@@ -3,8 +3,10 @@
 //! Adding an image-only platform means implementing [`ImageProfile`] and
 //! registering it in `registry`. Search/detail/reading additionally require
 //! [`Catalog`]. The shared fetching pipeline in `image` stays unchanged; the
-//! platform only builds request URLs and parses the returned bytes.
+//! platform only builds request URLs and parses the returned bytes. A platform
+//! whose detail needs extra requests overrides [`Catalog::comic_detail`].
 
+mod copymanga;
 mod generic;
 mod jm;
 mod jm_api;
@@ -27,6 +29,7 @@ use url::Url;
 
 use crate::error::{AppError, Result};
 use crate::image::HttpClient;
+use crate::image::http;
 
 use model::{ComicDetail, ReaderChapter, SearchResponse};
 
@@ -149,6 +152,12 @@ pub(crate) trait Catalog: ImageProfile {
         numeric_id(id, self.id())
     }
 
+    /// Normalize a chapter id before it becomes a download key or file name.
+    /// Most platforms use numeric ids; copymanga uses UUIDs.
+    fn normalize_chapter_id(&self, id: &str) -> Result<String> {
+        numeric_id(id, "chapterId")
+    }
+
     /// Called after the platform parses a document from one mirror, or after
     /// the fetch fails. A platform with interchangeable origins can remember
     /// which one works; single-origin platforms keep the default no-op. HTTP
@@ -184,6 +193,26 @@ pub(crate) trait Catalog: ImageProfile {
     /// Parse a comic detail response body.
     fn parse_detail(&self, _id: &str, _body: &[u8]) -> Result<ComicDetail> {
         Err(self.unsupported("comic detail"))
+    }
+
+    /// Fetch and parse a comic's complete detail.
+    ///
+    /// The default implementation is the one-request path most platforms use.
+    /// Platforms whose chapter list lives behind another endpoint (copymanga's
+    /// per-group chapter requests) override this instead of splitting the
+    /// payload across `detail_request` and `parse_detail`.
+    fn comic_detail<'a>(
+        &'a self,
+        client: &'a HttpClient,
+        id: &'a str,
+    ) -> Pin<Box<dyn Future<Output = Result<ComicDetail>> + Send + 'a>> {
+        Box::pin(async move {
+            let spec = self.detail_request(id)?;
+            let fetched = http::fetch_document(client, self, &spec).await?;
+            let result = self.parse_detail(id, &fetched.body);
+            self.note_request_outcome(&fetched.url, result.is_ok());
+            result
+        })
     }
 
     /// Build the request that returns a chapter's page list. `chapter_id` is
@@ -306,6 +335,10 @@ mod tests {
             detect(&parse("https://i1.nhentai.net/galleries/1/1.jpg")).id(),
             "nhentai"
         );
+        assert_eq!(
+            detect(&parse("https://sl.mangafunb.fun/l/1/1.jpg.c1500x.jpg")).id(),
+            "copymanga"
+        );
         assert_eq!(detect(&parse("https://example.com/a.png")).id(), "generic");
     }
 
@@ -337,6 +370,12 @@ mod tests {
         assert!(
             jm[USER_AGENT].to_str().unwrap().contains("Android"),
             "jm must send the APP user agent"
+        );
+
+        let copymanga = headers_for("copymanga", "https://sl.mangafunb.fun/l/1.jpg");
+        assert_eq!(
+            copymanga[REFERER].to_str().unwrap(),
+            "https://www.mangacopy.com/"
         );
     }
 
@@ -386,6 +425,12 @@ mod tests {
         assert_eq!(
             find_profile("nhentai").unwrap().cache_key_url(&url),
             url.as_str()
+        );
+
+        let alternate = parse("https://sl.mangafuna.xyz/l/1.jpg?v=1");
+        assert_eq!(
+            find_profile("copymanga").unwrap().cache_key_url(&alternate),
+            "https://sl.mangafunb.fun/l/1.jpg"
         );
     }
 }

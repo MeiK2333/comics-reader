@@ -142,7 +142,7 @@ pub(crate) async fn get_downloaded_chapter(
             .filter(|value| !value.is_empty())
     };
     let chapter_id = match chapter_id {
-        Some(value) => Some(numeric_id(value, "chapterId")?),
+        Some(value) => Some(normalize_chapter_id(platform.trim(), value)?),
         None => None,
     };
 

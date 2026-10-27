@@ -6,12 +6,15 @@ import favoritesFixture from "../../contracts/favorites-page.json";
 import historyFixture from "../../contracts/history-page.json";
 import logsFixture from "../../contracts/log-snapshot.json";
 import fixture from "../../contracts/reader-chapter.json";
+import copymangaWire from "../platforms/copymanga/fixtures/wire.json";
 import jmWire from "../platforms/jm/fixtures/wire.json";
 import manhuaguiWire from "../platforms/manhuagui/fixtures/wire.json";
 import nhentaiWire from "../platforms/nhentai/fixtures/wire.json";
 import type {
   ComicDetail,
   ComicSearchResult,
+  CopymangaDetail,
+  CopymangaSearchItem,
   JmDetail,
   JmSearchItem,
   ManhuaguiDetail,
@@ -60,18 +63,20 @@ const logs: LogSnapshot = {
 // The per-platform fixtures live next to the platform code. Rust serializes
 // the same files, so a shape change must be made on both sides at once.
 const search: ComicSearchResult = {
-  total: 3,
+  total: 4,
   page_size: 25,
   result: [
     manhuaguiWire.search as ManhuaguiSearchItem,
     jmWire.search as JmSearchItem,
     nhentaiWire.search as NhentaiSearchItem,
+    copymangaWire.search as CopymangaSearchItem,
   ],
 };
 const comicDetails: ComicDetail[] = [
   manhuaguiWire.detail as ManhuaguiDetail,
   jmWire.detail as JmDetail,
   nhentaiWire.detail as NhentaiDetail,
+  copymangaWire.detail as CopymangaDetail,
 ];
 
 describe("ReaderChapter wire contract", () => {
@@ -170,6 +175,7 @@ describe("SearchPage wire contract", () => {
       "manhuagui",
       "jm",
       "nhentai",
+      "copymanga",
     ]);
     expect(Object.keys(search.result[0]).sort()).toEqual([
       "extra",
@@ -181,6 +187,7 @@ describe("SearchPage wire contract", () => {
     expect(search.result[0].extra).toHaveProperty("chapterGroups");
     expect(search.result[1].extra).toHaveProperty("author");
     expect(search.result[2].extra).toHaveProperty("tagIds");
+    expect(search.result[3].extra).toHaveProperty("chapterGroups");
   });
 });
 
@@ -190,6 +197,7 @@ describe("ComicDetail wire contract", () => {
       "manhuagui",
       "jm",
       "nhentai",
+      "copymanga",
     ]);
     expect(Object.keys(comicDetails[0])).toEqual([
       "title",
@@ -201,8 +209,13 @@ describe("ComicDetail wire contract", () => {
     expect(comicDetails[0].chapters).toEqual([{ id: "ch-1", title: "第1话" }]);
     expect(comicDetails[1].chapters).toEqual([{ id: "c1", title: "Chapter 1" }]);
     expect(comicDetails[2].chapters).toEqual([{ id: null, title: null }]);
+    expect(comicDetails[3].chapters).toEqual([
+      { id: "b9741745-e439-11ed-9b25-024352452ce0", title: "第01話" },
+      { id: "a036001e-ef46-11ed-8221-024352452ce0", title: "第02話" },
+    ]);
     expect(comicDetails[0].extra).toHaveProperty("chapterGroups");
     expect(comicDetails[1].extra).toHaveProperty("chapters");
     expect(comicDetails[2].extra).toHaveProperty("tags");
+    expect(comicDetails[3].extra).toHaveProperty("chapterGroups");
   });
 });

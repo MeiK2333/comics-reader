@@ -173,6 +173,7 @@ impl DownloadRecord {
 
         let single_chapter = crate::platforms::find_catalog(&self.platform)
             .is_some_and(|catalog| catalog.single_chapter());
+        let platform = self.platform.clone();
         self.chapters.retain_mut(|chapter| {
             if single_chapter {
                 chapter.id = None;
@@ -180,7 +181,7 @@ impl DownloadRecord {
                 let Some(id) = chapter.id.as_deref() else {
                     return false;
                 };
-                let Ok(normalized) = numeric_id(id, "chapterId") else {
+                let Ok(normalized) = normalize_chapter_id(&platform, id) else {
                     return false;
                 };
                 chapter.id = Some(normalized);

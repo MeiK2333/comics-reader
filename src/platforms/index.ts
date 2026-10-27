@@ -1,3 +1,8 @@
+import { copymanga } from "./copymanga";
+import type {
+  CopymangaDetail,
+  CopymangaSearchItem,
+} from "./copymanga/types";
 import { jm } from "./jm";
 import type { JmDetail, JmSearchItem } from "./jm/types";
 import { manhuagui } from "./manhuagui";
@@ -12,16 +17,21 @@ import type { AppLocale } from "../i18n";
  * and the router. Adding a platform means adding its directory and one entry
  * here.
  */
-export const platformList = [manhuagui, jm, nhentai] as const;
+export const platformList = [manhuagui, jm, nhentai, copymanga] as const;
 
 export type ComicPlatform = (typeof platformList)[number]["id"];
 
 export type ComicSearchItem =
   | ManhuaguiSearchItem
   | JmSearchItem
-  | NhentaiSearchItem;
+  | NhentaiSearchItem
+  | CopymangaSearchItem;
 
-export type ComicDetail = ManhuaguiDetail | JmDetail | NhentaiDetail;
+export type ComicDetail =
+  | ManhuaguiDetail
+  | JmDetail
+  | NhentaiDetail
+  | CopymangaDetail;
 
 export interface ComicSearchResult {
   total: number;
@@ -57,6 +67,7 @@ export function platformLabel(id: ComicPlatform): string {
 }
 
 export type { ComicDetailBase, DetailChapter, SearchItemBase } from "./types";
+export type { CopymangaDetail, CopymangaSearchItem } from "./copymanga/types";
 export type { JmDetail, JmSearchItem } from "./jm/types";
 export type { ManhuaguiDetail, ManhuaguiSearchItem } from "./manhuagui/types";
 export type { NhentaiDetail, NhentaiSearchItem } from "./nhentai/types";

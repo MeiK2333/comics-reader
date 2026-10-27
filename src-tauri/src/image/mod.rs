@@ -303,9 +303,11 @@ async fn get_comic_inner(client: &HttpClient, platform: &str, id: &str) -> Resul
         });
     }
 
-    let spec = prepared_spec(client, platform, || platform.detail_request(id)).await?;
-    let fetched = http::fetch_document(client, platform, &spec).await?;
-    parse_document(platform, &fetched, |body| platform.parse_detail(id, body))
+    // Detail may require more than one request (copymanga fetches each chapter
+    // group separately), so the platform owns the complete fetch. `prepare`
+    // still runs first for platforms that refresh signing state.
+    platform.prepare(client).await;
+    platform.comic_detail(client, id).await
 }
 
 /// Fetch the page list for one chapter. Platforms with a single implicit

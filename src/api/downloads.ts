@@ -101,6 +101,12 @@ export function createDownloadDetailSnapshot(detail: ComicDetail): ComicDetail {
       };
     case "nhentai":
       return { ...detail, chapters: [] };
+    case "copymanga":
+      return {
+        ...detail,
+        chapters: [],
+        extra: { ...detail.extra, chapterGroups: [] },
+      };
   }
 }
 

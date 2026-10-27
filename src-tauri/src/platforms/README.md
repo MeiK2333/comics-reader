@@ -23,7 +23,10 @@ To add a platform:
 Override only the capability hooks that differ from the defaults:
 
 - `single_chapter()` for one implicit chapter (nhentai)
-- `normalize_work_id()` for non-numeric ids (JM prefix)
+- `normalize_work_id()` for non-numeric ids (JM prefix, copymanga path words)
+- `normalize_chapter_id()` for non-numeric chapter ids (copymanga UUIDs)
+- `comic_detail()` when detail needs more than one request (copymanga fetches
+  one chapter list per site group)
 - `decode_key()` / `preprocess()` for bytes that differ from the download (JM)
 - `cache_key_url()` / `image_fallbacks()` / `configure()` for CDN quirks
 
