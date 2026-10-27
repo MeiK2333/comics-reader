@@ -87,7 +87,23 @@ export function useDownloadAction(options: UseDownloadActionOptions) {
     }, DOWNLOAD_POLL_MS);
   }
 
-  watch(() => options.download.value?.status, syncPolling, { immediate: true });
+  // A start belongs to the work that was on screen. When the route switches to
+  // another work, drop the pending flag immediately: the detail guard has
+  // already invalidated the request token, so the `finally` in
+  // `onDownloadClick` will never clear it, and the next work's button would
+  // stay disabled.
+  watch([options.platform, options.id], () => {
+    pending.value = false;
+    clearPolling();
+  });
+
+  // Polling follows the work as well as the status; without the work key a
+  // switch would keep the previous work's timer until its status changed.
+  watch(
+    [() => options.download.value?.status, options.platform, options.id],
+    syncPolling,
+    { immediate: true },
+  );
 
   onScopeDispose(() => {
     clearPolling();
