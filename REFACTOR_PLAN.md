@@ -1,6 +1,6 @@
 # 重构与修复计划
 
-> **状态**：P1 + P2-1 + P2-2 已完成；P2-3 模块拆分完成；P2-4 完成；P2-5~P3 待执行
+> **状态**：P1 + P2-1 + P2-2 已完成；P2-3 模块拆分完成；P2-4 完成；P2-5 HTTP 拆分完成、ImageCache 待做；P2-6~P3 待执行
 > **基线**：2026-10-27，当前 master 工作区
 > **适用对象**：后续接手本仓库的编码智能体
 > **配套文档**：[AGENTS.md](AGENTS.md)（契约、命令、易错点）、[ROADMAP.md](ROADMAP.md)（功能方向）
@@ -549,7 +549,7 @@ src-tauri/src/downloads/
 
 #### P2-5 `http.rs` 拆分 + ImageCache（refactor）
 
-- **状态**：todo
+- **状态**：in progress（2026-10-27：`http/` 已拆出 `fetch.rs` 与 `tests.rs`；client/ECH 与 ImageCache 待做）
 - **依赖**：P2-4（接口稳定后）
 - **目标**：把代理、client、ECH、抓取、镜像策略分开；缓存从自由函数变成可注入的对象。
 - **目标结构**：
@@ -851,3 +851,4 @@ refactor(reader): add pure page-boundary helpers
 - 2026-10-27 / P2-3c / 新增 `store.rs`（688 行）：`DownloadsStore`/`DownloadsData` 及 impl 从 mod.rs 迁出，方法/字段提升为 `pub(super)`，`DownloadsData` 仅在 test 构建 re-export；`mod.rs` 从 1330 行降到 673 行。最终结构：mod 673 + store 688 + worker 437 + model 246 + commands 159 + local 112 + index 30；`downloads.rs` 已消失，命令签名/索引格式/run id 均未变。`ensure_cover` 现在接收 `&DownloadsStore`，worker 不再通过 `app.state` 反查。验证：`cargo test` 158 passed、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`。
 - 2026-10-27 / P2-4a / 镜像健康改为解析成功：`fetch_document` 返回 `FetchedDocument { url, body }` 且不再记 success；`image/mod.rs` 的 `parse_document` 在 `parse_search/detail/reader_chapter` 后统一 `note_request_outcome(url, result.is_ok())`；JM 的 `/setting` 与 `scramble_id` 请求同样在解析后记录。新增 `mirror_health_waits_for_a_successful_parse` 单测。验证：`cargo test` 159 passed、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`。P2-4 剩余：`Platform` 拆成 `ImageProfile` + `Catalog`。
 - 2026-10-27 / P2-4b / `Platform` 拆为 `ImageProfile`（图片/cache/matches/configure）与 `Catalog: ImageProfile`（prepare/note/search/detail/reader）：`PROFILES`/`CATALOGS`、`find_profile`/`find_catalog`/`catalog`；`generic` 只实现 profile，`manhuagui`/`jm`/`nhentai` 双 impl；`download_image` 用 `ImageProfile`，`fetch_document` 用 `Catalog`；搜索/详情/阅读走 catalog，generic 仍返回原 “does not support” 文案、未知平台仍 `unknown`；JM 图片解码通过 catalog 取 `scramble_id`。验证：`cargo test` 160 passed、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`。
+- 2026-10-27 / P2-5a / `image/http.rs` 改为 `image/http/{mod,fetch,tests}.rs`：`fetch.rs`（198 行）承载 `Download`、`FetchedDocument`、`download_image`、`fetch_document`、`is_mirror_error`；`tests.rs`（303 行）独立；`mod.rs` 550 行保留 `HttpClient`/代理/ECH。`fetch` 的类型/函数提升为 `pub(crate)` 并由 mod re-export，`MAX_DOCUMENT_BYTES` 从父模块读取。纯移动，下载/文档/镜像行为未变。验证：`cargo test` 160 passed、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`。剩余：client/ECH 拆分、`read_limited` 去重、`ImageCache` 注入。
