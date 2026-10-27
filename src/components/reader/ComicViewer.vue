@@ -4,6 +4,7 @@ import type { CSSProperties } from "vue";
 import type { ComicPlatform } from "../../api/comics";
 import type { ReaderPage } from "../../api/reader";
 import { usePageTurn, TURN_DURATION_MS } from "../../composables/usePageTurn";
+import { useReaderGestures } from "../../composables/useReaderGestures";
 import { useReaderKeyboard } from "../../composables/useReaderKeyboard";
 import { useReaderPreload } from "../../composables/useReaderPreload";
 import { useReaderWheel } from "../../composables/useReaderWheel";
@@ -172,48 +173,37 @@ watch(
   },
 );
 
-// The stage is split into three tap zones: the middle one toggles the overlay
-// chrome, while the sides turn pages. A third of the width is wide enough for
-// thumbs and leaves the image itself unobstructed.
-const TAP_ZONE_RATIO = 1 / 3;
-
+// The stage is split into three tap zones inside useReaderGestures: the middle
+// one toggles the overlay chrome, while the sides turn pages.
 function toggleChrome() {
   chromeVisible.value = !chromeVisible.value;
 }
 
-function turnFromTap(side: "left" | "right") {
-  const forward =
-    props.direction === "rtl" ? side === "left" : side === "right";
-  if (forward) {
-    nextPage();
-  } else {
-    previousPage();
-  }
-}
-
-function onStageTap(event: PointerEvent) {
-  const element = stage.value;
-  if (!element) {
-    return;
-  }
-
-  const rect = element.getBoundingClientRect();
-  if (rect.width === 0) {
-    return;
-  }
-
-  const ratio = (event.clientX - rect.left) / rect.width;
-  if (ratio < TAP_ZONE_RATIO) {
-    turnFromTap("left");
-    return;
-  }
-  if (ratio > 1 - TAP_ZONE_RATIO) {
-    turnFromTap("right");
-    return;
-  }
-
-  toggleChrome();
-}
+const {
+  onStagePointerDown,
+  onStagePointerMove,
+  onStagePointerUp,
+  onStagePointerCancel,
+} = useReaderGestures({
+  stage,
+  isAnimating: () => trackAnimating.value,
+  direction: () => props.direction,
+  horizontal,
+  total,
+  displayPage,
+  trackOffset,
+  stageSpan,
+  scale,
+  panBy,
+  setScale,
+  cancelTurn,
+  resetTrack,
+  snapBack,
+  turnTo,
+  nextPage,
+  previousPage,
+  toggleChrome,
+});
 
 function onFullscreenChange() {
   isFullscreen.value = document.fullscreenElement === root.value;
@@ -253,314 +243,6 @@ const { onKeydown } = useReaderKeyboard({
   close: () => emit("close"),
 });
 
-interface DragState {
-  id: number;
-  startX: number;
-  startY: number;
-  lastX: number;
-  lastY: number;
-  totalX: number;
-  totalY: number;
-  mode: "swipe" | "pan";
-  moved: boolean;
-}
-
-interface PointerPoint {
-  x: number;
-  y: number;
-  type: string;
-}
-
-interface PinchState {
-  startDistance: number;
-  startScale: number;
-  lastX: number;
-  lastY: number;
-}
-
-let drag: DragState | null = null;
-let pinch: PinchState | null = null;
-const activePointers = new Map<number, PointerPoint>();
-
-function isInteractiveTarget(target: EventTarget | null) {
-  return (
-    target instanceof Element &&
-    target.closest("button, a, input, textarea, select, [contenteditable='true']") !==
-      null
-  );
-}
-
-function pointerDistance(first: PointerPoint, second: PointerPoint) {
-  return Math.hypot(first.x - second.x, first.y - second.y);
-}
-
-function pointerMidpoint(first: PointerPoint, second: PointerPoint) {
-  return {
-    x: (first.x + second.x) / 2,
-    y: (first.y + second.y) / 2,
-  };
-}
-
-function startPinch() {
-  const points = [...activePointers.values()];
-  if (points.length !== 2 || !points.every((point) => point.type === "touch")) {
-    return;
-  }
-
-  const [first, second] = points;
-  const distance = pointerDistance(first, second);
-  if (distance <= 0) {
-    return;
-  }
-
-  const midpoint = pointerMidpoint(first, second);
-  drag = null;
-  cancelTurn();
-  trackOffset.value = 0;
-  pinch = {
-    startDistance: distance,
-    startScale: scale.value,
-    lastX: midpoint.x,
-    lastY: midpoint.y,
-  };
-}
-
-function startPan(pointerId: number, point: PointerPoint) {
-  drag = {
-    id: pointerId,
-    startX: point.x,
-    startY: point.y,
-    lastX: point.x,
-    lastY: point.y,
-    totalX: 0,
-    totalY: 0,
-    mode: "pan",
-    // A pinch just ended; the remaining finger must not become a tap.
-    moved: true,
-  };
-}
-
-function onStagePointerDown(event: PointerEvent) {
-  if (trackAnimating.value) {
-    return;
-  }
-  if (event.pointerType === "mouse" && event.button !== 0) {
-    return;
-  }
-  if (
-    activePointers.has(event.pointerId) ||
-    activePointers.size >= 2 ||
-    isInteractiveTarget(event.target)
-  ) {
-    return;
-  }
-
-  const element = stage.value;
-  if (!element) {
-    return;
-  }
-
-  const point: PointerPoint = {
-    x: event.clientX,
-    y: event.clientY,
-    type: event.pointerType,
-  };
-  activePointers.set(event.pointerId, point);
-  element.setPointerCapture(event.pointerId);
-  event.preventDefault();
-
-  if (activePointers.size === 1) {
-    drag = {
-      id: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      lastX: event.clientX,
-      lastY: event.clientY,
-      totalX: 0,
-      totalY: 0,
-      mode: scale.value > 1 ? "pan" : "swipe",
-      moved: false,
-    };
-    return;
-  }
-
-  startPinch();
-}
-
-function onStagePointerMove(event: PointerEvent) {
-  // A page-turn animation owns the track offset while it runs. Letting a
-  // pointer update it here makes the two writers fight and can leave a turn
-  // half-applied.
-  if (trackAnimating.value) {
-    return;
-  }
-
-  const point = activePointers.get(event.pointerId);
-  if (!point) {
-    return;
-  }
-  point.x = event.clientX;
-  point.y = event.clientY;
-
-  if (pinch && activePointers.size >= 2) {
-    event.preventDefault();
-    const [first, second] = [...activePointers.values()];
-    const distance = pointerDistance(first, second);
-    if (pinch.startDistance <= 0 || distance <= 0) {
-      return;
-    }
-
-    const midpoint = pointerMidpoint(first, second);
-    // Pan by the midpoint movement first; then anchor the new scale at the
-    // moving midpoint so the image follows the fingers.
-    panBy(midpoint.x - pinch.lastX, midpoint.y - pinch.lastY);
-    setScale(
-      pinch.startScale * (distance / pinch.startDistance),
-      midpoint.x,
-      midpoint.y,
-    );
-    pinch.lastX = midpoint.x;
-    pinch.lastY = midpoint.y;
-    return;
-  }
-
-  if (!drag || drag.id !== event.pointerId) {
-    return;
-  }
-
-  const dx = event.clientX - drag.lastX;
-  const dy = event.clientY - drag.lastY;
-  drag.lastX = event.clientX;
-  drag.lastY = event.clientY;
-  drag.totalX = event.clientX - drag.startX;
-  drag.totalY = event.clientY - drag.startY;
-
-  if (Math.abs(drag.totalX) > 4 || Math.abs(drag.totalY) > 4) {
-    drag.moved = true;
-  }
-
-  if (drag.mode === "pan") {
-    panBy(dx, dy);
-    return;
-  }
-
-  if (total.value > 1) {
-    const primary = horizontal.value ? drag.totalX : drag.totalY;
-    const wantsNext = horizontal.value
-      ? (props.direction === "rtl" ? primary > 0 : primary < 0)
-      : primary < 0;
-    const atBoundary = wantsNext
-      ? displayPage.value >= total.value
-      : displayPage.value <= 1;
-    const limit = stageSpan() * (atBoundary ? 0.18 : 1);
-    trackOffset.value = Math.max(-limit, Math.min(limit, primary));
-  }
-}
-
-function releasePointer(event: PointerEvent) {
-  const element = stage.value;
-  if (element?.hasPointerCapture(event.pointerId)) {
-    element.releasePointerCapture(event.pointerId);
-  }
-}
-
-function onStagePointerUp(event: PointerEvent) {
-  if (!activePointers.delete(event.pointerId)) {
-    return;
-  }
-  releasePointer(event);
-
-  if (trackAnimating.value) {
-    drag = null;
-    pinch = null;
-    return;
-  }
-
-  if (pinch) {
-    if (activePointers.size >= 2) {
-      return;
-    }
-    pinch = null;
-    const remaining = activePointers.entries().next();
-    if (!remaining.done) {
-      const [pointerId, point] = remaining.value;
-      startPan(pointerId, point);
-    }
-    return;
-  }
-
-  if (!drag || drag.id !== event.pointerId) {
-    return;
-  }
-
-  const current = drag;
-  drag = null;
-
-  if (current.mode === "swipe" && current.moved) {
-    const primary = horizontal.value ? current.totalX : current.totalY;
-    const threshold = Math.max(48, stageSpan() * 0.12);
-
-    if (Math.abs(primary) >= threshold) {
-      const forward = horizontal.value
-        ? (props.direction === "rtl" ? primary > 0 : primary < 0)
-        : primary < 0;
-      const target = displayPage.value + (forward ? 1 : -1);
-      if (target >= 1 && target <= total.value) {
-        turnTo(target);
-        return;
-      }
-      if (forward) {
-        nextPage();
-      } else {
-        previousPage();
-      }
-      return;
-    }
-    snapBack();
-    return;
-  }
-
-  if (!current.moved) {
-    trackOffset.value = 0;
-    onStageTap(event);
-    return;
-  }
-
-  snapBack();
-}
-
-function onStagePointerCancel(event: PointerEvent) {
-  if (!activePointers.delete(event.pointerId)) {
-    return;
-  }
-  releasePointer(event);
-
-  if (trackAnimating.value) {
-    drag = null;
-    pinch = null;
-    return;
-  }
-
-  if (pinch) {
-    if (activePointers.size >= 2) {
-      return;
-    }
-    pinch = null;
-    const remaining = activePointers.entries().next();
-    if (!remaining.done) {
-      const [pointerId, point] = remaining.value;
-      startPan(pointerId, point);
-    }
-    return;
-  }
-
-  if (!drag || drag.id !== event.pointerId) {
-    return;
-  }
-  drag = null;
-  snapBack();
-}
-
 function onResize() {
   if (!trackAnimating.value) {
     resetTrack();
@@ -576,8 +258,6 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
-  activePointers.clear();
-  pinch = null;
   stage.value?.removeEventListener("wheel", onWheel);
   window.removeEventListener("keydown", onKeydown);
   window.removeEventListener("resize", onResize);
