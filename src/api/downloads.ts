@@ -1,6 +1,6 @@
 import { invokeCommand } from "./client";
 import type { ErrorPayload } from "../errors";
-import type { ComicPlatform } from "../platforms";
+import type { ComicPlatform, ComicDetail } from "../platforms";
 import type { ReaderChapter } from "./reader";
 
 export type DownloadStatus =
@@ -59,6 +59,11 @@ export interface DownloadChapterSummary {
 /** Detail-page payload: the list summary plus every stored chapter. */
 export interface DownloadDetail extends DownloadSummary {
   chapters: DownloadChapterSummary[];
+  /**
+   * Online detail captured when the download started. It powers the same
+   * metadata sections as the online detail page without a network request.
+   */
+  detail: ComicDetail | null;
 }
 
 export interface DownloadChapterInput {
@@ -72,6 +77,31 @@ export interface DownloadInput {
   title: string;
   thumb: string | null;
   chapters: DownloadChapterInput[];
+  detail: ComicDetail;
+}
+
+/**
+ * Strip the chapter lists from an online detail before storing it with the
+ * download. The download record already owns the chapter list, and keeping a
+ * second copy would rewrite the whole index for every completed chapter.
+ */
+export function createDownloadDetailSnapshot(detail: ComicDetail): ComicDetail {
+  switch (detail.platform) {
+    case "manhuagui":
+      return {
+        ...detail,
+        chapters: [],
+        extra: { ...detail.extra, chapterGroups: [] },
+      };
+    case "jm":
+      return {
+        ...detail,
+        chapters: [],
+        extra: { ...detail.extra, chapters: [] },
+      };
+    case "nhentai":
+      return { ...detail, chapters: [] };
+  }
 }
 
 export function isDownloadActive(status: DownloadStatus): boolean {

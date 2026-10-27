@@ -15,6 +15,10 @@ const pushMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../api/downloads", () => ({
   startDownload: startMock,
+  createDownloadDetailSnapshot: (detail: ComicDetail) => ({
+    ...detail,
+    chapters: [],
+  }),
   isDownloadActive: (status: DownloadStatus) =>
     status === "queued" || status === "downloading",
 }));
@@ -68,6 +72,7 @@ function downloadDetail(
     error: null,
     progress: null,
     chapters: [],
+    detail: null,
     ...overrides,
   };
 }
@@ -160,6 +165,7 @@ describe("useDownloadAction", () => {
       title: "Test work",
       thumb: "https://example.com/thumb.jpg",
       chapters: [{ id: "1", title: "Chapter 1" }],
+      detail: { ...detail, chapters: [] },
     });
     expect(reloadDownload).toHaveBeenCalledOnce();
     expect(api.pending.value).toBe(false);
@@ -213,6 +219,18 @@ describe("useDownloadAction", () => {
 
     expect(pushMock).toHaveBeenCalledWith({ name: "downloads" });
     expect(startMock).not.toHaveBeenCalled();
+  });
+
+  it("reports the downloaded state only when the work is complete", async () => {
+    const { api, downloadRef } = mountAction({
+      download: downloadDetail({ status: "completed" }),
+    });
+
+    expect(api.downloaded.value).toBe(true);
+
+    downloadRef.value = downloadDetail({ status: "downloading" });
+    await nextTick();
+    expect(api.downloaded.value).toBe(false);
   });
 
   it("polls an active download and stops once it completes", async () => {

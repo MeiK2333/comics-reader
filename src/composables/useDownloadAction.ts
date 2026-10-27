@@ -4,6 +4,7 @@ import { useRouter } from "vue-router";
 import { useMessage } from "naive-ui";
 import type { ComicDetail, ComicPlatform } from "../platforms";
 import {
+  createDownloadDetailSnapshot,
   isDownloadActive,
   startDownload,
   type DownloadChapterInput,
@@ -42,6 +43,10 @@ export function useDownloadAction(options: UseDownloadActionOptions) {
     () =>
       options.download.value !== null &&
       isDownloadActive(options.download.value.status),
+  );
+
+  const downloaded = computed(
+    () => options.download.value?.status === "completed",
   );
 
   const buttonLabel = computed(() => {
@@ -141,6 +146,7 @@ export function useDownloadAction(options: UseDownloadActionOptions) {
         title: current.title,
         thumb: current.thumb,
         chapters: options.downloadChapters.value,
+        detail: createDownloadDetailSnapshot(current),
       });
       if (options.latest.isCurrent(token)) {
         message.success(t("downloads.queuedToast"));
@@ -162,6 +168,7 @@ export function useDownloadAction(options: UseDownloadActionOptions) {
     downloadLoading: options.downloadLoading,
     pending,
     inProgress,
+    downloaded,
     buttonLabel,
     onDownloadClick,
   };

@@ -18,6 +18,7 @@ defineProps<{
   downloadLoading: boolean;
   downloadPending: boolean;
   downloadButtonLabel: string;
+  downloaded: boolean;
   resumeTitle: string;
 }>();
 
@@ -63,6 +64,7 @@ const { t } = useAppI18n();
     <NButton
       v-if="showDownload"
       attr-type="button"
+      :type="downloaded ? 'primary' : 'default'"
       secondary
       :loading="downloadPending"
       :disabled="downloadLoading || downloadPending"

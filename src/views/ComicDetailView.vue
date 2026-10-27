@@ -96,6 +96,7 @@ const downloadAction = useDownloadAction({
 });
 const {
   pending: downloadPending,
+  downloaded,
   buttonLabel: downloadButtonLabel,
   onDownloadClick,
 } = downloadAction;
@@ -242,6 +243,7 @@ function openResume() {
         :download-loading="downloadLoading"
         :download-pending="downloadPending"
         :download-button-label="downloadButtonLabel"
+        :downloaded="downloaded"
         :resume-title="resumeTitle"
         @favorite="handleFavoriteClick"
         @download="onDownloadClick"

@@ -20,6 +20,7 @@ import {
   type FavoriteGroup,
 } from "../api/favorites";
 import ComicThumb from "../components/ComicThumb.vue";
+import TrashIcon from "../components/TrashIcon.vue";
 import { useBackNavigation } from "../composables/useBackNavigation";
 import { useErrorMessage } from "../composables/useErrorMessage";
 import { useLatestRequest } from "../composables/useLatestRequest";
@@ -503,23 +504,7 @@ onMounted(() => {
             @click="remove(entry)"
           >
             <template #icon>
-              <svg
-                class="favorite-entry__trash"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-                focusable="false"
-              >
-                <path d="M4 7h16" />
-                <path d="M9 7V5h6v2" />
-                <path d="m6 7 1 13h10l1-13" />
-                <path d="M10 11v5" />
-                <path d="M14 11v5" />
-              </svg>
+              <TrashIcon />
             </template>
           </NButton>
         </div>
@@ -843,12 +828,6 @@ onMounted(() => {
 .favorite-entry__remove {
   flex: none;
   margin-right: 0.25rem;
-}
-
-.favorite-entry__trash {
-  display: block;
-  width: 18px;
-  height: 18px;
 }
 
 .favorites-pagination {

@@ -92,7 +92,7 @@
 - ECH 内部细节（`cloudflare-ech.com` 配置、Cloudflare DoH、TTL、fallback 缓存）以 `image/http/`、`ech/` 和测试为准。必须保留的约束：代理与 ECH 互斥；启动初始化要等待；非 Cloudflare 站点 plain TLS 回退是预期。
 - 平台集中在 `platforms/`，由 `registry.rs` 的单一注册表提供 id、profile 与 catalog 查找：`ImageProfile` 负责图片抓取（`id`/`matches`/`configure`/`cache`/fallback/`decode_key`/`preprocess`），`Catalog: ImageProfile` 负责搜索/详情/阅读（`prepare`/`note_request_outcome`/request+parse）以及 `single_chapter`/`normalize_work_id` 能力；`image/` 只保留平台无关的 HTTP/缓存管线。当前 `generic` 只有 profile，`manhuagui`/`jm`/`nhentai` 是 catalog。`platform` 参数可省略时按 host 识别；已知平台显式传，JM 尤其。JM 在首个搜索/详情/阅读命令前通过 `prepare` 请求 `/setting` 同步 `jm3_version`（进程一次，失败下次重试），`tokenparam` 使用运行时版本。镜像健康只在平台解析成功后记为成功；HTTP 2xx 的挑战页不算。
 - 搜索会话由 `search` store 管理；`/search` 不携带 query，刷新/深链会被守卫送回首页；搜索页首页图标用返回（优先 pop）回首页，不再 push 一个重复首页。
-- 在线详情 `/comic/:platform/:id` 不依赖搜索会话，直接 `get_comic`，刷新/深链可用；失败或未返回时只显示在线错误态，不再用下载索引做离线回退。已下载详情是独立路由 `/downloads/:platform/:id`，只读 `get_download`（返回 `DownloadDetail`：列表摘要 + `chapters`）并渲染 `OfflineDetail`，封面用 `coverPath`，开始阅读取首个已完成章节，继续阅读优先历史章节/页码，章节不可用时回退首个已完成章节第 1 页。在线详情与已下载详情的渲染数据/状态不要混在一起；在线详情读取下载索引只用于下载按钮。详情返回目标只读进入时写入的显式 `state.from`（收藏/历史/下载/搜索/首页）；缺失时回首页，不再用 `previousPath()` 或 `search.active` 推断。返回仍必须走 `useBackNavigation`：上一页就是目标时 `router.back()`；目标在更早的历史里时 `router.go(-n)` 一次退到它；否则 `router.replace`。
+- 在线详情 `/comic/:platform/:id` 不依赖搜索会话，直接 `get_comic`，刷新/深链可用；失败或未返回时只显示在线错误态，不再用下载索引做离线回退。已下载详情是独立路由 `/downloads/:platform/:id`，只读 `get_download`（返回 `DownloadDetail`：列表摘要 + `chapters` + `detail` 快照）并渲染 `OfflineDetail`，封面用 `coverPath`，作品信息/语言/标签用快照并通过同一套平台详情组件渲染，开始阅读取首个已完成章节，继续阅读优先历史章节/页码，章节不可用时回退首个已完成章节第 1 页。在线详情与已下载详情的渲染数据/状态不要混在一起；在线详情读取下载索引只用于下载按钮。详情返回目标只读进入时写入的显式 `state.from`（收藏/历史/下载/搜索/首页）；缺失时回首页，不再用 `previousPath()` 或 `search.active` 推断。返回仍必须走 `useBackNavigation`：上一页就是目标时 `router.back()`；目标在更早的历史里时 `router.go(-n)` 一次退到它；否则 `router.replace`。
 - 搜索返回 `{ total, page_size, result: [{ id, title, thumb, platform, extra }] }`，详情 `{ platform, title, thumb, chapters, extra }`；`platform` 判别，`chapters` 是跨平台核心章节（nhentai 合成一个 id/title 为 null 的章节），`extra` 是平台自有的 typed struct 序列化值（Rust 侧 `serde_json::Value`，前端判别联合）。不要退回 `Record<string, unknown>` 或 JSON 兜底。
 - 阅读页源 `get_reader_chapter(platform, id, chapterId?)`；nhentai、JM、manhuagui 均已实现。页图片仍逐页 `fetch_image`，不新增缓存目录。JM 页图在缓存前由平台自己的 `preprocess` 按 `scramble_id` 还原并重编码为 JPEG（缓存键带 `?decoded=v1`，算法变更必须提升 `platforms/jm.rs` 的 `IMAGE_DECODE_VERSION`；`scramble_id` 每章节请求一次并缓存）。空页统一返回 `notFound`。
 - manhuagui 详情优先解 `#__VIEWSTATE`（R18/隐藏列表，LZString），失败再读 `.chapter-list`；`h4` 与 `.chapter-list` 配对成 `ManhuaguiExtra.chapterGroups`，每个 `ul` 内的 `li` 逆序得到阅读顺序；无标题分组传空标题由前端本地化。搜索结果 `chapterGroups` 为空。阅读页地址 `/comic/{id}/{chapterId}.html`，`chapterId` 必需；详情“开始阅读”取分组扁平化后的首章，`ComicReaderView` 对无章节深链先取详情首章并 `router.replace`。
@@ -142,6 +142,7 @@
 ### 下载
 
 - v1 只按作品下载整部章节，不支持按章勾选；详情页提交当前详情里的完整章节列表，nhentai 传空列表由 Rust 合成单章。下载页不是缓存页，列表项只进已下载详情（`/downloads/:platform/:id`），不直接打开阅读器。
+- 下载开始时把在线 `ComicDetail` 快照存进索引（去掉章节列表，避免索引膨胀）。`get_download` 返回 `detail`，已下载详情用同一套平台详情组件渲染作品信息、语言和标签，同时隐藏在线章节列表，只展示已下载章节；旧记录没有快照时回退到仅封面/标题/章节的离线视图，不做迁移。
 - Rust 拥有 `app_data_dir()/downloads.json`（version 1）和 `app_data_dir()/downloads/<platform>/<work-id>/`；每章完成写 `manifest.json`，页面与索引原子写入。不要把下载放 `app_cache_dir()`，也不要依赖图片缓存清理。
 - 下载复用 `image::fetch_image_inner` / `get_reader_chapter_inner`，页面从缓存复制到下载目录；重复磁盘占用是接受的取舍，不要另写平台请求逻辑。
 - 同一时间只跑一个作品；章节按详情顺序，页页串行。索引只在开始、章节边界、暂停和结束时写，不要每页重写整个索引。
@@ -250,7 +251,7 @@
   - 移动端阅读器：菜单隐藏时右上角页码 HUD、电量显示与插拔更新、双指缩放/缩放后单指平移、不误翻页；HUD 避开右侧安全区。
   - 历史：行进详情、详情返回历史、“继续阅读”恢复章节/页码、“开始阅读”从头、更新后返回详情。
   - 收藏分组：创建/重命名/删除、计数/筛选、短按默认、长按选择、右键 / `Shift+Enter`、从收藏进详情返回收藏。
-  - 下载：三平台各下载一本、封面/页图、详情按钮状态、暂停/继续/删除、重启后恢复为暂停；下载页点条目进已下载详情，断网时从下载页进入已下载详情，开始阅读/继续阅读（含历史页码）可用；在线详情失败不再回退到下载索引；删除后阅读器不再命中旧本地页。
+  - 下载：三平台各下载一本、封面/页图、详情按钮状态、暂停/继续/删除、重启后恢复为暂停；下载页点条目进已下载详情，已下载详情显示与在线详情一致的作品信息/语言/标签（旧记录除外），断网时从下载页进入已下载详情，开始阅读/继续阅读（含历史页码）可用；在线详情失败不再回退到下载索引；删除后阅读器不再命中旧本地页。
   - 移动端安全区：所有页面从安全区下方开始，滚动不盖状态栏；toast 与 Modal 也不越过顶部/左右/底部安全区。
 - Rust ↔ TS wire 契约：`src/platforms/<id>/fixtures/wire.json` 同时被平台 Rust 测试和 `src/api/contract.test.ts` 引用；`contracts/{reader-chapter,download-detail,history-page,favorites-page,favorite-groups,log-snapshot}.json` 由 Rust 序列化测试和前端契约测试共享。改对应 Rust 结构或 TS 类型时必须同步 fixture。
 - 前端已有 Vitest 单元测试（`src/**/*.test.ts`），覆盖错误契约、wire fixture、图片/章节缓存时序、预加载、阅读器手势/缩放、详情动作与数据层、IPC/搜索守卫、长按、返回栈、设置持久化，并有少量组件测试（电量、详情骨架、阅读页图片）；`e2e/` 另有本地 WebDriver 套件，仍无 CI，不要声称存在。新增测试体系要加 `package.json` 脚本并同步本文件。

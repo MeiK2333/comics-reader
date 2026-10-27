@@ -337,6 +337,7 @@ mod tests {
                 page_count: 10,
                 completed: true,
             }],
+            detail: None,
         };
         let value = serde_json::to_value(detail).unwrap();
 
@@ -389,6 +390,7 @@ mod tests {
                     completed: false,
                 },
             ],
+            detail: None,
         };
 
         let actual = serde_json::to_value(&detail).unwrap();
@@ -512,6 +514,85 @@ mod tests {
         cleanup(&path);
     }
 
+    #[test]
+    fn backfills_missing_total_bytes_from_existing_files() {
+        let path = temp_path("size-backfill");
+        let root = temp_path("size-backfill-root").with_extension("dir");
+        let directory = root.join("nhentai").join("42").join("single");
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(directory.join("00001.jpg"), b"12345").unwrap();
+        fs::write(directory.join("00002.jpg"), b"123").unwrap();
+        fs::write(directory.join(MANIFEST_FILE_NAME), b"{}").unwrap();
+        fs::write(directory.join("00003.jpg.part"), b"ignored").unwrap();
+
+        let mut record = DownloadRecord::new(
+            &("nhentai".into(), "42".into()),
+            "Work".into(),
+            None,
+            vec![chapter(None, true)],
+        );
+        record.status = DownloadStatus::Completed;
+        record.chapters[0].page_count = 2;
+        record.downloaded_pages = 2;
+
+        let store = DownloadsStore::default();
+        {
+            let mut data = store.data.lock().unwrap();
+            data.loaded = true;
+            data.entries.insert(record.key(), record);
+        }
+
+        let page = store.list(&path, &root, 0, 10).unwrap();
+        assert_eq!(page.entries[0].total_bytes, 10);
+
+        let stored: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert_eq!(stored["entries"][0]["totalBytes"], 10);
+
+        let _ = fs::remove_file(&path);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn stores_the_detail_snapshot_with_the_download() {
+        let path = temp_path("detail-snapshot");
+        let root = temp_path("detail-snapshot-root").with_extension("dir");
+        let store = DownloadsStore::default();
+        let snapshot = serde_json::json!({
+            "platform": "manhuagui",
+            "title": "Work",
+            "thumb": "https://example.com/cover.jpg",
+            "chapters": [],
+            "extra": {
+                "originalTitle": null,
+                "authors": ["Author"],
+                "status": "连载中",
+                "latestChapter": null,
+                "updatedAt": null,
+                "year": null,
+                "region": null,
+                "categories": ["Action"],
+                "aliases": [],
+                "description": null,
+                "score": null,
+                "ratingCount": null,
+                "chapterGroups": []
+            }
+        });
+        let mut input = download_input();
+        input.detail = Some(snapshot.clone());
+
+        store.start(&path, &root, input).unwrap();
+        let saved = store
+            .get(&path, &root, "manhuagui", "42")
+            .unwrap()
+            .expect("the download should exist");
+
+        assert_eq!(saved.detail, Some(snapshot));
+
+        cleanup(&path);
+        let _ = fs::remove_dir_all(&root);
+    }
+
     #[tokio::test]
     async fn reads_a_completed_chapter_and_links_only_downloaded_neighbours() {
         let root = temp_path("local-root").with_extension("dir");
@@ -630,6 +711,7 @@ mod tests {
                 id: Some("1".into()),
                 title: Some("Chapter 1".into()),
             }],
+            detail: None,
         }
     }
 

@@ -21,6 +21,7 @@ declare module 'vue' {
     DetailShell: typeof import('./components/comic-detail/DetailShell.vue')['default']
     DetailTagGroup: typeof import('./components/comic-detail/DetailTagGroup.vue')['default']
     DetailTopbar: typeof import('./components/comic-detail/DetailTopbar.vue')['default']
+    DownloadControlIcon: typeof import('./components/DownloadControlIcon.vue')['default']
     FavoriteGroupPicker: typeof import('./components/favorites/FavoriteGroupPicker.vue')['default']
     FavoriteIcon: typeof import('./components/FavoriteIcon.vue')['default']
     HomeIcon: typeof import('./components/HomeIcon.vue')['default']
@@ -64,5 +65,6 @@ declare module 'vue' {
     RouterView: typeof import('vue-router')['RouterView']
     SearchIcon: typeof import('./components/SearchIcon.vue')['default']
     ShortcutIcon: typeof import('./components/ShortcutIcon.vue')['default']
+    TrashIcon: typeof import('./components/TrashIcon.vue')['default']
   }
 }

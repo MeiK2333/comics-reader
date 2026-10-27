@@ -137,6 +137,7 @@ function downloadDetail(
     error: null,
     progress: null,
     chapters: [],
+    detail: null,
     ...overrides,
   };
 }

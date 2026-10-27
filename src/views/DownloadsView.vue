@@ -13,6 +13,8 @@ import {
 } from "../api/downloads";
 import { clearReaderChapterCache } from "../api/reader";
 import ComicThumb from "../components/ComicThumb.vue";
+import DownloadControlIcon from "../components/DownloadControlIcon.vue";
+import TrashIcon from "../components/TrashIcon.vue";
 import { useBackNavigation } from "../composables/useBackNavigation";
 import { useErrorMessage } from "../composables/useErrorMessage";
 import { useLatestRequest } from "../composables/useLatestRequest";
@@ -378,22 +380,36 @@ onBeforeUnmount(() => {
             <NButton
               v-if="isDownloadActive(entry.status)"
               attr-type="button"
+              quaternary
+              circle
               size="small"
+              class="download-entry__toggle"
               :loading="actionKey === entryKey(entry)"
               :disabled="busy && actionKey !== entryKey(entry)"
+              :aria-label="t('downloads.pause')"
+              :title="t('downloads.pause')"
               @click="pause(entry)"
             >
-              {{ t("downloads.pause") }}
+              <template #icon>
+                <DownloadControlIcon name="pause" />
+              </template>
             </NButton>
             <NButton
               v-else-if="entry.status !== 'completed'"
               attr-type="button"
+              quaternary
+              circle
               size="small"
+              class="download-entry__toggle"
               :loading="actionKey === entryKey(entry)"
               :disabled="busy && actionKey !== entryKey(entry)"
+              :aria-label="t('downloads.resume')"
+              :title="t('downloads.resume')"
               @click="resume(entry)"
             >
-              {{ t("downloads.resume") }}
+              <template #icon>
+                <DownloadControlIcon name="resume" />
+              </template>
             </NButton>
             <NPopconfirm
               :positive-text="t('downloads.delete')"
@@ -403,13 +419,18 @@ onBeforeUnmount(() => {
               <template #trigger>
                 <NButton
                   attr-type="button"
-                  size="small"
-                  type="error"
                   quaternary
+                  circle
+                  size="small"
+                  class="download-entry__remove"
                   :loading="actionKey === entryKey(entry)"
                   :disabled="busy || isDownloadActive(entry.status)"
+                  :aria-label="t('downloads.delete')"
+                  :title="t('downloads.delete')"
                 >
-                  {{ t("downloads.delete") }}
+                  <template #icon>
+                    <TrashIcon />
+                  </template>
                 </NButton>
               </template>
               {{ t("downloads.deleteConfirm") }}
@@ -628,11 +649,16 @@ onBeforeUnmount(() => {
 
 .download-entry__actions {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
+  align-self: center;
   justify-content: flex-end;
   gap: 0.35rem;
-  max-width: 16rem;
+}
+
+.download-entry__toggle,
+.download-entry__remove {
+  flex: none;
 }
 
 .downloads-pagination {
@@ -643,8 +669,7 @@ onBeforeUnmount(() => {
 
 @media (max-width: 700px) {
   .download-entry {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0.65rem;
+    gap: 0.35rem;
   }
 
   .download-entry__main {
@@ -654,13 +679,6 @@ onBeforeUnmount(() => {
 
   .download-entry__cover {
     width: 52px;
-  }
-
-  .download-entry__actions {
-    grid-column: 1 / -1;
-    justify-content: flex-start;
-    max-width: none;
-    padding-top: 0.15rem;
   }
 
   .download-entry__meta time {

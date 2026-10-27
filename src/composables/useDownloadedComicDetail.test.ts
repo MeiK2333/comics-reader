@@ -49,6 +49,7 @@ function downloadDetail(
       { id: "c1", title: "Chapter 1", pageCount: 10, completed: true },
       { id: "c2", title: "Chapter 2", pageCount: 10, completed: true },
     ],
+    detail: null,
     ...overrides,
   };
 }

@@ -7,6 +7,36 @@ pub(crate) struct DownloadsData {
     pub(super) loaded: bool,
     pub(super) entries: HashMap<DownloadKey, DownloadRecord>,
     pub(super) corrupt: bool,
+    pub(super) sizes_backfilled: bool,
+}
+
+/// Sum every file that belongs to a work. Temporary `.part` files are ignored
+/// so an interrupted copy cannot inflate the reported size.
+fn work_dir_size(directory: &Path) -> Result<u64> {
+    let entries = match fs::read_dir(directory) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(0),
+        Err(error) => return Err(error.into()),
+    };
+
+    let mut total = 0_u64;
+    for entry in entries {
+        let entry = entry?;
+        if entry.file_name().to_string_lossy().ends_with(".part") {
+            continue;
+        }
+        let metadata = match entry.metadata() {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == ErrorKind::NotFound => continue,
+            Err(error) => return Err(error.into()),
+        };
+        if metadata.is_dir() {
+            total = total.saturating_add(work_dir_size(&entry.path())?);
+        } else if metadata.is_file() {
+            total = total.saturating_add(metadata.len());
+        }
+    }
+    Ok(total)
 }
 
 /// Tauri-managed store. The index is loaded once and then kept in memory; the
@@ -75,6 +105,7 @@ impl DownloadsStore {
         let key = download_key(&platform, &input.id)?;
         let title = validate_title(&input.title)?;
         let thumb = validate_thumb(input.thumb)?;
+        let detail = input.detail;
         let chapters = normalize_input_chapters(&platform, input.chapters)?;
 
         let record = self.with_data(path, |data, path| {
@@ -94,6 +125,7 @@ impl DownloadsStore {
             record.title = title;
             record.thumb = thumb;
             record.chapters = merge_chapters(&record.chapters, chapters);
+            record.detail = detail.or(record.detail);
             record.updated_at = now_millis();
             record.error = None;
 
@@ -240,7 +272,50 @@ impl DownloadsStore {
                 completed: chapter.completed,
             })
             .collect();
-        Ok(Some(DownloadDetail { summary, chapters }))
+        Ok(Some(DownloadDetail {
+            summary,
+            chapters,
+            detail: record.detail.clone(),
+        }))
+    }
+
+    /// Fill a missing size from the files that are already on disk. Older
+    /// indexes and re-downloads over an existing directory otherwise show 0 B.
+    pub(super) fn backfill_total_bytes(&self, path: &Path, root: &Path) -> Result<()> {
+        self.with_data(path, |data, path| {
+            if data.sizes_backfilled {
+                return Ok(());
+            }
+
+            let mut changed = false;
+            for record in data.entries.values_mut() {
+                if record.status.is_active() || record.total_bytes != 0 {
+                    continue;
+                }
+                let directory = work_dir(root, record);
+                if !directory.exists() {
+                    continue;
+                }
+                match work_dir_size(&directory) {
+                    Ok(bytes) => {
+                        record.total_bytes = bytes;
+                        changed = true;
+                    }
+                    Err(error) => logging::warn(
+                        "download",
+                        format!(
+                            "failed to measure the download size: platform={} id={} error={error}",
+                            record.platform, record.id
+                        ),
+                    ),
+                }
+            }
+            data.sizes_backfilled = true;
+            if changed {
+                data.save(path)?;
+            }
+            Ok(())
+        })
     }
 
     pub(super) fn list(
@@ -250,6 +325,8 @@ impl DownloadsStore {
         offset: usize,
         limit: usize,
     ) -> Result<DownloadPage> {
+        self.backfill_total_bytes(path, root)?;
+
         let records = self.with_data(path, |data, _| {
             let mut records: Vec<DownloadRecord> = data.entries.values().cloned().collect();
             records.sort_by(|left, right| {
@@ -345,6 +422,42 @@ impl DownloadsStore {
             record.status = DownloadStatus::Downloading;
             record.updated_at = now_millis();
             data.save(path)?;
+            Ok(true)
+        })
+    }
+
+    /// Recount a work from disk. The worker skips pages that already exist, so
+    /// their bytes must be picked up from the filesystem when a run starts.
+    pub(super) fn refresh_total_bytes(
+        &self,
+        path: &Path,
+        root: &Path,
+        key: &DownloadKey,
+        run_id: u64,
+    ) -> Result<bool> {
+        self.with_data(path, |data, path| {
+            let bytes = match data.entries.get(key) {
+                Some(record)
+                    if record.run_id == run_id && record.status == DownloadStatus::Downloading =>
+                {
+                    Some(work_dir_size(&work_dir(root, record))?)
+                }
+                _ => None,
+            };
+            let Some(bytes) = bytes else {
+                return Ok(false);
+            };
+
+            let changed = data
+                .entries
+                .get(key)
+                .is_some_and(|record| record.total_bytes != bytes);
+            if changed {
+                if let Some(record) = data.entries.get_mut(key) {
+                    record.total_bytes = bytes;
+                }
+                data.save(path)?;
+            }
             Ok(true)
         })
     }

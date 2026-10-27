@@ -63,6 +63,10 @@ pub(crate) struct DownloadInput {
     pub(super) title: String,
     pub(super) thumb: Option<String>,
     pub(super) chapters: Vec<DownloadChapterInput>,
+    /// Full detail snapshot captured when the download starts. The chapter
+    /// lists are stripped before it is stored; the download chapters own them.
+    #[serde(default)]
+    pub(super) detail: Option<Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -92,6 +96,10 @@ pub(crate) struct DownloadRecord {
     pub(super) status: DownloadStatus,
     #[serde(default)]
     pub(super) chapters: Vec<DownloadChapter>,
+    /// Online detail captured at download time so the downloaded detail page
+    /// can render the same metadata without a network request.
+    #[serde(default)]
+    pub(super) detail: Option<Value>,
     #[serde(default)]
     pub(super) downloaded_pages: u32,
     #[serde(default)]
@@ -122,6 +130,7 @@ impl DownloadRecord {
             cover_file: None,
             status: DownloadStatus::Queued,
             chapters,
+            detail: None,
             downloaded_pages: 0,
             total_bytes: 0,
             added_at: now,
@@ -152,6 +161,15 @@ impl DownloadRecord {
             .cover_file
             .filter(|name| is_safe_file_name(name))
             .and_then(non_empty);
+
+        let snapshot_platform = self.platform.clone();
+        self.detail = self.detail.take().filter(|detail| {
+            detail.get("platform").and_then(Value::as_str) == Some(snapshot_platform.as_str())
+                && detail.get("title").is_some_and(Value::is_string)
+                && detail.get("thumb").is_some_and(Value::is_string)
+                && detail.get("chapters").is_some_and(Value::is_array)
+                && detail.get("extra").is_some_and(Value::is_object)
+        });
 
         let single_chapter = crate::platforms::find_catalog(&self.platform)
             .is_some_and(|catalog| catalog.single_chapter());
@@ -219,14 +237,17 @@ pub(crate) struct DownloadChapterSummary {
     pub(super) completed: bool,
 }
 
-/// `get_download` payload: the list summary plus every stored chapter. The
-/// detail page can render downloaded chapters when the online lookup fails.
+/// `get_download` payload: the list summary, every stored chapter, and the
+/// online detail snapshot captured when the download started.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct DownloadDetail {
     #[serde(flatten)]
     pub(super) summary: DownloadSummary,
     pub(super) chapters: Vec<DownloadChapterSummary>,
+    /// Detail snapshot stored with the download; absent for old records or
+    /// when the payload could not be validated.
+    pub(super) detail: Option<Value>,
 }
 
 #[derive(Debug, Clone, Serialize)]

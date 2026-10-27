@@ -11,6 +11,10 @@ import DetailTagGroup from "../../components/comic-detail/DetailTagGroup.vue";
 const props = defineProps<{
   detail: ManhuaguiDetail;
   resumeChapterId?: string | null;
+  /** Hide the online chapter list; the downloaded detail injects its own. */
+  hideChapters?: boolean;
+  /** Local cover file used by the downloaded-detail route. */
+  localCoverPath?: string;
 }>();
 
 const emit = defineEmits<{
@@ -119,6 +123,7 @@ const infoItems = computed(() =>
     :title="detail.title"
     :thumb="detail.thumb"
     :subtitle="subtitle"
+    :local-path="localCoverPath"
   >
     <template #summary>
       <div v-if="status" class="summary-row">
@@ -126,6 +131,7 @@ const infoItems = computed(() =>
           {{ status }}
         </NTag>
       </div>
+      <slot name="summary-extra" />
     </template>
 
     <DetailSection v-if="infoItems.length > 0" :title="t('detail.sections.info')">
@@ -140,7 +146,12 @@ const infoItems = computed(() =>
       </NDescriptions>
     </DetailSection>
 
-    <DetailSection v-if="groups.length > 0" :title="t('detail.sections.chapters')">
+    <slot name="extra" />
+
+    <DetailSection
+      v-if="!hideChapters && groups.length > 0"
+      :title="t('detail.sections.chapters')"
+    >
       <div v-if="hasToolbar" class="chapter-toolbar">
         <NButton size="small" quaternary @click="expandAll">
           {{ text("chapterGroupsExpandAll") }}

@@ -183,6 +183,7 @@ function openResume() {
         :download-loading="false"
         :download-pending="false"
         :download-button-label="''"
+        :downloaded="false"
         :resume-title="resumeTitle"
         @favorite="handleFavoriteClick"
         @read="openReader"

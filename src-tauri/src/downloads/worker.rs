@@ -201,6 +201,15 @@ async fn download_with<M: DownloadMedia>(
     let directory = work_dir(root, &record);
     tokio::fs::create_dir_all(&directory).await?;
     ensure_cover(store, media, path, root, key, run_id).await?;
+    if let Err(error) = store.refresh_total_bytes(path, root, key, run_id) {
+        logging::warn(
+            "download",
+            format!(
+                "failed to recount the download size: platform={} id={} error={error}",
+                key.0, key.1
+            ),
+        );
+    }
 
     let chapter_count = record.chapters.len() as u32;
     for (chapter_index, chapter) in record.chapters.iter().enumerate() {
@@ -409,7 +418,17 @@ async fn download_work(app: &AppHandle, key: &DownloadKey, run_id: u64) -> Resul
         client: http.inner(),
         cache: cache.inner(),
     };
-    download_with(store.inner(), &media, &path, &root, key, run_id).await
+    let result = download_with(store.inner(), &media, &path, &root, key, run_id).await;
+    if let Err(error) = store.refresh_total_bytes(&path, &root, key, run_id) {
+        logging::warn(
+            "download",
+            format!(
+                "failed to recount the download size: platform={} id={} error={error}",
+                key.0, key.1
+            ),
+        );
+    }
+    result
 }
 
 async fn run_download(app: AppHandle, key: DownloadKey, run_id: u64) {
@@ -553,6 +572,7 @@ mod tests {
                     title: Some(format!("Chapter {id}")),
                 })
                 .collect(),
+            detail: None,
         }
     }
 
@@ -586,6 +606,33 @@ mod tests {
         assert!(!record.chapters[0].completed);
         assert!(record.chapters[0].error.is_some());
         assert!(record.chapters[1].completed);
+
+        let _ = tokio::fs::remove_file(&path).await;
+        let _ = tokio::fs::remove_dir_all(&root).await;
+    }
+
+    #[tokio::test]
+    async fn counts_pages_that_already_exist_on_disk() {
+        let (path, root, store, run_id) = fixture("existing-size", &["1"]).await;
+        let key = ("manhuagui".into(), "42".into());
+        let chapter_directory = root.join("manhuagui").join("42").join("1");
+        tokio::fs::create_dir_all(&chapter_directory).await.unwrap();
+        tokio::fs::write(chapter_directory.join("00001.png"), b"\x89PNG")
+            .await
+            .unwrap();
+        let source = root.join("source.png");
+        tokio::fs::write(&source, b"\x89PNG").await.unwrap();
+
+        download_with(&store, &FakeMedia { source }, &path, &root, &key, run_id)
+            .await
+            .unwrap();
+
+        let record = store.record_snapshot(&path, &key).unwrap().unwrap();
+        assert!(record.chapters[0].completed);
+        assert_eq!(
+            record.total_bytes, 4,
+            "the page skipped by the worker must still count toward the total"
+        );
 
         let _ = tokio::fs::remove_file(&path).await;
         let _ = tokio::fs::remove_dir_all(&root).await;

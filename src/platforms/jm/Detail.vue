@@ -10,6 +10,10 @@ import DetailTagGroup from "../../components/comic-detail/DetailTagGroup.vue";
 
 const props = defineProps<{
   detail: JmDetail;
+  /** Hide the online chapter list; the downloaded detail injects its own. */
+  hideChapters?: boolean;
+  /** Local cover file used by the downloaded-detail route. */
+  localCoverPath?: string;
 }>();
 
 const emit = defineEmits<{
@@ -67,6 +71,7 @@ const stats = computed(() =>
     :platform="detail.platform"
     :title="detail.title"
     :thumb="detail.thumb"
+    :local-path="localCoverPath"
   >
     <template #summary>
       <div v-if="stats.length > 0" class="detail-stats">
@@ -75,6 +80,7 @@ const stats = computed(() =>
           <strong>{{ stat.value }}</strong>
         </div>
       </div>
+      <slot name="summary-extra" />
     </template>
 
     <DetailSection v-if="infoItems.length > 0" :title="t('detail.sections.info')">
@@ -89,8 +95,10 @@ const stats = computed(() =>
       </NDescriptions>
     </DetailSection>
 
+    <slot name="extra" />
+
     <DetailSection
-      v-if="chapters.length > 1"
+      v-if="!hideChapters && chapters.length > 1"
       :title="t('detail.sections.chapters')"
     >
       <div class="chapter-list">

@@ -11,6 +11,8 @@ import DetailTagGroup from "../../components/comic-detail/DetailTagGroup.vue";
 
 const props = defineProps<{
   detail: NhentaiDetail;
+  /** Local cover file used by the downloaded-detail route. */
+  localCoverPath?: string;
 }>();
 
 const { t } = useAppI18n();
@@ -118,11 +120,13 @@ const tagGroups = computed(() => {
     :title="detail.title"
     :thumb="cover"
     :subtitle="subtitle"
+    :local-path="localCoverPath"
   >
     <template #summary>
       <p v-if="japaneseTitle" lang="ja" class="detail-japanese">
         {{ japaneseTitle }}
       </p>
+      <slot name="summary-extra" />
     </template>
 
     <DetailSection v-if="infoItems.length > 0" :title="t('detail.sections.info')">
@@ -136,6 +140,8 @@ const tagGroups = computed(() => {
         </NDescriptionsItem>
       </NDescriptions>
     </DetailSection>
+
+    <slot name="extra" />
 
     <DetailTagGroup
       v-for="group in tagGroups"
