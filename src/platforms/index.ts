@@ -17,7 +17,7 @@ import type { AppLocale } from "../i18n";
  * and the router. Adding a platform means adding its directory and one entry
  * here.
  */
-export const platformList = [manhuagui, jm, nhentai, copymanga] as const;
+export const platformList = [jm, nhentai, copymanga, manhuagui] as const;
 
 export type ComicPlatform = (typeof platformList)[number]["id"];
 
@@ -43,7 +43,7 @@ export const PLATFORM_ROUTE_PATTERN = platformList
   .map((platform) => platform.id)
   .join("|");
 
-export const DEFAULT_PLATFORM: ComicPlatform = "manhuagui";
+export const DEFAULT_PLATFORM: ComicPlatform = "jm";
 
 export function isComicPlatform(value: unknown): value is ComicPlatform {
   return (
