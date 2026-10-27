@@ -84,7 +84,7 @@ describe("offline reading", () => {
     await browser.execute(() => {
       // Force a query change so the reader resets even when the previous spec
       // left the same chapter open on page 2.
-      location.hash = "#/comic/nhentai/900001/read?page=1";
+      location.hash = "#/downloads/nhentai/900001/read?page=1";
     });
     const viewer = await $(".viewer");
     await viewer.waitForExist({ timeout: 25_000 });
@@ -107,9 +107,9 @@ describe("offline reading", () => {
     });
   }
 
-  it("falls back to the downloaded comic on the detail page", async () => {
+  it("opens the downloaded detail from the downloads route", async () => {
     await browser.execute(() => {
-      location.hash = "#/comic/nhentai/900001";
+      location.hash = "#/downloads/nhentai/900001";
     });
 
     const offlineSummary = await $(".offline-summary");
@@ -123,7 +123,7 @@ describe("offline reading", () => {
 
   it("renders downloaded pages and turns a page with the keyboard", async () => {
     await browser.execute(() => {
-      location.hash = "#/comic/nhentai/900001/read";
+      location.hash = "#/downloads/nhentai/900001/read";
     });
 
     const viewer = await $(".viewer");

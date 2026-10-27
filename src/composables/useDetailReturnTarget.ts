@@ -1,8 +1,6 @@
 import { computed } from "vue";
 import type { RouteLocationRaw } from "vue-router";
-import { useSearchStore } from "../stores/search";
 import { useAppI18n } from "../i18n";
-import { previousPath } from "./useBackNavigation";
 
 export type DetailOrigin =
   | "favorites"
@@ -32,22 +30,15 @@ export function readDetailOrigin(state: unknown): DetailOrigin | null {
   return isDetailOrigin(from) ? from : null;
 }
 
-/** Legacy fallback for entries created before `state.from` existed. */
-export function detailOriginFromPath(path: string | null): DetailOrigin | null {
-  switch (path) {
-    case "/favorites":
-      return "favorites";
-    case "/history":
-      return "history";
-    case "/downloads":
-      return "downloads";
-    default:
-      return null;
-  }
-}
-
 function targetFor(origin: DetailOrigin): RouteLocationRaw {
   return { name: origin };
+}
+
+/** The explicit source wins; a deep link without a source returns home. */
+export function detailBackTarget(
+  origin: DetailOrigin | null,
+): RouteLocationRaw {
+  return origin ? targetFor(origin) : { name: "home" };
 }
 
 const LABEL_KEYS = {
@@ -59,34 +50,28 @@ const LABEL_KEYS = {
 } as const;
 
 /**
- * Where the detail page's back button goes. The source is captured at setup so
- * a reader pushed on top of this page cannot change it. An explicit
- * `state.from` wins over the previous history entry; the latter only supports
- * links created before the state was added.
+ * Where the detail page's back button goes.
+ *
+ * The source is captured at setup and comes only from the explicit navigation
+ * state written by the opener. It is deliberately not inferred from
+ * `previousPath()` or the search session: the back target is the component
+ * that opened this detail, not whichever page happens to sit below it in the
+ * browser stack. A deep link has no source and therefore returns home.
+ *
+ * A reader pushed on top of this page cannot change the target.
  */
 export function useDetailReturnTarget() {
-  const search = useSearchStore();
   const { t } = useAppI18n();
 
-  const source =
-    readDetailOrigin(window.history.state) ?? detailOriginFromPath(previousPath());
-  const canReturnToSearch = computed(() => search.active);
+  const source = readDetailOrigin(window.history.state);
 
-  const backTarget = computed<RouteLocationRaw>(() => {
-    if (source) {
-      return targetFor(source);
-    }
-    return canReturnToSearch.value ? { name: "search" } : { name: "home" };
-  });
+  const backTarget = computed<RouteLocationRaw>(() =>
+    detailBackTarget(source),
+  );
 
-  const backLabel = computed(() => {
-    if (source) {
-      return t(LABEL_KEYS[source]);
-    }
-    return t(
-      canReturnToSearch.value ? "detail.backToSearch" : "detail.backHome",
-    );
-  });
+  const backLabel = computed(() =>
+    source ? t(LABEL_KEYS[source]) : t("detail.backHome"),
+  );
 
   return { backTarget, backLabel };
 }

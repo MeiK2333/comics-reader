@@ -10,13 +10,17 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const isWindows = process.platform === "win32";
 const identifier = "com.meik.comics-reader.e2e";
-const appPath = path.join(
-  root,
-  "src-tauri",
-  "target",
-  "debug",
-  isWindows ? "comics-reader.exe" : "comics-reader",
-);
+// Allow a separately built E2E binary (for example when `pnpm tauri dev` is
+// holding the default target/debug executable open).
+const appPath = process.env.TAURI_E2E_APP
+  ? path.resolve(root, process.env.TAURI_E2E_APP)
+  : path.join(
+      root,
+      "src-tauri",
+      "target",
+      "debug",
+      isWindows ? "comics-reader.exe" : "comics-reader",
+    );
 const driverPath = path.join(
   root,
   "e2e",

@@ -10,7 +10,7 @@ const props = defineProps<{
   title: string;
   thumb: string;
   subtitle?: string;
-  /** Downloaded cover path, used by the offline detail fallback. */
+  /** Local cover path, used by the downloaded-detail route. */
   localPath?: string;
 }>();
 

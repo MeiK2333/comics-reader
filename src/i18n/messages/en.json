@@ -73,12 +73,15 @@
     "downloading": "Downloading {done}/{total}",
     "resumeDownload": "Resume download",
     "downloaded": "Downloaded",
+    "openDownloads": "Open downloads",
     "continueReading": "Continue reading",
     "continueAt": "Last read page {page} of {total}",
     "chapterFallback": "Chapter {number}",
     "retry": "Retry",
     "notFound": "Comic not found",
     "notFoundDescription": "This comic may have been removed, or the link is invalid.",
+    "downloadMissing": "Downloaded comic not found",
+    "downloadMissingDescription": "It may have been removed from this device.",
     "loadFailed": "Could not load this comic",
     "loading": "Loading comic details…",
     "sections": {
@@ -125,9 +128,9 @@
       "other": "Other"
     },
     "offline": {
-      "tag": "Offline",
+      "tag": "Downloaded",
       "summary": "Downloaded {done} / {total} chapters",
-      "notice": "Online details are unavailable or still loading, so only downloaded chapters are shown.",
+      "notice": "This detail page only shows chapters stored on this device.",
       "chapters": "Downloaded chapters"
     }
   },

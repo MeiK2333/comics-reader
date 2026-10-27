@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   back: vi.fn(),
+  go: vi.fn(),
   replace: vi.fn(),
   resolve: vi.fn((target: unknown) => ({
     fullPath:
@@ -15,11 +16,14 @@ vi.mock("vue-router", () => ({
   useRouter: () => mocks,
 }));
 
+import { resetNavigationStack } from "../router/navigationStack";
 import { previousPath, useBackNavigation } from "./useBackNavigation";
 
 beforeEach(() => {
   mocks.back.mockReset();
+  mocks.go.mockReset();
   mocks.replace.mockReset();
+  resetNavigationStack();
   mocks.resolve.mockClear();
   window.history.replaceState(null, "");
 });

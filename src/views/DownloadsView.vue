@@ -297,7 +297,7 @@ onBeforeUnmount(() => {
           <RouterLink
             class="download-entry__main"
             :to="{
-              name: 'comic-detail',
+              name: 'download-detail',
               params: { platform: entry.platform, id: entry.id },
               state: { from: 'downloads' },
             }"

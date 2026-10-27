@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { computed, watch } from "vue";
+import { RouterView, useRoute, useRouter } from "vue-router";
 import type {
   ComicDetail,
   ComicPlatform,
@@ -16,14 +16,17 @@ import DetailTopbar from "../components/comic-detail/DetailTopbar.vue";
 import JmDetail from "../components/comic-detail/JmDetail.vue";
 import ManhuaguiDetail from "../components/comic-detail/ManhuaguiDetail.vue";
 import NhentaiDetail from "../components/comic-detail/NhentaiDetail.vue";
-import OfflineDetail from "../components/comic-detail/OfflineDetail.vue";
 import { useBackNavigation } from "../composables/useBackNavigation";
 import { useComicDetail } from "../composables/useComicDetail";
 import { useDetailReturnTarget } from "../composables/useDetailReturnTarget";
 import { useDownloadAction } from "../composables/useDownloadAction";
 import { useErrorMessage } from "../composables/useErrorMessage";
-import { useFavoriteAction } from "../composables/useFavoriteAction";
+import {
+  useFavoriteAction,
+  type FavoriteSnapshot,
+} from "../composables/useFavoriteAction";
 import { useAppI18n } from "../i18n";
+import { setWindowTitle, updateWindowTitle } from "../router";
 
 const route = useRoute();
 const router = useRouter();
@@ -49,7 +52,6 @@ const {
   loading,
   state,
   manhuaguiChapters,
-  offlineChapterIds,
   downloadChapters,
   canRead,
   canResume,
@@ -57,10 +59,26 @@ const {
   resumePage,
   resumeTitle,
   downloadLoading,
+  hasDownload,
   load,
 } = comic;
 
-const favorite = useFavoriteAction({ platform, id, detail });
+const favoriteSnapshot = computed<FavoriteSnapshot | null>(() => {
+  const current = detail.value;
+  return current
+    ? {
+        platform: current.platform,
+        title: current.title,
+        thumb: current.thumb,
+      }
+    : null;
+});
+
+const favorite = useFavoriteAction({
+  platform,
+  id,
+  detail: favoriteSnapshot,
+});
 const {
   favorited,
   currentGroupId,
@@ -93,12 +111,10 @@ const {
 const onlineDetail = computed<ComicDetail | null>(() =>
   state.value.kind === "online" ? state.value.detail : null,
 );
-const offlineDetail = computed(() =>
-  state.value.kind === "offline" ? state.value.download : null,
-);
 const stateError = computed(() =>
   state.value.kind === "error" ? state.value.error : null,
 );
+const readerActive = computed(() => route.name === "comic-reader");
 
 const notFound = computed(
   () =>
@@ -128,8 +144,31 @@ const nhentaiDetail = computed<NhentaiDetailData | null>(() =>
   detail.value?.platform === "nhentai" ? detail.value : null,
 );
 
+/**
+ * The detail component stays mounted while the nested reader is open, so the
+ * reader's dynamic title would otherwise remain after it closes. Restore the
+ * detail title whenever this route becomes visible again; no data is reloaded.
+ */
+function syncTitle() {
+  if (route.name !== "comic-detail") {
+    return;
+  }
+  const current = detail.value;
+  if (current) {
+    setWindowTitle(`${current.title} · ${t("app.name")}`);
+    return;
+  }
+  updateWindowTitle();
+}
+
+watch([detail, stateError, () => route.name], syncTitle, { immediate: true });
+
 function goBack() {
   back(backTarget.value);
+}
+
+function openDownloads() {
+  void router.push({ name: "downloads" });
 }
 
 function openChapter(chapterId: string) {
@@ -149,26 +188,8 @@ function openChapter(chapterId: string) {
 
 function openReader() {
   const currentPlatform = platform.value;
-  if (!currentPlatform) {
-    return;
-  }
-
-  // Offline start uses the first chapter that is actually on disk.
-  if (offlineDetail.value) {
-    const params: Record<string, string> = {
-      platform: currentPlatform,
-      id: id.value,
-    };
-    const chapterId = offlineChapterIds.value[0];
-    if (chapterId) {
-      params.chapterId = chapterId;
-    }
-    void router.push({ name: "comic-reader", params });
-    return;
-  }
-
   const current = detail.value;
-  if (!current) {
+  if (!currentPlatform || !current) {
     return;
   }
 
@@ -221,22 +242,26 @@ function openResume() {
 </script>
 
 <template>
-  <main class="detail-page">
+  <main
+    class="detail-page"
+    :inert="readerActive || undefined"
+    :aria-hidden="readerActive || undefined"
+  >
     <DetailTopbar
       :back-label="backLabel"
       :loading="loading"
       @back="goBack"
     >
       <DetailActions
-        v-if="onlineDetail || offlineDetail"
-        :show-favorite="Boolean(onlineDetail)"
+        v-if="onlineDetail"
+        :show-favorite="true"
         :favorited="favorited"
         :favorite-loading="favoriteLoading"
         :favorite-pending="favoritePending"
         :favorite-action-label="favoriteActionLabel"
         :favorite-button-text="favoriteButtonText"
         :favorite-handlers="favoriteHandlers"
-        :show-download="Boolean(onlineDetail) && canRead"
+        :show-download="canRead"
         :can-read="canRead"
         :can-resume="canResume"
         :download-loading="downloadLoading"
@@ -264,12 +289,6 @@ function openResume() {
 
     <ComicDetailSkeleton v-if="state.kind === 'loading'" />
 
-    <OfflineDetail
-      v-else-if="offlineDetail"
-      :detail="offlineDetail"
-      @open-chapter="openChapter"
-    />
-
     <NResult
       v-else-if="stateError"
       class="detail-result"
@@ -281,6 +300,9 @@ function openResume() {
         <div class="detail-actions">
           <NButton v-if="!notFound" type="primary" @click="load()">
             {{ t("detail.retry") }}
+          </NButton>
+          <NButton v-if="hasDownload" quaternary @click="openDownloads">
+            {{ t("detail.openDownloads") }}
           </NButton>
           <NButton quaternary @click="goBack">{{ backLabel }}</NButton>
         </div>
@@ -307,6 +329,9 @@ function openResume() {
       :description="t('detail.notFoundDescription')"
     />
   </main>
+
+  <!-- Nested reader: the detail stays mounted underneath. -->
+  <RouterView />
 </template>
 
 <style scoped>

@@ -63,6 +63,11 @@ const chapterId = computed(() => {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 });
 
+// The reader is nested under its detail page. These names keep chapter
+// switches and the close action inside the same detail tree.
+const detailRoute = computed(() => route.meta.detailRoute ?? "comic-detail");
+const readerRoute = computed(() => route.meta.readerRoute ?? "comic-reader");
+
 useNextChapterPreload(
   chapter,
   page,
@@ -118,7 +123,7 @@ function syncPageQuery(value: number) {
 function goBack() {
   if (platform.value && id.value) {
     back({
-      name: "comic-detail",
+      name: detailRoute.value,
       params: { platform: platform.value, id: id.value },
     });
     return;
@@ -138,7 +143,7 @@ function goToChapter(
   // Chapter switches replace the current entry: the reader stays one history
   // step away from the detail page instead of stacking every chapter.
   void router.replace({
-    name: "comic-reader",
+    name: readerRoute.value,
     params: {
       platform: platform.value,
       id: id.value,
@@ -285,7 +290,7 @@ async function load() {
         return;
       }
       await router.replace({
-        name: "comic-reader",
+        name: readerRoute.value,
         params: {
           platform: currentPlatform,
           id: currentId,

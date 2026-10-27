@@ -73,12 +73,15 @@
     "downloading": "下载中 {done}/{total}",
     "resumeDownload": "继续下载",
     "downloaded": "已下载",
+    "openDownloads": "打开下载页",
     "continueReading": "继续阅读",
     "continueAt": "上次读到第 {page} / {total} 页",
     "chapterFallback": "第 {number} 章",
     "retry": "重试",
     "notFound": "未找到漫画",
     "notFoundDescription": "该漫画可能已被删除，或链接无效。",
+    "downloadMissing": "未找到已下载的漫画",
+    "downloadMissingDescription": "该内容可能已从本机删除。",
     "loadFailed": "漫画详情加载失败",
     "loading": "正在加载漫画详情…",
     "sections": {
@@ -125,9 +128,9 @@
       "other": "其他"
     },
     "offline": {
-      "tag": "离线",
+      "tag": "已下载",
       "summary": "已下载 {done} / {total} 章",
-      "notice": "在线详情不可用或仍在加载，当前仅显示已下载章节。",
+      "notice": "此详情页仅显示已下载到本机的章节。",
       "chapters": "已下载章节"
     }
   },

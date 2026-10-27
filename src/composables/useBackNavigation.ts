@@ -1,5 +1,6 @@
 import { useRouter } from "vue-router";
 import type { RouteLocationRaw } from "vue-router";
+import { backDeltaTo } from "../router/navigationStack";
 
 /**
  * Vue Router stores the entry before the current one in `history.state.back`
@@ -33,12 +34,24 @@ export function useBackNavigation() {
    * being left; replacing is the fallback for deep links (no previous entry)
    * and for pages reached through an unexpected path, so back never lands on
    * the page the user just left.
+   *
+   * If the target is earlier but not immediately previous (for example
+   * detail -> downloads -> home), walking back to it also removes the
+   * intervening page instead of leaving it under the target.
    */
   function goBack(target: RouteLocationRaw) {
-    if (previousPath() === router.resolve(target).fullPath) {
+    const fullPath = router.resolve(target).fullPath;
+    if (previousPath() === fullPath) {
       router.back();
       return;
     }
+
+    const delta = backDeltaTo(fullPath);
+    if (delta !== null && delta < 0) {
+      router.go(delta);
+      return;
+    }
+
     void router.replace(target);
   }
 

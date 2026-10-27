@@ -1,7 +1,7 @@
 import { computed, ref, watch } from "vue";
 import type { ComputedRef, Ref } from "vue";
 import { useMessage } from "naive-ui";
-import type { ComicDetail, ComicPlatform } from "../api/comics";
+import type { ComicPlatform } from "../api/comics";
 import {
   addFavorite,
   getFavorite,
@@ -13,10 +13,21 @@ import { useLatestRequest } from "./useLatestRequest";
 import { useLongPress } from "./useLongPress";
 import { useAppI18n } from "../i18n";
 
+/**
+ * The minimal snapshot the favorite endpoints need. Both the online detail
+ * and the downloaded detail can supply it without pretending to be the other
+ * detail payload.
+ */
+export interface FavoriteSnapshot {
+  platform: ComicPlatform;
+  title: string;
+  thumb: string | null;
+}
+
 export interface UseFavoriteActionOptions {
   platform: ComputedRef<ComicPlatform | null>;
   id: ComputedRef<string>;
-  detail: Ref<ComicDetail | null>;
+  detail: Ref<FavoriteSnapshot | null>;
 }
 
 /**
@@ -136,8 +147,7 @@ export function useFavoriteAction(options: UseFavoriteActionOptions) {
           id: comicId,
           title: current.title,
           thumb: current.thumb,
-        });
-        if (latest.isCurrent(token)) {
+        });        if (latest.isCurrent(token)) {
           entry.value = saved;
           message.success(t("favorites.addedToast"));
         }

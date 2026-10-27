@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  detailOriginFromPath,
+  detailBackTarget,
   readDetailOrigin,
 } from "./useDetailReturnTarget";
 
@@ -22,18 +22,12 @@ describe("detail return origin", () => {
     expect(readDetailOrigin({ from: 1 })).toBeNull();
   });
 
-  it("prefers explicit state over a legacy previous path", () => {
-    const source =
-      readDetailOrigin({ from: "downloads" }) ??
-      detailOriginFromPath("/history");
-    expect(source).toBe("downloads");
+  it("targets the component that opened the detail", () => {
+    expect(detailBackTarget("history")).toEqual({ name: "history" });
+    expect(detailBackTarget("search")).toEqual({ name: "search" });
   });
 
-  it("maps legacy list paths and rejects unrelated pages", () => {
-    expect(detailOriginFromPath("/favorites")).toBe("favorites");
-    expect(detailOriginFromPath("/history")).toBe("history");
-    expect(detailOriginFromPath("/downloads")).toBe("downloads");
-    expect(detailOriginFromPath("/comic/jm/1")).toBeNull();
-    expect(detailOriginFromPath(null)).toBeNull();
+  it("returns home when a deep link has no explicit origin", () => {
+    expect(detailBackTarget(null)).toEqual({ name: "home" });
   });
 });

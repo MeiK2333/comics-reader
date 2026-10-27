@@ -5,11 +5,11 @@ import type { ComicPlatform } from "../api/comics";
 import ComicSearchBar from "../components/ComicSearchBar.vue";
 import ComicSearchResults from "../components/ComicSearchResults.vue";
 import HomeIcon from "../components/HomeIcon.vue";
-import { useRouteTransition } from "../composables/useRouteTransition";
+import { useBackNavigation } from "../composables/useBackNavigation";
 import { useAppI18n } from "../i18n";
 import { useSearchStore } from "../stores/search";
 
-const { navigate } = useRouteTransition();
+const { goBack } = useBackNavigation();
 const { t } = useAppI18n();
 const search = useSearchStore();
 const { page, loading, response, error } = storeToRefs(search);
@@ -42,9 +42,9 @@ function selectPlatform(next: ComicPlatform) {
 }
 
 function goHome() {
-  // The outgoing results view stays visible for the view transition while the
-  // home page renders, so navigation and the reverse animation run together.
-  void navigate({ name: "home" });
+  // Search is a child of Home. Pop rather than push so the browser stack does
+  // not keep an empty results page under the home screen.
+  goBack({ name: "home" });
 }
 </script>
 

@@ -5,6 +5,7 @@ import { translate } from "../i18n";
 import pinia from "../stores";
 import { useSearchStore } from "../stores/search";
 import HomeView from "../views/HomeView.vue";
+import { recordNavigation } from "./navigationStack";
 
 type RouteTitleKey =
   | "app.name"
@@ -18,9 +19,19 @@ type RouteTitleKey =
   | "meta.logs"
   | "meta.notFound";
 
+/**
+ * Detail pages are the parent components of their reader route. The reader
+ * reads these names instead of assuming a single detail/reader pair, so the
+ * online and downloaded detail trees can stay separate.
+ */
+type DetailRouteName = "comic-detail" | "download-detail";
+type ReaderRouteName = "comic-reader" | "download-reader";
+
 declare module "vue-router" {
   interface RouteMeta {
     titleKey?: RouteTitleKey;
+    detailRoute?: DetailRouteName;
+    readerRoute?: ReaderRouteName;
   }
 }
 
@@ -48,6 +59,28 @@ const router = createRouter({
       meta: { titleKey: "meta.downloads" },
     },
     {
+      path: "/downloads/:platform(manhuagui|jm|nhentai)/:id",
+      name: "download-detail",
+      component: () => import("../views/DownloadedComicDetailView.vue"),
+      meta: {
+        titleKey: "meta.comic",
+        detailRoute: "download-detail",
+        readerRoute: "download-reader",
+      },
+      children: [
+        {
+          path: "read/:chapterId?",
+          name: "download-reader",
+          component: () => import("../views/ComicReaderView.vue"),
+          meta: {
+            titleKey: "meta.reader",
+            detailRoute: "download-detail",
+            readerRoute: "download-reader",
+          },
+        },
+      ],
+    },
+    {
       path: "/history",
       name: "history",
       component: () => import("../views/HistoryView.vue"),
@@ -66,16 +99,29 @@ const router = createRouter({
       meta: { titleKey: "meta.logs" },
     },
     {
-      path: "/comic/:platform(manhuagui|jm|nhentai)/:id/read/:chapterId?",
-      name: "comic-reader",
-      component: () => import("../views/ComicReaderView.vue"),
-      meta: { titleKey: "meta.reader" },
-    },
-    {
       path: "/comic/:platform(manhuagui|jm|nhentai)/:id",
       name: "comic-detail",
       component: () => import("../views/ComicDetailView.vue"),
-      meta: { titleKey: "meta.comic" },
+      meta: {
+        titleKey: "meta.comic",
+        detailRoute: "comic-detail",
+        readerRoute: "comic-reader",
+      },
+      // The reader is a child of the detail page, not a sibling route. The
+      // detail component therefore stays mounted while the reader is open and
+      // closing it does not reload the detail data.
+      children: [
+        {
+          path: "read/:chapterId?",
+          name: "comic-reader",
+          component: () => import("../views/ComicReaderView.vue"),
+          meta: {
+            titleKey: "meta.reader",
+            detailRoute: "comic-detail",
+            readerRoute: "comic-reader",
+          },
+        },
+      ],
     },
     {
       path: "/search",
@@ -145,6 +191,12 @@ export function updateWindowTitle(
   setWindowTitle(translateTitleKey(meta.titleKey ?? "app.name"));
 }
 
-router.afterEach((to) => updateWindowTitle(to.meta));
+router.afterEach((to) => {
+  updateWindowTitle(to.meta);
+  const position = (
+    window.history.state as { position?: unknown } | null
+  )?.position;
+  recordNavigation(to.fullPath, position);
+});
 
 export default router;
