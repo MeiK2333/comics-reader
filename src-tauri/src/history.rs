@@ -17,17 +17,15 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{BufWriter, ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
 use crate::error::{AppError, Result};
 use crate::logging;
+use crate::storage::{now_millis, page_window};
 
 const HISTORY_FILE_NAME: &str = "history.jsonl";
-const DEFAULT_PAGE_SIZE: u32 = 50;
-const MAX_PAGE_SIZE: u32 = 200;
 pub(crate) const MAX_ENTRIES: usize = 10_000;
 /// Compact once the log has this many lines. At the cap this bounds the file
 /// to roughly twice the size of a compacted checkpoint.
@@ -383,13 +381,6 @@ fn history_key(platform: &str, id: &str) -> Result<HistoryKey> {
     Ok((platform.to_owned(), id.to_owned()))
 }
 
-fn now_millis() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_millis() as u64)
-        .unwrap_or(0)
-}
-
 fn history_path(app: &AppHandle) -> Result<PathBuf> {
     Ok(app.path().app_data_dir()?.join(HISTORY_FILE_NAME))
 }
@@ -404,8 +395,7 @@ pub(crate) async fn list_history(
     tauri::async_runtime::spawn_blocking(move || {
         let path = history_path(&app)?;
         let store = app.state::<HistoryStore>();
-        let offset = offset.unwrap_or(0) as usize;
-        let limit = limit.unwrap_or(DEFAULT_PAGE_SIZE).clamp(1, MAX_PAGE_SIZE) as usize;
+        let (offset, limit) = page_window(offset, limit);
         store.with_data(&path, |data, _| Ok(data.list(offset, limit)))
     })
     .await

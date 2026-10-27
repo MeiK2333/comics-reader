@@ -14,23 +14,23 @@
 //! the built-in default group on load.
 
 use std::collections::HashMap;
-use std::fs::{self, File};
-use std::io::{BufWriter, ErrorKind, Write};
+use std::fs;
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
 use crate::error::{AppError, Result};
 use crate::logging;
+use crate::storage::{
+    atomic_write_json, backup_corrupt as move_corrupt_file, now_millis, page_window,
+};
 
 const FAVORITES_FILE_NAME: &str = "favorites.json";
 const DOCUMENT_VERSION: u32 = 2;
 const DEFAULT_GROUP_ID: &str = "default";
-const DEFAULT_PAGE_SIZE: u32 = 50;
-const MAX_PAGE_SIZE: u32 = 200;
 const MAX_ID_CHARS: usize = 256;
 const MAX_TITLE_CHARS: usize = 2_000;
 const MAX_THUMB_CHARS: usize = 4_096;
@@ -564,19 +564,15 @@ impl FavoritesData {
     }
 
     fn backup_corrupt(&mut self, path: &Path) {
-        let backup = backup_path(path);
-        // `fs::rename` does not replace an existing backup on every platform;
-        // drop the previous one so the newest unreadable file is preserved.
-        let _ = fs::remove_file(&backup);
-        match fs::rename(path, &backup) {
-            Ok(()) => logging::warn(
+        match move_corrupt_file(path) {
+            Ok(Some(backup)) => logging::warn(
                 "favorites",
                 format!(
                     "backed up an unreadable favorites file to {}",
                     backup.display()
                 ),
             ),
-            Err(error) if error.kind() == ErrorKind::NotFound => {}
+            Ok(None) => {}
             Err(error) => logging::warn(
                 "favorites",
                 format!("failed to back up the unreadable favorites file: {error}"),
@@ -603,38 +599,15 @@ fn write_document(
             .then_with(|| left.platform.cmp(&right.platform))
             .then_with(|| left.id.cmp(&right.id))
     });
-    let document = FavoritesDocument {
-        version: DOCUMENT_VERSION,
-        groups,
-        entries,
-    };
 
-    let temporary = temporary_path(path);
-    let result = (|| -> Result<()> {
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        let file = File::create(&temporary)?;
-        let mut writer = BufWriter::new(file);
-        serde_json::to_writer(&mut writer, &document)?;
-        writer.write_all(b"\n")?;
-        writer.flush()?;
-        writer.get_ref().sync_all()?;
-        Ok(())
-    })();
-
-    if let Err(error) = result {
-        let _ = fs::remove_file(&temporary);
-        return Err(error);
-    }
-
-    // The temporary file lives next to the target, so the final rename is
-    // atomic and a crash cannot leave a half-written favorites list.
-    if let Err(error) = fs::rename(&temporary, path) {
-        let _ = fs::remove_file(&temporary);
-        return Err(error.into());
-    }
-    Ok(())
+    atomic_write_json(
+        path,
+        &FavoritesDocument {
+            version: DOCUMENT_VERSION,
+            groups,
+            entries,
+        },
+    )
 }
 
 fn group_order(left: &FavoriteGroup, right: &FavoriteGroup) -> std::cmp::Ordering {
@@ -703,18 +676,6 @@ fn validate_group_name(value: &str) -> Result<String> {
     Ok(name.to_owned())
 }
 
-fn temporary_path(path: &Path) -> PathBuf {
-    let mut name = path.file_name().unwrap_or_default().to_os_string();
-    name.push(".tmp");
-    path.with_file_name(name)
-}
-
-fn backup_path(path: &Path) -> PathBuf {
-    let mut name = path.file_name().unwrap_or_default().to_os_string();
-    name.push(".bak");
-    path.with_file_name(name)
-}
-
 fn non_empty(value: String) -> Option<String> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
@@ -729,14 +690,6 @@ fn invalid(field: &'static str, reason: &str) -> AppError {
         field,
         reason: reason.to_owned(),
     }
-}
-
-fn now_millis() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_millis() as u64)
-        .unwrap_or(0)
-        .max(1)
 }
 
 fn favorites_path(app: &AppHandle) -> Result<PathBuf> {
@@ -754,8 +707,7 @@ pub(crate) async fn list_favorites(
     tauri::async_runtime::spawn_blocking(move || {
         let path = favorites_path(&app)?;
         let store = app.state::<FavoritesStore>();
-        let offset = offset.unwrap_or(0) as usize;
-        let limit = limit.unwrap_or(DEFAULT_PAGE_SIZE).clamp(1, MAX_PAGE_SIZE) as usize;
+        let (offset, limit) = page_window(offset, limit);
         let group_id = group_id.as_deref();
         store.with_data(&path, |data, _| Ok(data.list(offset, limit, group_id)))
     })
@@ -864,6 +816,7 @@ pub(crate) async fn delete_favorite_group(app: AppHandle, group_id: String) -> R
 mod tests {
     use super::*;
     use crate::error::ErrorCode;
+    use crate::storage::{backup_path, temporary_path};
 
     fn temp_path(label: &str) -> PathBuf {
         std::env::temp_dir().join(format!(

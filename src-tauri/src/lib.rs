@@ -5,6 +5,7 @@ mod favorites;
 mod history;
 mod image;
 mod logging;
+mod storage;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
