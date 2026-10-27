@@ -1,6 +1,6 @@
 # 重构与修复计划
 
-> **状态**：P1 已完成（2026-10-27），P2/P3 待执行
+> **状态**：P1 + P2-1 已完成（2026-10-27），P2 其余与 P3 待执行
 > **基线**：2026-10-27，当前 master 工作区
 > **适用对象**：后续接手本仓库的编码智能体
 > **配套文档**：[AGENTS.md](AGENTS.md)（契约、命令、易错点）、[ROADMAP.md](ROADMAP.md)（功能方向）
@@ -386,7 +386,7 @@ let body = http::fetch_document(client, platform, &spec).await?;
 
 #### P2-1 详情页：显式状态机 + composable 拆分（refactor，BUG-9）
 
-- **状态**：todo
+- **状态**：done（2026-10-27，自动化门禁 + E2E 通过；在线详情/收藏长按仍建议手动确认）
 - **依赖**：P1-1、P1-2、P2-7（返回来源可后做，接口先留）
 - **证据**：`ComicDetailView.vue:55-69` 有 10+ `ref`；在线/下载/历史/收藏四路并发；`678-727` 用 1.5s 定时器做离线回退；`486-537` 下载轮询。
 - **目标**：把“在线详情 + 离线回退 + 收藏 + 下载”从视图里抽出来，用显式状态表达来源，不再让定时器直接改 UI。
@@ -423,11 +423,11 @@ export function resolveDetailState(input: {
   - 下载轮询只在 `queued/downloading` 时存在，卸载/切作品清理。
   - 长按（500ms）/右键/`Shift+Enter` 打开分组选择器，长按后抑制 click。
 - **验收**：
-  - [ ] `ComicDetailView.vue` 降到 400 行以内（模板 + 少量编排）。
-  - [ ] 定时器只作为“状态转移的触发条件”，不直接改 `loading/offline` 以外的 UI 状态。
-  - [ ] `resolveDetailState` 有单测（online 快于/慢于 1.5s、无本地章节、在线失败、在线后到）。
-  - [ ] 收藏短按/长按/右键、下载按钮各状态、离线开始/继续阅读手动回归。
-  - [ ] `pnpm test`、`pnpm build` 通过。
+  - [x] `ComicDetailView.vue` 降到 400 行以内（334 行）。
+  - [x] 定时器只作为“状态转移的触发条件”，不直接改 `loading/offline` 以外的 UI 状态。
+  - [x] `resolveDetailState` 有单测（online 快于/慢于 1.5s、无本地章节、在线失败、在线后到）。
+  - [ ] 收藏短按/长按/右键、下载按钮各状态、离线开始/继续阅读手动回归（离线路径 E2E 已过；在线/收藏长按仍待手动）。
+  - [x] `pnpm test`、`pnpm build` 通过。
 - **手动矩阵**：在线详情；断网但已下载；断网且未下载；加载中下载完成；收藏/取消/移动分组；下载开始→暂停→继续→删除；返回收藏/历史/下载/搜索/首页。
 - **建议提交**（拆成多个）：
   1. `refactor(detail): extract detail state resolution`
@@ -836,3 +836,4 @@ refactor(reader): add pure page-boundary helpers
 - 2026-10-27 / P1-4 / `read_local_chapter` 从 async + `tokio::fs` 改为同步函数，下载命令统一走 `spawn_blocking`；删除仍持 data 锁执行 `remove_dir_all`，但不再占用 async runtime。
 - 2026-10-27 / P1-6 / 顺带修复新记录被 `is_active()` 短路的问题：新下载首次 `run_id` 由 0 改为 1，之后由 `next_run_id` 单调分配；删除后重新下载不会复用旧 id。
 - 2026-10-27 / P1-7 / JM 解码缓存键从 `?decoded` 变为 `?decoded=v1`，旧解码缓存自然失效但不删除（目录清扫留给 P3-2）。
+- 2026-10-27 / P2-1 / `ComicDetailView.vue` 从 983 行降到 334 行：新增 `detailState.ts`（纯函数 + 5 个单测）、`useComicDetail`（在线/离线、下载索引、历史、1.5s 回退）、`useFavoriteAction`（短按/长按/分组选择器）、`useDownloadAction`（开始下载、1.5s 轮询、跳下载页）、`useDetailReturnTarget`，以及 `DetailTopbar`/`DetailActions`。验证：`pnpm test` 87 passed、`pnpm build`、`pnpm test:e2e` 4/4 spec（含离线详情与阅读器）。未覆盖：真实在线详情、收藏长按/右键、下载进行中的按钮状态，建议真实窗口手动确认。
