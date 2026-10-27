@@ -1,6 +1,6 @@
 # 重构与修复计划
 
-> **状态**：P1 + P2-1 + P2-2 已完成；P2-3 模块拆分完成；P2-4 完成；P2-5 HTTP/ImageCache 完成（read_limited/模块环可选）；P2-6~P3 待执行
+> **状态**：P1 + P2-1 + P2-2 已完成；P2-3 模块拆分完成；P2-4 完成；P2-5 HTTP/ImageCache 完成；P2-6 IPC 收口完成；P2-7~P3 待执行
 > **基线**：2026-10-27，当前 master 工作区
 > **适用对象**：后续接手本仓库的编码智能体
 > **配套文档**：[AGENTS.md](AGENTS.md)（契约、命令、易错点）、[ROADMAP.md](ROADMAP.md)（功能方向）
@@ -572,8 +572,7 @@ src-tauri/src/downloads/
 
 #### P2-6 IPC 单入口 + ComicThumb 复用（refactor，BUG-11 的前置）
 
-- **状态**：todo
-- **依赖**：无（可在 P1 后做）
+- **状态**：done（2026-10-27：`api/client.ts` 单入口、ECH gate 拆到 `echStartup.ts`、ComicThumb 复用 `fetchCachedImage`）
 - **证据**：`ComicThumb.vue:42` 直接 `invoke`，重复定义 `CachedImage`；`waitForEchStartup` 散落在 comics/images/downloads/reader/ComicThumb。
 - **目标**：所有 IPC 走一个薄封装，ECH 等待策略显式；缩略图复用 `fetchCachedImage`。
 - **新增文件**：`src/api/client.ts`
@@ -596,9 +595,9 @@ export async function invokeCommand<T>(
   - 明确 `waitForEch: false` 的命令：`get_downloaded_chapter`、`pause_download`、`delete_download`、本地设置类命令（`set_logging_enabled` 等）。不要改变现有语义。
   - `ComicThumb` 改用 `fetchCachedImage`，删除本地 `CachedImage` 接口。
 - **验收**：
-  - [ ] `grep "invoke(" src` 只出现在 `api/client.ts` 和测试里（`convertFileSrc` 不算）。
-  - [ ] 缩略图走 in-flight 合并与已解析路径缓存；断网/防盗链行为不变。
-  - [ ] 现有测试更新 mock 后通过。
+  - [x] `grep "invoke(" src` 只出现在 `api/client.ts` 和测试里（`convertFileSrc` 不算）。
+  - [x] 缩略图走 in-flight 合并与已解析路径缓存；断网/防盗链行为不变。
+  - [x] 现有测试更新 mock 后通过。
 - **注意**：`invokeCommand` 只负责“等待 + 调用”，不要在里面吞错或自动 `toAppError`；错误规范化仍在调用点或 `useErrorMessage`。
 
 #### P2-7 返回来源显式化（refactor，BUG-12）
@@ -854,3 +853,4 @@ refactor(reader): add pure page-boundary helpers
 - 2026-10-27 / P2-5a / `image/http.rs` 改为 `image/http/{mod,fetch,tests}.rs`：`fetch.rs`（198 行）承载 `Download`、`FetchedDocument`、`download_image`、`fetch_document`、`is_mirror_error`；`tests.rs`（303 行）独立；`mod.rs` 550 行保留 `HttpClient`/代理/ECH。`fetch` 的类型/函数提升为 `pub(crate)` 并由 mod re-export，`MAX_DOCUMENT_BYTES` 从父模块读取。纯移动，下载/文档/镜像行为未变。验证：`cargo test` 160 passed、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`。剩余：client/ECH 拆分、`read_limited` 去重、`ImageCache` 注入。
 - 2026-10-27 / P2-5b / `http/` 继续拆为 `mod.rs`（100 行，`HttpClient`/`ClientState`/`get`/`set_proxy`）、`client.rs`（243 行，代理校验、builder、`send`、lock、transport 错误）、`ech.rs`（232 行，`EchRuntime`、refresh/fallback/控制代）、`fetch.rs`（198 行）与 `tests.rs`（309 行）；`eprintln` 改为只走 `logging`。验证：`cargo test` 160 passed、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`。剩余：`ImageCache` 注入、`read_limited` 去重；`ech` 命令仍通过 `HttpClient` 调用，模块级 use 环未完全消除。
 - 2026-10-27 / P2-5c / 新增 `ImageCache { base }`（`image/cache.rs`）：`new` 在 setup 解析一次 `app_cache_dir()/images`，`lookup/write` 封装现有 `find_cached`/`write_atomically`；`lib.rs` setup `app.manage(ImageCache)`，`fetch_image` 命令改为 `State<ImageCache>`，`fetch_image_inner` 接收 `&ImageCache`；下载 worker 从 `app.state` 取同一 cache，封面与页图复用。缓存键/布局/扩展名/零字节清理未变，新增 round-trip 单测。验证：`cargo test` 161 passed、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`。剩余可选：`read_limited` 去重、`ech` ↔ `http` 模块环。
+- 2026-10-27 / P2-6 / IPC 收口：新增 `api/client.ts`（`invokeCommand` 默认等 ECH、`invokeLocal` 不等）与 `api/echStartup.ts`（启动 gate，避免 client↔ech 环）；`ech.ts` 改为 re-export gate + `invokeLocal`；comics/images/reader/downloads/favorites/history/logs/proxy 全部迁移，网络命令默认等 ECH、本地索引/设置命令显式不等；`ComicThumb` 删除本地 `CachedImage` 与直接 `invoke`，改用 `fetchCachedImage` 复用 in-flight/已解析路径缓存。测试 mock 从 `./ech` 改为 `./echStartup`。验证：`pnpm test` 112 passed、`pnpm build`、`pnpm test:e2e` 4/4。

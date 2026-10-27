@@ -1,7 +1,6 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invokeCommand } from "./client";
 import type { ErrorPayload } from "../errors";
 import type { ComicPlatform } from "./comics";
-import { waitForEchStartup } from "./ech";
 import type { ReaderChapter } from "./reader";
 
 export type DownloadStatus =
@@ -83,8 +82,7 @@ export function isDownloadActive(status: DownloadStatus): boolean {
 export async function startDownload(
   input: DownloadInput,
 ): Promise<DownloadSummary> {
-  await waitForEchStartup();
-  return invoke<DownloadSummary>("start_download", { input });
+  return invokeCommand<DownloadSummary>("start_download", { input });
 }
 
 /** Pause a queued or running work. */
@@ -92,7 +90,11 @@ export function pauseDownload(
   platform: ComicPlatform,
   id: string,
 ): Promise<DownloadSummary> {
-  return invoke<DownloadSummary>("pause_download", { platform, id });
+  return invokeCommand<DownloadSummary>(
+    "pause_download",
+    { platform, id },
+    { waitForEch: false },
+  );
 }
 
 /** Resume the stored chapter list of an interrupted work. */
@@ -100,29 +102,40 @@ export async function resumeDownload(
   platform: ComicPlatform,
   id: string,
 ): Promise<DownloadSummary> {
-  await waitForEchStartup();
-  return invoke<DownloadSummary>("resume_download", { platform, id });
+  return invokeCommand<DownloadSummary>("resume_download", { platform, id });
 }
 
 export function deleteDownload(
   platform: ComicPlatform,
   id: string,
 ): Promise<void> {
-  return invoke("delete_download", { platform, id });
+  return invokeCommand(
+    "delete_download",
+    { platform, id },
+    { waitForEch: false },
+  );
 }
 
 export function listDownloads(
   offset = 0,
   limit = 50,
 ): Promise<DownloadPage> {
-  return invoke<DownloadPage>("list_downloads", { offset, limit });
+  return invokeCommand<DownloadPage>(
+    "list_downloads",
+    { offset, limit },
+    { waitForEch: false },
+  );
 }
 
 export function getDownload(
   platform: ComicPlatform,
   id: string,
 ): Promise<DownloadDetail | null> {
-  return invoke<DownloadDetail | null>("get_download", { platform, id });
+  return invokeCommand<DownloadDetail | null>(
+    "get_download",
+    { platform, id },
+    { waitForEch: false },
+  );
 }
 
 /**
@@ -135,9 +148,13 @@ export function getDownloadedChapter(
   id: string,
   chapterId?: string,
 ): Promise<ReaderChapter | null> {
-  return invoke<ReaderChapter | null>("get_downloaded_chapter", {
-    platform,
-    id,
-    chapterId: chapterId ?? null,
-  });
+  return invokeCommand<ReaderChapter | null>(
+    "get_downloaded_chapter",
+    {
+      platform,
+      id,
+      chapterId: chapterId ?? null,
+    },
+    { waitForEch: false },
+  );
 }

@@ -1,4 +1,6 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invokeCommand } from "./client";
+
+export { beginEchStartup, waitForEchStartup } from "./echStartup";
 
 /** Runtime state reported by `get_ech_status`. */
 export interface EchStatus {
@@ -18,36 +20,16 @@ export function setEchEnabled(
   enabled: boolean,
   bootstrapDoh?: string,
 ): Promise<void> {
-  return invoke("set_ech_enabled", {
-    enabled,
-    bootstrapDoh: bootstrapDoh ?? null,
-  });
+  return invokeCommand(
+    "set_ech_enabled",
+    {
+      enabled,
+      bootstrapDoh: bootstrapDoh ?? null,
+    },
+    { waitForEch: false },
+  );
 }
 
 export function getEchStatus(): Promise<EchStatus> {
-  return invoke("get_ech_status");
-}
-
-let echStartup: Promise<void> | null = null;
-
-/**
- * Register an in-flight ECH bootstrap. Business commands await this gate so a
- * deep link cannot issue its first request through the ordinary client.
- */
-export function beginEchStartup(task: Promise<void>): void {
-  const tracked = task
-    .catch(() => undefined)
-    .finally(() => {
-      if (echStartup === tracked) {
-        echStartup = null;
-      }
-    });
-  echStartup = tracked;
-}
-
-export async function waitForEchStartup(): Promise<void> {
-  // Loop in case a newer toggle replaced the promise while we were waiting.
-  while (echStartup) {
-    await echStartup;
-  }
+  return invokeCommand("get_ech_status", undefined, { waitForEch: false });
 }

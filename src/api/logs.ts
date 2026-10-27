@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invokeLocal } from "./client";
 import { save } from "@tauri-apps/plugin-dialog";
 
 /** Severity written by the Rust logger. */
@@ -23,12 +23,12 @@ export interface LogSnapshot {
 
 /** Toggle Rust file logging; the preference itself stays in the settings store. */
 export function setLoggingEnabled(enabled: boolean): Promise<void> {
-  return invoke("set_logging_enabled", { enabled });
+  return invokeLocal("set_logging_enabled", { enabled });
 }
 
 /** Read the newest log entries for display. */
 export function getLogs(): Promise<LogSnapshot> {
-  return invoke("read_logs");
+  return invokeLocal("read_logs");
 }
 
 /**
@@ -45,11 +45,11 @@ export async function exportLogs(): Promise<string | null> {
     return null;
   }
 
-  await invoke("export_logs", { destination });
+  await invokeLocal("export_logs", { destination });
   return destination;
 }
 
 /** Delete the active and rotated log files without changing the switch. */
 export function clearLogs(): Promise<void> {
-  return invoke("clear_logs");
+  return invokeLocal("clear_logs");
 }

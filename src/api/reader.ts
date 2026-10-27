@@ -1,7 +1,6 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invokeCommand } from "./client";
 import type { ComicPlatform } from "./comics";
 import { getDownloadedChapter } from "./downloads";
-import { waitForEchStartup } from "./ech";
 
 export interface ReaderPage {
   url: string;
@@ -133,8 +132,7 @@ export async function getReaderChapter(
     // online reader from loading the same chapter.
   }
 
-  await waitForEchStartup();
-  return invoke<ReaderChapter>("get_reader_chapter", {
+  return invokeCommand<ReaderChapter>("get_reader_chapter", {
     platform,
     id,
     chapterId: chapterId ?? null,

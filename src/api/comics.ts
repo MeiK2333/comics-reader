@@ -1,5 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
-import { waitForEchStartup } from "./ech";
+import { invokeCommand } from "./client";
 
 /** Platforms that implement keyword search and exact-id detail lookups. */
 export type ComicPlatform = "manhuagui" | "jm" | "nhentai";
@@ -176,8 +175,11 @@ export async function searchComics(
   query: string,
   page = 1,
 ): Promise<ComicSearchResult> {
-  await waitForEchStartup();
-  return invoke<ComicSearchResult>("search_comics", { platform, query, page });
+  return invokeCommand<ComicSearchResult>("search_comics", {
+    platform,
+    query,
+    page,
+  });
 }
 
 /**
@@ -187,6 +189,5 @@ export async function getComic(
   platform: ComicPlatform,
   id: string,
 ): Promise<ComicDetail> {
-  await waitForEchStartup();
-  return invoke<ComicDetail>("get_comic", { platform, id });
+  return invokeCommand<ComicDetail>("get_comic", { platform, id });
 }

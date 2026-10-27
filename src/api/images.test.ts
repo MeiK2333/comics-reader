@@ -5,7 +5,7 @@ const invokeMock = vi.hoisted(() => vi.fn());
 const waitMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
-vi.mock("./ech", () => ({ waitForEchStartup: waitMock }));
+vi.mock("./echStartup", () => ({ waitForEchStartup: waitMock }));
 
 import {
   fetchCachedImage,

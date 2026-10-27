@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import type { ComicPlatform } from "../api/comics";
-import { waitForEchStartup } from "../api/ech";
+import { fetchCachedImage } from "../api/images";
 
 const props = defineProps<{
   platform: ComicPlatform;
@@ -11,10 +11,6 @@ const props = defineProps<{
   /** Downloaded cover path; when present it wins over the remote thumbnail. */
   localPath?: string;
 }>();
-
-interface CachedImage {
-  path: string;
-}
 
 const root = ref<HTMLElement | null>(null);
 const src = ref("");
@@ -36,13 +32,9 @@ async function loadThumb() {
   }
 
   try {
-    await waitForEchStartup();
     // The platform headers and on-disk cache live in Rust, so thumbnails use
-    // the same path as full-page images instead of hotlinking the CDN.
-    const cached = await invoke<CachedImage>("fetch_image", {
-      url,
-      platform: props.platform,
-    });
+    // the same cache/in-flight pipeline as full-page images.
+    const cached = await fetchCachedImage(props.platform, url);
     if (id === requestId) {
       src.value = convertFileSrc(cached.path);
     }

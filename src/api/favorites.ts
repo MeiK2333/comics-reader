@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invokeLocal } from "./client";
 import type { ComicPlatform } from "./comics";
 
 /** Built-in group for short-press favorites. Mirrors `favorites::DEFAULT_GROUP_ID`. */
@@ -52,7 +52,7 @@ export function listFavorites(
   limit = 50,
   groupId?: string | null,
 ): Promise<FavoritePage> {
-  return invoke<FavoritePage>("list_favorites", {
+  return invokeLocal<FavoritePage>("list_favorites", {
     offset,
     limit,
     groupId: groupId ?? null,
@@ -64,12 +64,12 @@ export function getFavorite(
   platform: ComicPlatform,
   id: string,
 ): Promise<FavoriteEntry | null> {
-  return invoke<FavoriteEntry | null>("get_favorite", { platform, id });
+  return invokeLocal<FavoriteEntry | null>("get_favorite", { platform, id });
 }
 
 /** Save, refresh or move a work. Returns the persisted row. */
 export function addFavorite(entry: FavoriteInput): Promise<FavoriteEntry> {
-  return invoke<FavoriteEntry>("add_favorite", { entry });
+  return invokeLocal<FavoriteEntry>("add_favorite", { entry });
 }
 
 /** Remove a work. Removing an unsaved work is a no-op. */
@@ -77,17 +77,17 @@ export function removeFavorite(
   platform: ComicPlatform,
   id: string,
 ): Promise<void> {
-  return invoke("remove_favorite", { platform, id });
+  return invokeLocal("remove_favorite", { platform, id });
 }
 
 /** Return every group and the number of works in each. */
 export function listFavoriteGroups(): Promise<FavoriteGroupList> {
-  return invoke<FavoriteGroupList>("list_favorite_groups");
+  return invokeLocal<FavoriteGroupList>("list_favorite_groups");
 }
 
 /** Create a custom group. */
 export function createFavoriteGroup(name: string): Promise<FavoriteGroup> {
-  return invoke<FavoriteGroup>("create_favorite_group", { name });
+  return invokeLocal<FavoriteGroup>("create_favorite_group", { name });
 }
 
 /** Rename a custom group. */
@@ -95,10 +95,10 @@ export function renameFavoriteGroup(
   groupId: string,
   name: string,
 ): Promise<void> {
-  return invoke("rename_favorite_group", { groupId, name });
+  return invokeLocal("rename_favorite_group", { groupId, name });
 }
 
 /** Delete a custom group; its works move to the default group. */
 export function deleteFavoriteGroup(groupId: string): Promise<void> {
-  return invoke("delete_favorite_group", { groupId });
+  return invokeLocal("delete_favorite_group", { groupId });
 }

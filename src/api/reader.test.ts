@@ -6,7 +6,7 @@ const waitMock = vi.hoisted(() => vi.fn());
 const localMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
-vi.mock("./ech", () => ({ waitForEchStartup: waitMock }));
+vi.mock("./echStartup", () => ({ waitForEchStartup: waitMock }));
 vi.mock("./downloads", () => ({ getDownloadedChapter: localMock }));
 
 import {

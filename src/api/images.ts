@@ -1,6 +1,5 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invokeCommand } from "./client";
 import type { ComicPlatform } from "./comics";
-import { waitForEchStartup } from "./ech";
 
 export interface CachedImage {
   /** Absolute path inside the app cache directory. */
@@ -70,8 +69,10 @@ export function fetchCachedImage(
   }
 
   const request = (async () => {
-    await waitForEchStartup();
-    const image = await invoke<CachedImage>("fetch_image", { url, platform });
+    const image = await invokeCommand<CachedImage>("fetch_image", {
+      url,
+      platform,
+    });
     rememberImage(key, image);
     return image;
   })();

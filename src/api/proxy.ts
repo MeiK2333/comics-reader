@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invokeLocal } from "./client";
 import type { ProxySettings } from "../stores/settings";
 
 /** Field-level problems the settings form can show without calling Rust. */
@@ -63,7 +63,7 @@ export function validateProxy(
  * proxy and returns to reqwest's default behaviour.
  */
 export function applyProxy(proxy: ProxySettings): Promise<void> {
-  return invoke("set_http_proxy", {
+  return invokeLocal("set_http_proxy", {
     proxy: proxy.enabled
       ? { host: proxy.host.trim(), port: proxy.port }
       : null,

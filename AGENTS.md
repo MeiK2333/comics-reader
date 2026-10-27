@@ -32,7 +32,7 @@
 - `src/views/`：页面（含收藏、下载列表）；`src/components/`：搜索、结果卡片、收藏分组选择器、详情、阅读器。
 - `src/stores/`：`settings`（唯一持久化）、`search`（内存态）、`runtime`（ECH 启动状态）。
 - `src/composables/`：主题、语言、错误文案、图片缓存、缩放、长按手势、阅读历史写入、分页资源、请求竞态守卫。
-- `src/api/`：Tauri invoke 封装（含 `favorites.ts`、`downloads.ts`）；`src/i18n/`：类型化语言包；`src/router/`：hash 路由、守卫、窗口标题。
+- `src/api/`：`client.ts` 是唯一 IPC 入口（`invokeCommand`/`invokeLocal`），其余为各领域封装；`src/i18n/`：类型化语言包；`src/router/`：hash 路由、守卫、窗口标题。
 - `src/test/setup.ts`：Vitest 全局 setup（WebCrypto polyfill、每例 `clearMocks()`）；测试配置在 `vitest.config.ts`。
 - `e2e/`：WebDriver 配置、离线种子数据与 specs；`run.mjs` 启动 tauri-driver 并清理测试数据。`src-tauri/tauri.e2e.conf.json` 覆盖 identifier。
 - `src-tauri/src/`：
