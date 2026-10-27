@@ -23,14 +23,21 @@ use http::HttpProxyConfig;
 pub(crate) use model::{ChapterRef, ReaderChapter, ReaderPage};
 use model::{ComicDetail, SearchResponse};
 use platform::{
-    ImageDecode, descramble, find as find_platform, resolve as resolve_platform, scramble_id,
-    segment_count, unknown_platform,
+    ImageDecode, Platform, RequestSpec, descramble, find as find_platform,
+    resolve as resolve_platform, scramble_id, segment_count, unknown_platform,
 };
 
 /// Bump only when the cache layout itself changes. Per-platform header changes
 /// use `Platform::cache_version` instead.
 const CACHE_VERSION: &str = "v2";
 const CACHE_SUBDIR: &str = "images";
+/// Bump when a platform's decoded bytes change without a URL change (for
+/// example, a new JM descramble algorithm). The suffix is part of the cache key.
+const IMAGE_DECODE_VERSION: u32 = 1;
+
+fn decode_key_suffix() -> String {
+    format!("?decoded=v{IMAGE_DECODE_VERSION}")
+}
 
 /// Result of fetching an image, with the metadata the frontend needs to load
 /// the cached file through the asset protocol.
@@ -108,7 +115,7 @@ pub(crate) async fn fetch_image_inner(
     let decode = platform.image_decode(&url);
     let mut key_url = platform.cache_key_url(&url);
     if decode.is_some() {
-        key_url.push_str("?decoded");
+        key_url.push_str(&decode_key_suffix());
     }
 
     let key = cache::cache_key(platform.id(), platform.cache_version(), &key_url);
@@ -209,6 +216,20 @@ pub(crate) async fn search_comics(
     result
 }
 
+/// Prepare the platform before building a request.
+///
+/// JM signs `tokenparam` with the app version refreshed by `prepare`, so a
+/// request built too early would use the built-in version for the first command
+/// after startup. Keeping both steps in one helper makes the order explicit.
+async fn prepared_spec(
+    client: &HttpClient,
+    platform: &dyn Platform,
+    build: impl FnOnce() -> Result<RequestSpec>,
+) -> Result<RequestSpec> {
+    platform.prepare(client).await;
+    build()
+}
+
 async fn search_comics_inner(
     client: &HttpClient,
     platform: &str,
@@ -231,8 +252,7 @@ async fn search_comics_inner(
         });
     }
 
-    let spec = platform.search_request(query, page)?;
-    platform.prepare(client).await;
+    let spec = prepared_spec(client, platform, || platform.search_request(query, page)).await?;
     let body = http::fetch_document(client, platform, &spec).await?;
     platform.parse_search(query, page, &body)
 }
@@ -277,8 +297,7 @@ async fn get_comic_inner(client: &HttpClient, platform: &str, id: &str) -> Resul
         });
     }
 
-    let spec = platform.detail_request(id)?;
-    platform.prepare(client).await;
+    let spec = prepared_spec(client, platform, || platform.detail_request(id)).await?;
     let body = http::fetch_document(client, platform, &spec).await?;
     platform.parse_detail(id, &body)
 }
@@ -334,8 +353,10 @@ pub(crate) async fn get_reader_chapter_inner(
     }
     let chapter_id = chapter_id.map(str::trim).filter(|value| !value.is_empty());
 
-    let spec = platform.reader_chapter_request(id, chapter_id)?;
-    platform.prepare(client).await;
+    let spec = prepared_spec(client, platform, || {
+        platform.reader_chapter_request(id, chapter_id)
+    })
+    .await?;
     let body = http::fetch_document(client, platform, &spec).await?;
     platform.parse_reader_chapter(id, chapter_id, &body)
 }
@@ -362,4 +383,64 @@ pub(crate) fn set_http_proxy(
     }
 
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    use reqwest::RequestBuilder;
+    use url::Url;
+
+    struct FakePlatform {
+        prepared: AtomicBool,
+    }
+
+    impl Platform for FakePlatform {
+        fn id(&self) -> &'static str {
+            "fake"
+        }
+
+        fn configure(&self, request: RequestBuilder, _url: &Url) -> RequestBuilder {
+            request
+        }
+
+        fn prepare<'a>(
+            &'a self,
+            _client: &'a HttpClient,
+        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'a>> {
+            self.prepared.store(true, Ordering::SeqCst);
+            Box::pin(std::future::ready(()))
+        }
+
+        fn search_request(&self, _query: &str, _page: u32) -> Result<RequestSpec> {
+            assert!(
+                self.prepared.load(Ordering::SeqCst),
+                "prepare must run before the request is built"
+            );
+            Ok(RequestSpec::json(
+                Url::parse("https://example.com/").unwrap(),
+            ))
+        }
+    }
+
+    #[tokio::test]
+    async fn prepares_before_building_a_request() {
+        let client = HttpClient::default();
+        let platform = FakePlatform {
+            prepared: AtomicBool::new(false),
+        };
+
+        let spec = prepared_spec(&client, &platform, || platform.search_request("example", 1))
+            .await
+            .unwrap();
+
+        assert_eq!(spec.url.as_str(), "https://example.com/");
+    }
+
+    #[test]
+    fn decoded_cache_keys_carry_the_decode_version() {
+        assert_eq!(decode_key_suffix(), "?decoded=v1");
+    }
 }

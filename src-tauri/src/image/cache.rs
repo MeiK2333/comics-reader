@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use sha2::{Digest, Sha256};
+use tokio::io::AsyncWriteExt;
 use url::Url;
 
 use crate::error::{AppError, Result};
@@ -32,7 +33,16 @@ pub(super) async fn find_cached(cache_dir: &Path, key: &str) -> Result<Option<Pa
     for format in ImageFormat::ALL {
         let candidate = cache_dir.join(format!("{key}.{}", format.extension()));
         match tokio::fs::metadata(&candidate).await {
-            Ok(metadata) if metadata.is_file() => return Ok(Some(candidate)),
+            Ok(metadata) if metadata.is_file() && metadata.len() > 0 => {
+                return Ok(Some(candidate));
+            }
+            // A crash between creating the temporary file and syncing it can
+            // leave a zero-byte entry under the final name. Treat it as a miss
+            // and remove it so the next request downloads a usable image.
+            Ok(metadata) if metadata.is_file() => {
+                let _ = tokio::fs::remove_file(&candidate).await;
+                continue;
+            }
             Ok(_) => continue,
             Err(error) if error.kind() == ErrorKind::NotFound => continue,
             Err(error) => return Err(error.into()),
@@ -58,7 +68,18 @@ pub(super) async fn write_atomically(
         TEMP_ID.fetch_add(1, Ordering::Relaxed)
     ));
 
-    if let Err(error) = tokio::fs::write(&temporary, bytes).await {
+    // Flush and sync before the rename. Without it a power loss can leave the
+    // final name pointing at a truncated file.
+    let synced = async {
+        let file = tokio::fs::File::create(&temporary).await?;
+        let mut writer = tokio::io::BufWriter::new(file);
+        writer.write_all(bytes).await?;
+        writer.flush().await?;
+        writer.get_ref().sync_all().await?;
+        Ok::<(), std::io::Error>(())
+    }
+    .await;
+    if let Err(error) = synced {
         let _ = tokio::fs::remove_file(&temporary).await;
         return Err(error.into());
     }
@@ -292,5 +313,30 @@ mod tests {
                 Some(format)
             );
         }
+    }
+
+    #[tokio::test]
+    async fn ignores_and_removes_empty_cache_entries() {
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        static ID: AtomicU64 = AtomicU64::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "comics-reader-cache-{}-{}",
+            std::process::id(),
+            ID.fetch_add(1, Ordering::Relaxed)
+        ));
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+
+        let key = "empty-entry";
+        let path = dir.join(format!("{key}.jpg"));
+        tokio::fs::write(&path, b"").await.unwrap();
+
+        assert!(find_cached(&dir, key).await.unwrap().is_none());
+        assert!(!path.exists(), "the empty file should be removed");
+
+        tokio::fs::write(&path, b"\xff\xd8\xff").await.unwrap();
+        assert_eq!(find_cached(&dir, key).await.unwrap(), Some(path));
+
+        let _ = tokio::fs::remove_dir_all(&dir).await;
     }
 }
