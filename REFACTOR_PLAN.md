@@ -1,6 +1,6 @@
 # 重构与修复计划
 
-> **状态**：P1 + P2-1~P2-7 已完成；P3-1 ReaderChapter 契约、P3-2 缓存清扫、P3-4 worker 可测化完成；P3-1 其余/P3-3 待执行
+> **状态**：P1 + P2-1~P2-7 已完成；P3-1 ReaderChapter/DownloadDetail 契约、P3-2 缓存清扫、P3-4 worker 可测化完成；P3-1 其余/P3-3 待执行
 > **基线**：2026-10-27，当前 master 工作区
 > **适用对象**：后续接手本仓库的编码智能体
 > **配套文档**：[AGENTS.md](AGENTS.md)（契约、命令、易错点）、[ROADMAP.md](ROADMAP.md)（功能方向）
@@ -624,7 +624,7 @@ export async function invokeCommand<T>(
 
 #### P3-1 Rust ↔ TS 类型生成/契约测试（chore）
 
-- **状态**：in progress（2026-10-27：ReaderChapter 共享 JSON 契约已落地；其余 DTO 待评估是否需要生成器）
+- **状态**：in progress（2026-10-27：ReaderChapter 与 DownloadDetail 共享 JSON 契约已落地；其余 DTO 待评估是否需要生成器）
 - **目标**：减少手抄类型漂移（如 `ReaderChapter.thumb`）。
 - **做法**（先 spike，不要直接引入重依赖）：
   - 评估 `ts-rs`（serde 驱动）或 `specta`（Tauri 生态）与当前 Tauri 2/Vite 8 的兼容性。
@@ -855,3 +855,4 @@ refactor(reader): add pure page-boundary helpers
 - 2026-10-27 / P3-2 / `ImageCache` 新增 `sweep_default`/`sweep(max_bytes,max_age)`：递归扫描 `images/`，先删超过 30 天的文件，再按 mtime 从旧到新删到 512 MiB 以内；最近 1 小时文件不参与容量删除，删除失败只记日志；只清图片缓存，不碰下载目录。`lib.rs` setup 在 `manage` 后异步 spawn。新增 3 个临时目录单测（年龄、容量、最近文件保护）。验证：`cargo test` 164 passed、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`。
 - 2026-10-27 / P3-1a / 无新依赖的 wire 契约第一刀：新增 `contracts/reader-chapter.json`，Rust `image/model.rs` 测试把 `ReaderChapter` 序列化结果与 fixture 精确比较；前端 `src/api/contract.test.ts` 用 `satisfies ReaderChapter` 与运行时字段断言校验同一 fixture。`thumb`/`localPath`/`chapterId` 等字段漂移会在 Rust 或 TS 任一端失败。验证：`cargo test` 165 passed、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`pnpm test` 118 passed、`pnpm build`。
 - 2026-10-27 / P3-4 / worker 可测化：新增 `DownloadMedia` trait 与 `NetworkMedia` 生产实现，`download_with` 只做编排（章节循环、manifest、失败记录、run-id 检查），`download_work` 只负责从 Tauri state 组装依赖；`ensure_cover` 也走注入的 media。新增临时目录测试：单页失败只让该章失败、下一章继续完成；暂停后旧 run id 不再写章节。验证：`cargo test` 167 passed、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`。
+- 2026-10-27 / P3-1b / DownloadSummary/DownloadDetail 契约：新增 `contracts/download-detail.json`，`downloads/mod.rs` 测试把 flatten 后的 `DownloadDetail` 序列化结果与 fixture 精确比较；`src/api/contract.test.ts` 用 `DownloadDetail` 类型校验同一 fixture，覆盖 `coverPath`、`progress`、`chapters` 与 `status`。验证：`cargo test` 168 passed、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`pnpm test` 119 passed、`pnpm build`。

@@ -355,6 +355,57 @@ mod tests {
     }
 
     #[test]
+    fn download_detail_matches_the_shared_wire_contract() {
+        let summary = DownloadSummary {
+            platform: "manhuagui".into(),
+            id: "42".into(),
+            title: "Example Download".into(),
+            thumb: None,
+            cover_path: Some("/tmp/downloads/manhuagui/42/cover.jpg".into()),
+            status: DownloadStatus::Partial,
+            total_chapters: 2,
+            completed_chapters: 1,
+            failed_chapters: 1,
+            downloaded_pages: 12,
+            total_bytes: 34567,
+            read_chapter_id: Some("1".into()),
+            added_at: 1_700_000_000_000,
+            updated_at: 1_700_000_001_000,
+            error: None,
+            progress: Some(DownloadProgress {
+                chapter_id: Some("2".into()),
+                chapter_title: Some("Chapter 2".into()),
+                chapter_index: 1,
+                chapter_count: 2,
+                page: 5,
+                page_count: 8,
+            }),
+        };
+        let detail = DownloadDetail {
+            summary,
+            chapters: vec![
+                DownloadChapterSummary {
+                    id: Some("1".into()),
+                    title: Some("Chapter 1".into()),
+                    page_count: 10,
+                    completed: true,
+                },
+                DownloadChapterSummary {
+                    id: Some("2".into()),
+                    title: Some("Chapter 2".into()),
+                    page_count: 8,
+                    completed: false,
+                },
+            ],
+        };
+
+        let actual = serde_json::to_value(&detail).unwrap();
+        let expected: serde_json::Value =
+            serde_json::from_str(include_str!("../../../contracts/download-detail.json")).unwrap();
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
     fn merges_chapters_without_losing_completed_state() {
         let existing = vec![chapter(Some("1"), true), chapter(Some("3"), true)];
         let incoming = vec![chapter(Some("1"), false), chapter(Some("2"), false)];
