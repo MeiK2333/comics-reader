@@ -13,7 +13,7 @@ import type { ReaderImageSize } from "../../composables/useReaderZoom";
 import { useAppI18n } from "../../i18n";
 import type { ReaderDirection } from "../../stores/settings";
 import ReaderBattery from "./ReaderBattery.vue";
-import ReaderPageImage from "./ReaderPageImage.vue";
+import ReaderTrack from "./ReaderTrack.vue";
 
 const props = withDefaults(
   defineProps<{
@@ -42,11 +42,6 @@ const emit = defineEmits<{
   "page-boundary": [direction: "previous" | "next"];
   close: [];
 }>();
-
-interface PageSlot {
-  page: ReaderPage;
-  number: number;
-}
 
 const { t } = useAppI18n();
 const root = ref<HTMLElement | null>(null);
@@ -138,19 +133,6 @@ const trackStyle = computed<CSSProperties>(() => ({
     ? `transform ${TURN_DURATION_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1)`
     : "none",
 }));
-
-const pageSlots = computed<(PageSlot | null)[]>(() => {
-  const slots: (PageSlot | null)[] = [];
-  for (
-    let number = displayPage.value - 1;
-    number <= displayPage.value + 1;
-    number += 1
-  ) {
-    const page = props.pages[number - 1];
-    slots.push(page ? { page, number } : null);
-  }
-  return slots;
-});
 
 useReaderPreload(
   computed(() => props.platform),
@@ -682,35 +664,17 @@ onBeforeUnmount(() => {
       @pointercancel="onStagePointerCancel"
       @dragstart.prevent
     >
-      <div
-        class="viewer__track"
-        :class="`viewer__track--${direction}`"
-        :style="trackStyle"
-      >
-        <div
-          v-for="(slot, index) in pageSlots"
-          :key="
-            slot
-              ? `${slot.number}:${slot.page.localPath ?? slot.page.url}`
-              : `empty:${index}`
-          "
-          class="viewer__slot"
-          :class="{ 'viewer__slot--empty': slot === null }"
-          :aria-hidden="slot?.number !== displayPage"
-        >
-          <ReaderPageImage
-            v-if="slot"
-            :platform="platform"
-            :page="slot.page"
-            :page-number="slot.number"
-            :total="total"
-            :image-style="
-              slot.number === displayPage ? imageStyle : identityStyle
-            "
-            @size="onSlotSize(slot.number, $event)"
-          />
-        </div>
-      </div>
+      <ReaderTrack
+        :pages="pages"
+        :platform="platform"
+        :direction="direction"
+        :display-page="displayPage"
+        :total="total"
+        :track-style="trackStyle"
+        :image-style="imageStyle"
+        :identity-style="identityStyle"
+        @size="onSlotSize"
+      />
       <div v-if="!currentPage" class="viewer__empty">
         {{ t("reader.empty") }}
       </div>
@@ -1027,52 +991,6 @@ onBeforeUnmount(() => {
   background: var(--app-background);
   touch-action: none;
   user-select: none;
-}
-
-.viewer__track {
-  position: absolute;
-  top: 0;
-  left: 0;
-  display: flex;
-  will-change: transform;
-}
-
-.viewer__track--ltr,
-.viewer__track--rtl {
-  width: 300%;
-  height: 100%;
-  flex-direction: row;
-}
-
-.viewer__track--rtl {
-  flex-direction: row-reverse;
-}
-
-.viewer__track--ttb {
-  width: 100%;
-  height: 300%;
-  flex-direction: column;
-}
-
-.viewer__slot {
-  position: relative;
-  flex: 0 0 33.333333%;
-  overflow: hidden;
-}
-
-.viewer__track--ltr .viewer__slot,
-.viewer__track--rtl .viewer__slot {
-  width: 33.333333%;
-  height: 100%;
-}
-
-.viewer__track--ttb .viewer__slot {
-  width: 100%;
-  height: 33.333333%;
-}
-
-.viewer__slot--empty {
-  background: var(--app-background);
 }
 
 .viewer__empty {

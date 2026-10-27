@@ -64,6 +64,7 @@ declare module 'vue' {
     PlatformPicker: typeof import('./components/PlatformPicker.vue')['default']
     ReaderBattery: typeof import('./components/reader/ReaderBattery.vue')['default']
     ReaderPageImage: typeof import('./components/reader/ReaderPageImage.vue')['default']
+    ReaderTrack: typeof import('./components/reader/ReaderTrack.vue')['default']
     ResultCardShell: typeof import('./components/result-cards/ResultCardShell.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
