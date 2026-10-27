@@ -1,7 +1,7 @@
 # 重构与修复计划（待办）
 
-> **状态**：P1、P2-1~P2-8、P3-2、P3-4、P4-4 已完成并从本文件移除（历史见 git log）。剩余：P4-1~P4-3、P4-5~P4-7（主线）、P4-8（低优先）、P4-9（条件项）、P3-1（可选）、P3-3（条件项）。
-> **基线**：2026-10-27，master（P4-4 后）；`pnpm test` 25 files / 136 tests、`cargo test` 169 passed / 10 ignored。
+> **状态**：P1、P2-1~P2-8、P3-2、P3-4、P4-1、P4-4 已完成并从本文件移除（历史见 git log）。剩余：P4-2~P4-3、P4-5~P4-7（主线）、P4-8（低优先）、P4-9（条件项）、P3-1（可选）、P3-3（条件项）。
+> **基线**：2026-10-27，master（P4-1、P4-4 后）；`pnpm test` 27 files / 157 tests、`cargo test` 169 passed / 10 ignored。
 > **适用对象**：后续接手本仓库的编码智能体。
 > **配套文档**：[AGENTS.md](AGENTS.md)（契约、命令、易错点，优先于本文件）、[ROADMAP.md](ROADMAP.md)（功能方向）。
 > **定位说明**：任务卡里的行号是基线行号，代码变动后会漂移；定位时按符号名（函数/结构体/常量）搜索，不要机械相信行号。
@@ -12,13 +12,13 @@
 
 主体重构已经结束。当前维护成本集中在：
 
-1. **测试盲区**（P4 主线）：阅读器手势/缩放、跨章预加载、收藏动作与详情数据层、IPC/缓存/搜索守卫还没有直接单测。
+1. **测试盲区**（P4 主线）：阅读器缩放、跨章预加载、收藏动作与详情数据层、IPC/缓存/搜索守卫还没有直接单测。
 2. **少量叶子重复**：`KNOWN_PLATFORMS` 三处（P4-8）；其余重复已记录为例外，不要强行统一。
 3. **按需项**：P3-1 其余 DTO 契约只在 wire 结构变化时补；P3-3 分页索引只在有 benchmark 时做。
 
 执行顺序：
 
-1. **P4-1 → P4-2 → P4-3 → P4-5 → P4-6 → P4-7**；P4-8 低优先，P4-9 条件项。
+1. **P4-2 → P4-3 → P4-5 → P4-6 → P4-7**；P4-8 低优先，P4-9 条件项。
 2. P3-1 随 wire 变化推进；P3-3 有性能证据再做。
 
 一次只做一个任务卡，独立提交；先加失败用例再修缺陷；结构拆分、行为修复、测试补齐不要混在同一提交。
@@ -57,7 +57,6 @@
 
 | 模块 | 行数 | 为什么高风险 |
 | --- | ---: | --- |
-| `src/composables/useReaderGestures.ts` | 406 | 手势/双指/防误触全部内联；E2E 只覆盖基础滑动与点击区 |
 | `src/composables/useReaderZoom.ts` | 122 | 缩放锚点与边界 clamp 是数学核心 |
 | `src/composables/useNextChapterPreload.ts` | 93 | 跨章预热链路、去重与失败静默 |
 | `src/composables/useFavoriteAction.ts` | 186 | 短按/长按/分组/切换作品 |
@@ -67,13 +66,13 @@
 | `src/composables/useCachedImage.ts` | 102 | 局部 requestId 例外 |
 | `src/stores/search.ts` | 90 | 局部 requestId 例外；URL-free 搜索会话 |
 
-这些模块合计约 1,500 行。P4 不按覆盖率数字推进，按对应卡片的行为矩阵补测试。
+这些模块合计约 1,100 行。P4 不按覆盖率数字推进，按对应卡片的行为矩阵补测试。
 
 ### 2.3 验证基线
 
 ```powershell
 # 仓库根目录
-pnpm test        # 25 files / 136 tests
+pnpm test        # 27 files / 157 tests
 pnpm build       # vue-tsc --noEmit + Vite build
 
 # src-tauri/
@@ -146,38 +145,10 @@ BUG-1~BUG-10、BUG-12、BUG-13 的已修复项不再保留；需要追溯时看 
 - Pinia store 测试按 `src/stores/settings.test.ts` 的模式：先 `createApp(...).use(pinia)`，再创建 store，否则持久化插件不会执行。
 - 测试文件与源码同级（`src/**/*.test.ts`），命名沿用现有风格，不新建 `__tests__/` 目录。
 
-#### P4-1 阅读器手势决策可测化（test/refactor）
-
-- **状态**：todo
-- **依赖**：无
-- **证据**：`src/composables/useReaderGestures.ts` 约 406 行、0 测试；tap 三区、ltr/rtl/ttb 方向映射、滑动阈值、边界限幅、缩放后平移与双指 pinch 全在 pointer 回调里内联判断；`e2e/specs/offline-reader.e2e.js` 只覆盖左右滑动、点击区和键盘。方向映射在 `onStagePointerMove` 与 `onStagePointerUp` 各写了一遍，已有漂移风险。
-- **目标**：把“由方向/页码/阈值/缩放状态决定的行为”抽成 `src/lib/reader-gestures.ts` 的纯函数，hook 只保留事件编排与指针状态。
-- **建议纯函数**（命名可调整，保持单一职责）：
-  - `tapZone(ratio: number): "left" | "middle" | "right"`（含边界值）
-  - `isForwardGesture(direction, horizontal, primaryDelta): boolean`
-  - `swipeTarget(input: { displayPage, total, forward }): number | "boundary"`
-  - `dragLimit(stageSpan, atBoundary): number`
-  - `isTapSuppressed(input: { moved, pinched }): boolean`
-- **测试文件**：`src/lib/reader-gestures.test.ts` + `src/composables/useReaderGestures.test.ts`
-- **用例**：
-  - ltr 左滑 → `turnTo(page+1)`；ltr 右滑 → `turnTo(page-1)`；rtl 相反；ttb 上滑/下滑映射，横向轴不参与。
-  - 点击左/中/右三区：ltr 与 rtl 下左右区含义相反，中间区 `toggleChrome()`；`ratio` 恰好在 1/3、2/3 时归入哪一侧要有断言。
-  - 滑动小于阈值 → `snapBack()`，不翻页；首/尾页继续滑动 → 调用 `nextPage()`/`previousPage()`（由视图层切章/回详情），不调用 `turnTo`。
-  - `scale > 1` 时拖拽只 `panBy`，松开不触发 tap/翻页；双指 pinch 调用 `panBy` + `setScale`，松开一指后剩余指针按平移处理且不误触。
-  - 动画中（`isAnimating()` 为 true）忽略 down/move/up；`pointercancel` 归位；按钮/链接等交互目标忽略指针事件。
-- **不要做**：不要改 `usePageTurn` 的 owner 语义或三槽轨道；不要把 tap 判定改成基于 pointerdown 坐标（当前以释放点为准，先测现状）。
-- **验收**：
-  - [ ] 手势决策不再以裸 `if` 散落在 hook 中；纯函数有边界值测试。
-  - [ ] 现有 E2E 覆盖的行为（滑动/点击区/键盘）不被改变；`pnpm test`、`pnpm build` 通过。
-  - [ ] 新增测试不依赖真实 PointerEvent 实现，可在 jsdom 稳定运行。
-- **建议提交**：
-  1. `refactor(reader): extract gesture decision helpers`
-  2. `test(reader): cover pointer gestures and tap zones`
-
 #### P4-2 缩放/平移单测（test）
 
 - **状态**：todo
-- **依赖**：无（可与 P4-1 并行）
+- **依赖**：无（可与 P4-3 并行）
 - **证据**：`src/composables/useReaderZoom.ts` 约 122 行、0 测试；锚点缩放、边界 clamp、`reset` 与 `reflow` 是双指缩放的数学核心。
 - **目标**：给缩放/平移的 clamp 与锚点计算补单测；若发现边界错误，单独 `fix` 提交。
 - **用例**：
@@ -272,7 +243,7 @@ BUG-1~BUG-10、BUG-12、BUG-13 的已修复项不再保留；需要追溯时看 
 
 #### P4-9 阅读器路由编排可测化（conditional）
 
-- **状态**：conditional（未开始；只有 P4-1~P4-7 完成后才评估）
+- **状态**：conditional（未开始；只有 P4-2~P4-7 完成后才评估）
 - **证据**：`ComicReaderView.vue` 约 463 行，包含缓存/在途页源选择、manhuagui 无章节深链解析首章、`?page=last`、URL query 同步、历史记录去抖 gate、body overflow；这些逻辑没有单测。
 - **做法**：抽出 `useReaderChapterSource`（或等价 composable）负责“路由参数 → 章节数据/页码/URL/历史”的编排，视图只做渲染；用 mock 的 router + api 测。若评估认为抽取会破坏既定阅读器行为，保持现状并在任务卡记录理由，不要强行拆。
 - **验收**：抽取后 `pnpm test`、`pnpm build` 通过；若环境可用，E2E 行为不变。
@@ -310,7 +281,7 @@ P4 只按自动化门禁验收；真实窗口冒烟（`pnpm tauri dev`）建议�
 
 ### P4 完成
 
-- [ ] P4-1~P4-3、P4-5~P4-7 全部状态为 done（P4-8 低优先、P4-9 条件项）。
+- [ ] P4-2~P4-3、P4-5~P4-7 全部状态为 done（P4-8 低优先、P4-9 条件项）。
 - [ ] `pnpm test` 覆盖新增用例；`pnpm build`、`cargo test`、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings` 全绿。
 - [ ] 新增测试不依赖网络、真实 Tauri runtime、WebDriver 或真机。
 - [ ] 测试暴露的行为缺陷有独立 `fix` 提交和回归用例。
