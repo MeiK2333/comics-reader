@@ -2,7 +2,9 @@
 
 use tokio::io::AsyncWriteExt;
 
-use crate::image::{HttpClient, ImageCache, fetch_image_inner, get_reader_chapter_inner};
+use crate::image::{
+    CachedImage, HttpClient, ImageCache, fetch_image_inner, get_reader_chapter_inner,
+};
 
 use super::*;
 
@@ -99,10 +101,40 @@ fn extension_of(path: &str) -> Result<&str> {
         .ok_or_else(|| AppError::Unexpected("downloaded image has no usable extension".into()))
 }
 
-async fn ensure_cover(
+#[allow(async_fn_in_trait)]
+trait DownloadMedia {
+    async fn chapter(
+        &self,
+        platform: &str,
+        id: &str,
+        chapter_id: Option<&str>,
+    ) -> Result<ReaderChapter>;
+    async fn image(&self, url: String, platform: &str) -> Result<CachedImage>;
+}
+
+struct NetworkMedia<'a> {
+    client: &'a HttpClient,
+    cache: &'a ImageCache,
+}
+
+impl DownloadMedia for NetworkMedia<'_> {
+    async fn chapter(
+        &self,
+        platform: &str,
+        id: &str,
+        chapter_id: Option<&str>,
+    ) -> Result<ReaderChapter> {
+        get_reader_chapter_inner(self.client, platform, id, chapter_id).await
+    }
+
+    async fn image(&self, url: String, platform: &str) -> Result<CachedImage> {
+        fetch_image_inner(self.client, self.cache, url, Some(platform.to_owned())).await
+    }
+}
+
+async fn ensure_cover<M: DownloadMedia>(
     store: &DownloadsStore,
-    cache: &ImageCache,
-    app: &AppHandle,
+    media: &M,
     path: &Path,
     root: &Path,
     key: &DownloadKey,
@@ -121,21 +153,19 @@ async fn ensure_cover(
         return Ok(());
     };
 
-    let http = app.state::<HttpClient>();
-    let cached =
-        match fetch_image_inner(http.inner(), cache, thumb, Some(record.platform.clone())).await {
-            Ok(image) => image,
-            Err(error) => {
-                logging::warn(
-                    "download",
-                    format!(
-                        "failed to download the cover: platform={} id={} error={error}",
-                        key.0, key.1
-                    ),
-                );
-                return Ok(());
-            }
-        };
+    let cached = match media.image(thumb, &record.platform).await {
+        Ok(image) => image,
+        Err(error) => {
+            logging::warn(
+                "download",
+                format!(
+                    "failed to download the cover: platform={} id={} error={error}",
+                    key.0, key.1
+                ),
+            );
+            return Ok(());
+        }
+    };
     if !store.is_current(path, key, run_id)? {
         return Ok(());
     }
@@ -156,37 +186,35 @@ async fn ensure_cover(
     Ok(())
 }
 
-async fn download_work(app: &AppHandle, key: &DownloadKey, run_id: u64) -> Result<()> {
-    let store = app.state::<DownloadsStore>();
-    let cache = app.state::<ImageCache>();
-    let path = downloads_index_path(app)?;
-    let root = downloads_root(app)?;
-    let Some(record) = store.record_snapshot(&path, key)? else {
+async fn download_with<M: DownloadMedia>(
+    store: &DownloadsStore,
+    media: &M,
+    path: &Path,
+    root: &Path,
+    key: &DownloadKey,
+    run_id: u64,
+) -> Result<()> {
+    let Some(record) = store.record_snapshot(path, key)? else {
         return Ok(());
     };
 
-    let directory = work_dir(&root, &record);
+    let directory = work_dir(root, &record);
     tokio::fs::create_dir_all(&directory).await?;
-    ensure_cover(store.inner(), cache.inner(), app, &path, &root, key, run_id).await?;
+    ensure_cover(store, media, path, root, key, run_id).await?;
 
-    let http = app.state::<HttpClient>();
     let chapter_count = record.chapters.len() as u32;
     for (chapter_index, chapter) in record.chapters.iter().enumerate() {
         if chapter.completed {
             continue;
         }
-        if !store.is_current(&path, key, run_id)? {
+        if !store.is_current(path, key, run_id)? {
             return Ok(());
         }
 
         let chapter_number = chapter_index as u32 + 1;
-        let source = match get_reader_chapter_inner(
-            http.inner(),
-            &record.platform,
-            &record.id,
-            chapter.id.as_deref(),
-        )
-        .await
+        let source = match media
+            .chapter(&record.platform, &record.id, chapter.id.as_deref())
+            .await
         {
             Ok(source) => source,
             Err(error) => {
@@ -199,7 +227,7 @@ async fn download_work(app: &AppHandle, key: &DownloadKey, run_id: u64) -> Resul
                 );
                 let failure = DownloadFailure::from_app(&error);
                 store.fail_chapter(
-                    &path,
+                    path,
                     key,
                     run_id,
                     chapter_index as u32,
@@ -209,19 +237,19 @@ async fn download_work(app: &AppHandle, key: &DownloadKey, run_id: u64) -> Resul
                 continue;
             }
         };
-        if !store.is_current(&path, key, run_id)? {
+        if !store.is_current(path, key, run_id)? {
             return Ok(());
         }
         if source.pages.is_empty() {
             let failure = DownloadFailure::from_app(&AppError::NotFound {
                 resource: "chapter pages".into(),
             });
-            store.fail_chapter(&path, key, run_id, chapter_index as u32, 0, failure)?;
+            store.fail_chapter(path, key, run_id, chapter_index as u32, 0, failure)?;
             continue;
         }
 
         store.note_chapter_started(
-            &path,
+            path,
             key,
             run_id,
             chapter_index as u32,
@@ -230,14 +258,14 @@ async fn download_work(app: &AppHandle, key: &DownloadKey, run_id: u64) -> Resul
             source.chapter_title.clone(),
         )?;
 
-        let chapter_directory = chapter_dir(&root, &record, chapter.id.as_deref());
+        let chapter_directory = chapter_dir(root, &record, chapter.id.as_deref());
         tokio::fs::create_dir_all(&chapter_directory).await?;
         let existing = existing_pages(&chapter_directory).await?;
         let mut manifest_pages = Vec::with_capacity(source.pages.len());
         let mut failure: Option<DownloadFailure> = None;
 
         for (page_index, page) in source.pages.iter().enumerate() {
-            if !store.is_current(&path, key, run_id)? {
+            if !store.is_current(path, key, run_id)? {
                 return Ok(());
             }
 
@@ -255,7 +283,7 @@ async fn download_work(app: &AppHandle, key: &DownloadKey, run_id: u64) -> Resul
                         height: page.height,
                     });
                     store.note_page(
-                        &path,
+                        path,
                         key,
                         run_id,
                         page_number,
@@ -267,21 +295,14 @@ async fn download_work(app: &AppHandle, key: &DownloadKey, run_id: u64) -> Resul
                 }
             }
 
-            let cached = match fetch_image_inner(
-                http.inner(),
-                cache.inner(),
-                page.url.clone(),
-                Some(record.platform.clone()),
-            )
-            .await
-            {
+            let cached = match media.image(page.url.clone(), &record.platform).await {
                 Ok(image) => image,
                 Err(error) => {
                     failure = Some(DownloadFailure::from_app(&error));
                     break;
                 }
             };
-            if !store.is_current(&path, key, run_id)? {
+            if !store.is_current(path, key, run_id)? {
                 return Ok(());
             }
 
@@ -302,7 +323,7 @@ async fn download_work(app: &AppHandle, key: &DownloadKey, run_id: u64) -> Resul
                     }
                 };
             if !store.note_page(
-                &path,
+                path,
                 key,
                 run_id,
                 page_number,
@@ -332,7 +353,7 @@ async fn download_work(app: &AppHandle, key: &DownloadKey, run_id: u64) -> Resul
             {
                 Ok(()) => {
                     store.complete_chapter(
-                        &path,
+                        path,
                         key,
                         run_id,
                         chapter_index as u32,
@@ -365,7 +386,7 @@ async fn download_work(app: &AppHandle, key: &DownloadKey, run_id: u64) -> Resul
                 ),
             );
             store.fail_chapter(
-                &path,
+                path,
                 key,
                 run_id,
                 chapter_index as u32,
@@ -376,6 +397,19 @@ async fn download_work(app: &AppHandle, key: &DownloadKey, run_id: u64) -> Resul
     }
 
     Ok(())
+}
+
+async fn download_work(app: &AppHandle, key: &DownloadKey, run_id: u64) -> Result<()> {
+    let store = app.state::<DownloadsStore>();
+    let cache = app.state::<ImageCache>();
+    let http = app.state::<HttpClient>();
+    let path = downloads_index_path(app)?;
+    let root = downloads_root(app)?;
+    let media = NetworkMedia {
+        client: http.inner(),
+        cache: cache.inner(),
+    };
+    download_with(store.inner(), &media, &path, &root, key, run_id).await
 }
 
 async fn run_download(app: AppHandle, key: DownloadKey, run_id: u64) {
@@ -436,4 +470,145 @@ pub(super) fn spawn_download(app: AppHandle, key: DownloadKey, run_id: u64) {
     tauri::async_runtime::spawn(async move {
         run_download(app, key, run_id).await;
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use crate::downloads::model::{DownloadChapterInput, DownloadInput};
+
+    struct FakeMedia {
+        source: PathBuf,
+    }
+
+    impl DownloadMedia for FakeMedia {
+        async fn chapter(
+            &self,
+            _platform: &str,
+            _id: &str,
+            chapter_id: Option<&str>,
+        ) -> Result<ReaderChapter> {
+            let pages = if chapter_id == Some("1") {
+                vec![ReaderPage {
+                    url: "bad".into(),
+                    width: None,
+                    height: None,
+                    local_path: None,
+                }]
+            } else {
+                vec![ReaderPage {
+                    url: "good".into(),
+                    width: Some(4),
+                    height: Some(4),
+                    local_path: None,
+                }]
+            };
+            Ok(ReaderChapter {
+                title: "Work".into(),
+                thumb: String::new(),
+                chapter_id: chapter_id.map(str::to_owned),
+                chapter_title: chapter_id.map(|id| format!("Chapter {id}")),
+                pages,
+                previous: None,
+                next: None,
+            })
+        }
+
+        async fn image(&self, url: String, platform: &str) -> Result<CachedImage> {
+            if url == "bad" {
+                return Err(AppError::Network {
+                    url,
+                    reason: "page failed".into(),
+                });
+            }
+            Ok(CachedImage {
+                path: self.source.to_string_lossy().into_owned(),
+                content_type: "image/png".into(),
+                byte_length: 4,
+                from_cache: false,
+                platform: platform.into(),
+            })
+        }
+    }
+
+    fn temp_dir(label: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "comics-reader-worker-{label}-{}-{}",
+            std::process::id(),
+            now_millis()
+        ))
+    }
+
+    fn input(chapters: &[&str]) -> DownloadInput {
+        DownloadInput {
+            platform: "manhuagui".into(),
+            id: "42".into(),
+            title: "Work".into(),
+            thumb: None,
+            chapters: chapters
+                .iter()
+                .map(|id| DownloadChapterInput {
+                    id: Some((*id).into()),
+                    title: Some(format!("Chapter {id}")),
+                })
+                .collect(),
+        }
+    }
+
+    async fn fixture(label: &str, chapters: &[&str]) -> (PathBuf, PathBuf, DownloadsStore, u64) {
+        let path = temp_dir(label).with_extension("json");
+        let root = temp_dir(&format!("{label}-root"));
+        tokio::fs::create_dir_all(&root).await.unwrap();
+        let store = DownloadsStore::default();
+        let (_, run_id) = store.start(&path, &root, input(chapters)).unwrap();
+        let run_id = run_id.expect("a new download should get a run id");
+        assert!(
+            store
+                .begin_worker(&path, &("manhuagui".into(), "42".into()), run_id)
+                .unwrap()
+        );
+        (path, root, store, run_id)
+    }
+
+    #[tokio::test]
+    async fn a_failed_page_fails_one_chapter_and_continues() {
+        let (path, root, store, run_id) = fixture("partial", &["1", "2"]).await;
+        let source = root.join("source.png");
+        tokio::fs::write(&source, b"\x89PNG").await.unwrap();
+        let key = ("manhuagui".into(), "42".into());
+
+        download_with(&store, &FakeMedia { source }, &path, &root, &key, run_id)
+            .await
+            .unwrap();
+
+        let record = store.record_snapshot(&path, &key).unwrap().unwrap();
+        assert!(!record.chapters[0].completed);
+        assert!(record.chapters[0].error.is_some());
+        assert!(record.chapters[1].completed);
+
+        let _ = tokio::fs::remove_file(&path).await;
+        let _ = tokio::fs::remove_dir_all(&root).await;
+    }
+
+    #[tokio::test]
+    async fn a_paused_worker_stops_before_touching_the_next_chapter() {
+        let (path, root, store, run_id) = fixture("paused", &["1"]).await;
+        let source = root.join("source.png");
+        tokio::fs::write(&source, b"\x89PNG").await.unwrap();
+        let key = ("manhuagui".into(), "42".into());
+
+        store.pause(&path, &root, "manhuagui", "42").unwrap();
+
+        download_with(&store, &FakeMedia { source }, &path, &root, &key, run_id)
+            .await
+            .unwrap();
+
+        let record = store.record_snapshot(&path, &key).unwrap().unwrap();
+        assert!(!record.chapters[0].completed);
+        assert_eq!(record.status, DownloadStatus::Paused);
+
+        let _ = tokio::fs::remove_file(&path).await;
+        let _ = tokio::fs::remove_dir_all(&root).await;
+    }
 }
