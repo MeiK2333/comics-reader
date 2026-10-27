@@ -250,7 +250,7 @@
   - 收藏分组：v1→v2 迁移、创建/重命名/删除、计数/筛选、短按默认、长按选择、右键 / `Shift+Enter`、从收藏进详情返回收藏。
   - 下载：三平台各下载一本、封面/页图、详情按钮状态、暂停/继续/删除、重启后恢复为暂停；下载页点条目进详情，断网后详情回退显示已下载章节，开始阅读/继续阅读（含历史页码）可用；删除后阅读器不再命中旧本地页。
   - 移动端安全区：所有页面从安全区下方开始，滚动不盖状态栏；toast 与 Modal 也不越过顶部/左右/底部安全区。
-- Rust ↔ TS wire 契约：`contracts/reader-chapter.json` 与 `contracts/download-detail.json` 同时被 Rust 序列化测试和 `src/api/contract.test.ts` 的类型/字段断言引用；改对应 Rust 结构或 TS 类型时必须同步 fixture。
+- Rust ↔ TS wire 契约：`contracts/reader-chapter.json`、`contracts/download-detail.json`、`contracts/history-page.json` 同时被 Rust 序列化测试和 `src/api/contract.test.ts` 的类型/字段断言引用；改对应 Rust 结构或 TS 类型时必须同步 fixture。
 - 前端已有 Vitest 单元测试（`src/**/*.test.ts`），覆盖错误契约、图片/章节缓存时序、预加载、长按、返回栈、设置持久化，并有少量组件测试（电量、详情骨架、阅读页图片）；`e2e/` 另有本地 WebDriver 套件，仍无 CI，不要声称存在。新增测试体系要加 `package.json` 脚本并同步本文件。
 - 前端测试跑在 jsdom、不启动 Tauri；Pinia 4 把插件排队到 `app.use(pinia)` 之后，测试里创建 store 前要先 `createApp(...).use(pinia)`，否则持久化插件不生效。
 - Rust 测试数量和联网测试的实测结果会变化；以 `cargo test` 输出为准，不要把具体数字当契约。

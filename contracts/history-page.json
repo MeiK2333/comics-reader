@@ -1,0 +1,27 @@
+{
+  "total": 2,
+  "entries": [
+    {
+      "platform": "nhentai",
+      "id": "900001",
+      "title": "Gallery",
+      "thumb": "https://t.nhentai.net/galleries/1/cover.jpg",
+      "chapterId": null,
+      "chapterTitle": null,
+      "page": 3,
+      "totalPages": 20,
+      "updatedAt": 1700000000000
+    },
+    {
+      "platform": "manhuagui",
+      "id": "42",
+      "title": "Work",
+      "thumb": null,
+      "chapterId": "7",
+      "chapterTitle": "Chapter 7",
+      "page": 10,
+      "totalPages": 10,
+      "updatedAt": 1700000001000
+    }
+  ]
+}

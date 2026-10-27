@@ -596,6 +596,42 @@ mod tests {
     }
 
     #[test]
+    fn history_page_matches_the_shared_wire_contract() {
+        let page = HistoryPage {
+            total: 2,
+            entries: vec![
+                HistoryEntry {
+                    platform: "nhentai".into(),
+                    id: "900001".into(),
+                    title: "Gallery".into(),
+                    thumb: Some("https://t.nhentai.net/galleries/1/cover.jpg".into()),
+                    chapter_id: None,
+                    chapter_title: None,
+                    page: 3,
+                    total_pages: 20,
+                    updated_at: 1_700_000_000_000,
+                },
+                HistoryEntry {
+                    platform: "manhuagui".into(),
+                    id: "42".into(),
+                    title: "Work".into(),
+                    thumb: None,
+                    chapter_id: Some("7".into()),
+                    chapter_title: Some("Chapter 7".into()),
+                    page: 10,
+                    total_pages: 10,
+                    updated_at: 1_700_000_001_000,
+                },
+            ],
+        };
+
+        let actual = serde_json::to_value(&page).unwrap();
+        let expected: serde_json::Value =
+            serde_json::from_str(include_str!("../../contracts/history-page.json")).unwrap();
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
     fn pages_entries_newest_first() {
         let mut data = HistoryData::default();
         for (id, updated_at) in [("a", 100), ("b", 300), ("c", 200)] {

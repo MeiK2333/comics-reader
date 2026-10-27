@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import detailFixture from "../../contracts/download-detail.json";
+import historyFixture from "../../contracts/history-page.json";
 import fixture from "../../contracts/reader-chapter.json";
 import type { DownloadDetail } from "./downloads";
+import type { HistoryPage } from "./history";
 import type { ReaderChapter } from "./reader";
 
 // The JSON fixture is shared with the Rust contract test. If either side
@@ -13,6 +15,13 @@ const detail: DownloadDetail = {
   ...detailFixture,
   platform: "manhuagui",
   status: "partial",
+};
+const history: HistoryPage = {
+  ...historyFixture,
+  entries: historyFixture.entries.map((entry) => ({
+    ...entry,
+    platform: entry.platform === "manhuagui" ? "manhuagui" : "nhentai",
+  })),
 };
 
 describe("ReaderChapter wire contract", () => {
@@ -50,5 +59,12 @@ describe("ReaderChapter wire contract", () => {
       "title",
     ]);
     expect(detail.chapters[1].completed).toBe(false);
+  });
+
+  it("keeps history entries and their null chapter fields", () => {
+    expect(Object.keys(history)).toEqual(["total", "entries"]);
+    expect(history.entries[0].chapterId).toBeNull();
+    expect(history.entries[1].chapterTitle).toBe("Chapter 7");
+    expect(history.entries[1].updatedAt).toBe(1700000001000);
   });
 });
