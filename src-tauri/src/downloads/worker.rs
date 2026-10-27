@@ -100,13 +100,13 @@ fn extension_of(path: &str) -> Result<&str> {
 }
 
 async fn ensure_cover(
+    store: &DownloadsStore,
     app: &AppHandle,
     path: &Path,
     root: &Path,
     key: &DownloadKey,
     run_id: u64,
 ) -> Result<()> {
-    let store = app.state::<DownloadsStore>();
     let Some(record) = store.record_snapshot(path, key)? else {
         return Ok(());
     };
@@ -165,7 +165,7 @@ async fn download_work(app: &AppHandle, key: &DownloadKey, run_id: u64) -> Resul
 
     let directory = work_dir(&root, &record);
     tokio::fs::create_dir_all(&directory).await?;
-    ensure_cover(app, &path, &root, key, run_id).await?;
+    ensure_cover(store.inner(), app, &path, &root, key, run_id).await?;
 
     let http = app.state::<HttpClient>();
     let chapter_count = record.chapters.len() as u32;

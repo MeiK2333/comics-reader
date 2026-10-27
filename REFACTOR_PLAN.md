@@ -493,7 +493,7 @@ export function boundaryAction(input: {
 
 #### P2-3 `downloads.rs` 模块化（refactor）
 
-- **状态**：done（2026-10-27：commands/worker/local/model/index/store 已拆；`ensure_cover` 仍反查 store，留作后续小改）
+- **状态**：done（2026-10-27：commands/worker/local/model/index/store 已拆；`ensure_cover` 已改为接收 store 引用）
 - **依赖**：P1-4、P1-6（先把行为修稳，再做纯移动）
 - **目标**：把 2231 行拆成职责清晰的模块，worker 与 store 单向依赖。
 - **目标结构**：
@@ -848,4 +848,4 @@ refactor(reader): add pure page-boundary helpers
 - 2026-10-27 / P2-3a / `src-tauri/src/downloads.rs` 改为 `downloads/mod.rs`，拆出 `commands.rs`（158 行）与 `worker.rs`（436 行）；`lib.rs` 的命令路径改为 `downloads::commands::*`，worker 的 `spawn_download` 提升为 `pub(super)`。纯移动，无行为变化。验证：`cargo test` 158 passed、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`。剩余：model/index/store/local 拆分。
 - 2026-10-27 / P2-3b（部分）/ 新增 `local.rs`（112 行）：`read_local_chapter` 从 store impl 移到 free function，store 保留同名薄包装；manifest → ReaderChapter 的读取/校验逻辑不变。`downloads/mod.rs` 从 1684 行降到 1589 行。验证：`cargo test` 158 passed。剩余：model/index/store 拆分（model DTO 需要 `pub(super)` 字段调整，单独一轮做）。
 - 2026-10-27 / P2-3b / 新增 `model.rs`（245 行）与 `index.rs`（30 行）：DTO/状态/输入/记录/sanitize 与 index+manifest 文档迁出；model 字段提升为 `pub(super)`，index 结构体 `pub(crate)` 由 mod re-export；`mod.rs` 从 1589 行降到 1330 行。纯移动，wire 字段、serde 形状和校验逻辑未变。验证：`cargo test` 158 passed、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`。剩余：store 本体拆分 + `ensure_cover` 与 store 解耦。
-- 2026-10-27 / P2-3c / 新增 `store.rs`（665 行）：`DownloadsStore`/`DownloadsData` 及 impl 从 mod.rs 迁出，方法/字段提升为 `pub(super)`，`DownloadsData` 仅在 test 构建 re-export；`mod.rs` 从 1330 行降到 672 行。最终结构：mod 672 + store 665 + worker 437 + model 246 + commands 159 + local 112 + index 30；`downloads.rs` 已消失，命令签名/索引格式/run id 均未变。验证：`cargo test` 158 passed、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`。剩余可选：`ensure_cover` 不再通过 `app.state::<DownloadsStore>()` 反查。
+- 2026-10-27 / P2-3c / 新增 `store.rs`（688 行）：`DownloadsStore`/`DownloadsData` 及 impl 从 mod.rs 迁出，方法/字段提升为 `pub(super)`，`DownloadsData` 仅在 test 构建 re-export；`mod.rs` 从 1330 行降到 673 行。最终结构：mod 673 + store 688 + worker 437 + model 246 + commands 159 + local 112 + index 30；`downloads.rs` 已消失，命令签名/索引格式/run id 均未变。`ensure_cover` 现在接收 `&DownloadsStore`，worker 不再通过 `app.state` 反查。验证：`cargo test` 158 passed、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`。
