@@ -38,7 +38,7 @@
 - `src-tauri/src/`：
   - `lib.rs`：Builder、插件、命令注册；`error.rs`：AppError/ErrorCode。
   - `image/`：HTTP、缓存、平台搜索/详情/阅读页源。
-  - `ech/`：ECH bootstrap、DoH、TLS；`history.rs`（JSONL 历史）、`favorites.rs`（v2 JSON 收藏与分组）、`downloads.rs`（下载索引、任务与离线章节）、`logging.rs`（JSONL 日志）、`storage.rs`（收藏/下载索引的原子写、备份、分页、时间戳）。
+  - `ech/`：ECH bootstrap、DoH、TLS；`history.rs`（JSONL 历史）、`favorites.rs`（v2 JSON 收藏与分组）、`downloads/`（索引状态机、worker、命令、model/index/local）、`logging.rs`（JSONL 日志）、`storage.rs`（收藏/下载索引的原子写、备份、分页、时间戳）。
 - `capabilities/default.json`：窗口权限；`tauri.conf.json`：窗口、构建、资产协议、打包。
 - 忽略：`node_modules/`、`dist/`、`src-tauri/target/`、`src-tauri/gen/**/build/`、`scripts/.venv/`。
 
@@ -88,7 +88,7 @@
 - 缓存键 = 平台 + 平台 `cache_version` + URL 的 SHA-256；manhuagui/JM 忽略 query。写入 `app_cache_dir()/images/<platform>/<hash>.<ext>`；格式按魔数，扩展名决定 MIME。修改平台请求头/缓存语义要提升该平台 `cache_version`；改 URL 归一化或目录提升 `CACHE_VERSION`。当前无自动清理/容量上限。
 - 所有远程请求走 `HttpClient::send`（代理/ECH）：ECH 关闭用普通 client（可走代理），开启用 `no_proxy` 的 ECH/plain client。不要另建 client。
 - ECH 内部细节（`cloudflare-ech.com` 配置、Cloudflare DoH、TTL、fallback 缓存）以 `image/http.rs`、`ech/` 和测试为准。必须保留的约束：代理与 ECH 互斥；启动初始化要等待；非 Cloudflare 站点 plain TLS 回退是预期。
-- 平台集中在 `image/platform/`，实现 `Platform` trait（`id`/`matches`/`configure`/`note_request_outcome`/`prepare`，可选搜索/详情/阅读）。当前 `generic`/`manhuagui`/`jm`/`nhentai`。`platform` 参数可省略时按 host 识别；已知平台显式传，JM 尤其。JM 在首个搜索/详情/阅读命令前通过 `prepare` 请求 `/setting` 同步 `jm3_version`（进程一次，失败下次重试），`tokenparam` 使用运行时版本。
+- 平台集中在 `image/platform/`，实现 `Platform` trait（`id`/`matches`/`configure`/`note_request_outcome`/`prepare`，可选搜索/详情/阅读）。当前 `generic`/`manhuagui`/`jm`/`nhentai`。`platform` 参数可省略时按 host 识别；已知平台显式传，JM 尤其。JM 在首个搜索/详情/阅读命令前通过 `prepare` 请求 `/setting` 同步 `jm3_version`（进程一次，失败下次重试），`tokenparam` 使用运行时版本。镜像健康只在平台解析成功后记为成功；HTTP 2xx 的挑战页不算。
 - 搜索会话由 `search` store 管理；`/search` 不携带 query，刷新/深链会被守卫送回首页；首页图标固定回首页。
 - 详情 `/comic/:platform/:id` 不依赖搜索会话，直接 `get_comic`，刷新/深链可用；在线详情失败、或等待约 1.5s 仍未返回而本地有已完成章节的下载时，先用 `get_download`（返回 `DownloadDetail`：列表摘要 + `chapters`）渲染离线详情（在线详情随后返回则替换为完整详情），封面用 `coverPath`，开始阅读取首个已下载章节，继续阅读优先历史章节/页码，章节不可用时回退首个已下载章节第 1 页。返回目标是上一页为 `/favorites`、`/history` 或 `/downloads` 时回对应页面，否则搜索会话有效时 `/search`，否则首页，但必须走 `useBackNavigation`：上一页就是目标时 `router.back()`，否则 `router.replace`。
 - 搜索返回 `{ total, page_size, result: [{ id, title, thumb, platform, extra }] }`，详情 `{ platform, title, thumb, extra }`；`platform` 判别，`extra` 强类型（Rust `SearchExtra`/`DetailExtra`，前端判别联合）。不要退回 `Record<string, unknown>` 或 JSON 兜底。
@@ -198,7 +198,7 @@
 | 改设置 | `stores/settings.ts` + `SettingsView.vue`；若同步 Rust，加对应 `src/api/*.ts` 与命令。 |
 | 改阅读器/页源 | `components/reader/`、`views/ComicReaderView.vue`、`router/index.ts`、`api/reader.ts`、`image/model.rs`、`image/platform/`、`image/mod.rs`。 |
 | 改收藏 | `src-tauri/src/favorites.rs`、`src/api/favorites.ts`、`FavoritesView.vue`、`ComicDetailView.vue`、`FavoriteGroupPicker.vue`、`useLongPress.ts`、两个语言包。 |
-| 改下载 | `src-tauri/src/downloads.rs`、`src/api/downloads.ts`、`DownloadsView.vue`、`ComicDetailView.vue`、`OfflineDetail.vue`、`api/reader.ts`、`ReaderPageImage.vue`、`useCachedImage.ts`、`tauri.conf.json` 资产 scope。 |
+| 改下载 | `src-tauri/src/downloads/`、`src/api/downloads.ts`、`DownloadsView.vue`、`ComicDetailView.vue`、`OfflineDetail.vue`、`api/reader.ts`、`ReaderPageImage.vue`、`useCachedImage.ts`、`tauri.conf.json` 资产 scope。 |
 | 改图片/网络 | `src-tauri/src/image/`、`src-tauri/tauri.conf.json`（资产 scope）；请求必须走 `HttpClient`。 |
 
 ## 易错点
