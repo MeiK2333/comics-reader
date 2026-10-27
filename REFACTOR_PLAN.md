@@ -1,7 +1,7 @@
 # 重构与修复计划（待办）
 
-> **状态**：P1、P2-1~P2-8、P3-2、P3-4、P4-1~P4-8 已完成并从本文件移除（历史见 git log）；P4-9 评估后关闭（不抽取）。剩余：P3-1（可选）、P3-3（条件项）。
-> **基线**：2026-10-27，master（P4-1~P4-8 后）；`pnpm test` 35 files / 229 tests、`cargo test` 170 passed / 10 ignored。
+> **状态**：P1、P2-1~P2-8、P3-1~P3-2、P3-4、P4-1~P4-8 已完成并从本文件移除（历史见 git log）；P4-9 评估后关闭（不抽取）。剩余：P3-3（条件项）。
+> **基线**：2026-10-27，master（P3-1、P4-1~P4-8 后）；`pnpm test` 35 files / 234 tests、`cargo test` 174 passed / 10 ignored。
 > **适用对象**：后续接手本仓库的编码智能体。
 > **配套文档**：[AGENTS.md](AGENTS.md)（契约、命令、易错点，优先于本文件）、[ROADMAP.md](ROADMAP.md)（功能方向）。
 > **定位说明**：任务卡里的行号是基线行号，代码变动后会漂移；定位时按符号名（函数/结构体/常量）搜索，不要机械相信行号。
@@ -12,12 +12,11 @@
 
 主体重构已经结束。当前维护成本集中在：
 
-1. **按需项**：P3-1 其余 DTO（只在 wire 变化时补）、P3-3 分页索引（只在有 benchmark 时做）。
+1. **待评估项**：P3-3 分页索引——只有 benchmark/profiling 证明列表加载是瓶颈时才做。
 
 执行顺序：
 
-1. P3-1 随 wire 变化推进。
-2. P3-3 有性能证据再做。
+1. 先收集大数据量下的列表加载数据；没有证据就保持现状。
 
 一次只做一个任务卡，独立提交；先加失败用例再修缺陷；结构拆分、行为修复、测试补齐不要混在同一提交。
 
@@ -60,11 +59,11 @@ P4-1~P4-7 已为阅读器手势/缩放、跨章预加载、下载/收藏动作�
 
 ```powershell
 # 仓库根目录
-pnpm test        # 35 files / 229 tests
+pnpm test        # 35 files / 234 tests
 pnpm build       # vue-tsc --noEmit + Vite build
 
 # src-tauri/
-cargo test       # 170 passed, 10 ignored
+cargo test       # 174 passed, 10 ignored
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 ```
@@ -91,24 +90,13 @@ Windows 下 `cargo test` 若以 `STATUS_ENTRYPOINT_NOT_FOUND (0xc0000139)` 退�
 
 ## 4. 未关闭缺陷
 
-| ID | 症状 | 状态 | 对应任务 |
-| --- | --- | --- | --- |
-| BUG-11 | Rust/TS 类型漂移 | partial：ReaderChapter/DownloadDetail/HistoryPage 有契约测试，其余 DTO 未生成 | P3-1 |
-
-BUG-1~BUG-10、BUG-12、BUG-13 的已修复项不再保留；需要追溯时看 git log。
+无。BUG-11（Rust/TS 类型漂移）由 P3-1 补齐其余 DTO fixture 关闭；更早的已修复项见 git log。
 
 ---
 
 ## 5. 任务卡
 
-### P3：剩余契约与长期项
-
-#### P3-1 其余 DTO 契约（chore，可选）
-
-- **状态**：in progress（`ReaderChapter`/`DownloadDetail`/`HistoryPage` 三份 fixture 已落地，其余 DTO 未生成）
-- **范围**：`Search`/`Detail`/`Favorite`/`Log` 等 DTO 仍靠 TS interface + Rust serde 人工对齐。
-- **做法**：只在准备新增/修改对应 wire 结构时，按 `contracts/*.json` 的既有模式补 fixture + 双端断言；先加 fixture 比引入生成器稳。生成器（ts-rs/specta）需要先做 spike，不是当前必做项。
-- **验收**：字段漂移能让 `cargo test` 或 `pnpm test` 失败；生成文件不手改。
+### P3：剩余长期项
 
 #### P3-3 分页索引（conditional）
 
@@ -152,8 +140,9 @@ BUG-1~BUG-10、BUG-12、BUG-13 的已修复项不再保留；需要追溯时看 
 - [x] P4-1~P4-7（测试补强主线）完成；`pnpm test` 35 files / 229 tests、`pnpm build` 通过。
 - [x] BUG-13（下载 pending 泄漏）已修复并有回归测试。
 - [x] P4-8（`KNOWN_PLATFORMS` 共享）完成；`cargo test` 170 passed / 10 ignored。
+- [x] P3-1 其余 DTO 契约完成：search/detail/favorites/logs fixture 双端校验；`cargo test` 174 passed / 10 ignored、`pnpm test` 35 files / 234 tests。
 - [x] P4-9 评估后关闭：不抽取 `useReaderChapterSource`；需要补覆盖时优先组件级测试。
-- [ ] P3-1 只在 wire 变化时按需推进；P3-3 有 benchmark 证据再做。
+- [ ] P3-3 有 benchmark 证据再做。
 - [x] 下一次新增列表页/平台/下载能力可以复用现有 composable、trait 和契约测试。
 
 ---
@@ -163,4 +152,5 @@ BUG-1~BUG-10、BUG-12、BUG-13 的已修复项不再保留；需要追溯时看 
 > 只记录当前未完成任务的偏离与结论；完成的任务随任务卡一起删除。
 
 - 2026-10-27 / P4-9 / 评估结论：不抽取 `useReaderChapterSource`。阅读器编排的风险高于可测性收益；已有 reader-navigation、usePageTurn、手势/缩放/预加载测试和 E2E 覆盖主要路径，剩余深链/`?page=last` 若要补，优先组件级测试。
+- 2026-10-27 / P3-1 / 偏离原计划：原本只在 wire 变化时补 fixture；用户要求继续，因此主动补齐 Search/Detail/Favorite/Log 契约，无 wire 变更。
 - 2026-10-27 / P4 规划 / 现状复核：前端 130 个测试、Rust 169 个测试均通过；临时 spike 验证了 jsdom 下伪造 PointerEvent + stub pointer capture 可驱动手势，`NMessageProvider` 包裹可测详情动作（spike 已删除）。未改动业务代码。
