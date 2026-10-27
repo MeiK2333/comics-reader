@@ -12,3 +12,4 @@
 - [包子漫画](https://www.baozimh.com/)
 - [manhuabika](https://manhuabika.com/)
 - [E-Hentai](https://e-hentai.org/)
+- [漫蛙](https://manwa.me/)
