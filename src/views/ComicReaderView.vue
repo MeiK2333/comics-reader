@@ -17,6 +17,10 @@ import { useNextChapterPreload } from "../composables/useNextChapterPreload";
 import { useReadingHistory } from "../composables/useReadingHistory";
 import { AppError, toAppError } from "../errors";
 import { useAppI18n } from "../i18n";
+import {
+  readerBoundaryAction,
+  resolveReaderPage,
+} from "../lib/reader-navigation";
 import { setWindowTitle, updateWindowTitle } from "../router";
 import {
   clampReaderPreloadCount,
@@ -25,7 +29,6 @@ import {
 
 /** Internal query value that lands on the last page after a chapter switch. */
 const LAST_PAGE_QUERY = "last";
-type ChapterPosition = "start" | "end";
 
 const route = useRoute();
 const router = useRouter();
@@ -101,16 +104,6 @@ const errorText = computed(() => {
   return current ? formatError(current) : "";
 });
 
-function clampPage(value: number, total: number) {
-  return Math.min(Math.max(value, 1), total);
-}
-
-function requestedPage() {
-  const raw = route.query.page;
-  const parsed = typeof raw === "string" ? Number.parseInt(raw, 10) : 1;
-  return Number.isFinite(parsed) ? parsed : 1;
-}
-
 function syncPageQuery(value: number) {
   const query = { ...route.query };
   if (value > 1) {
@@ -140,10 +133,10 @@ function goBack() {
 }
 
 function goToChapter(
-  target: ReaderChapter["previous"],
-  position: ChapterPosition = "start",
+  targetId: string,
+  position: "start" | "end" = "start",
 ) {
-  if (!target || !platform.value || !id.value) {
+  if (!platform.value || !id.value) {
     return;
   }
   // Persist the last page before the route params switch to another chapter.
@@ -155,7 +148,7 @@ function goToChapter(
     params: {
       platform: platform.value,
       id: id.value,
-      chapterId: target.id,
+      chapterId: targetId,
     },
     // A previous chapter reached from the first page opens at its end so
     // backward reading is continuous; the explicit chapter buttons still
@@ -167,7 +160,7 @@ function goToChapter(
 function openPreviousChapter() {
   const target = chapter.value?.previous;
   if (target) {
-    goToChapter(target, "start");
+    goToChapter(target.id, "start");
     return;
   }
   goBack();
@@ -176,17 +169,33 @@ function openPreviousChapter() {
 function openNextChapter() {
   const target = chapter.value?.next;
   if (target) {
-    goToChapter(target, "start");
+    goToChapter(target.id, "start");
     return;
   }
   goBack();
 }
 
 function goFromPageBoundary(direction: "previous" | "next") {
-  const target =
-    direction === "previous" ? chapter.value?.previous : chapter.value?.next;
-  if (target) {
-    goToChapter(target, direction === "previous" ? "end" : "start");
+  const current = chapter.value;
+  if (!current) {
+    goBack();
+    return;
+  }
+
+  const action = readerBoundaryAction({
+    direction,
+    page: page.value,
+    total: current.pages.length,
+    previousChapterId: current.previous?.id ?? null,
+    nextChapterId: current.next?.id ?? null,
+  });
+
+  if (action.kind === "chapter") {
+    goToChapter(action.chapterId, action.position);
+    return;
+  }
+  if (action.kind === "turn") {
+    page.value = action.page;
     return;
   }
   // The first/last chapter has nowhere else to go on that side.
@@ -208,7 +217,7 @@ function applyChapter(result: ReaderChapter, startAtEnd: boolean) {
 
   page.value = startAtEnd
     ? result.pages.length
-    : clampPage(requestedPage(), result.pages.length);
+    : resolveReaderPage(route.query.page, result.pages.length).page;
   setWindowTitle(
     result.chapterTitle
       ? `${result.title} · ${result.chapterTitle} · ${t("app.name")}`
@@ -335,10 +344,12 @@ watch(
     if (!chapter.value) {
       return;
     }
-    const next = clampPage(
-      typeof value === "string" ? Number.parseInt(value, 10) || 1 : 1,
-      chapter.value.pages.length,
-    );
+    // `last` belongs to the pending chapter switch. Resolving it here would
+    // write page 1 into the URL before load() can use it as a start position.
+    if (value === LAST_PAGE_QUERY) {
+      return;
+    }
+    const next = resolveReaderPage(value, chapter.value.pages.length).page;
     if (next !== page.value) {
       page.value = next;
     }

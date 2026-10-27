@@ -274,6 +274,10 @@ function leaveAtBoundary(direction: "previous" | "next") {
     return;
   }
   boundaryLeaving.value = true;
+  // A boundary swipe leaves the track offset near the drag limit. Clear it
+  // before the parent swaps chapters so the old page cannot stay misaligned
+  // during the transition.
+  cancelTurn();
   emit("page-boundary", direction);
 }
 
@@ -550,6 +554,13 @@ function onStagePointerDown(event: PointerEvent) {
 }
 
 function onStagePointerMove(event: PointerEvent) {
+  // A page-turn animation owns the track offset while it runs. Letting a
+  // pointer update it here makes the two writers fight and can leave a turn
+  // half-applied.
+  if (trackAnimating.value) {
+    return;
+  }
+
   const point = activePointers.get(event.pointerId);
   if (!point) {
     return;
@@ -625,6 +636,12 @@ function onStagePointerUp(event: PointerEvent) {
   }
   releasePointer(event);
 
+  if (trackAnimating.value) {
+    drag = null;
+    pinch = null;
+    return;
+  }
+
   if (pinch) {
     if (activePointers.size >= 2) {
       return;
@@ -683,6 +700,12 @@ function onStagePointerCancel(event: PointerEvent) {
     return;
   }
   releasePointer(event);
+
+  if (trackAnimating.value) {
+    drag = null;
+    pinch = null;
+    return;
+  }
 
   if (pinch) {
     if (activePointers.size >= 2) {
