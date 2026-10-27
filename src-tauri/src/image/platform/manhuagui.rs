@@ -224,9 +224,9 @@ impl Platform for Manhuagui {
         let manifest = parse_reader_manifest(&text);
         let pages = manifest.as_ref().map(manifest_pages).unwrap_or_default();
         if pages.is_empty() {
-            return Err(AppError::Unexpected(format!(
-                "failed to parse manhuagui chapter `{chapter}` pages"
-            )));
+            return Err(AppError::NotFound {
+                resource: format!("manhuagui chapter `{chapter}` pages"),
+            });
         }
 
         let (title, chapter_title, thumb) = parse_reader_identity(root, &comic, manifest.as_ref());
@@ -1002,6 +1002,15 @@ mod tests {
                 .reader_chapter_request("1/2", Some("102"))
                 .is_err()
         );
+    }
+
+    #[test]
+    fn a_chapter_without_pages_is_not_found() {
+        let error = Manhuagui
+            .parse_reader_chapter("1", Some("102"), b"<html></html>")
+            .unwrap_err();
+
+        assert_eq!(error.code(), crate::error::ErrorCode::NotFound);
     }
 
     #[test]
