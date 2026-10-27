@@ -1,7 +1,7 @@
 # 重构与修复计划（待办）
 
-> **状态**：P1、P2-1~P2-8、P3-2、P3-4、P4-1~P4-4 已完成并从本文件移除（历史见 git log）。剩余：P4-5~P4-7（主线）、P4-8（低优先）、P4-9（条件项）、P3-1（可选）、P3-3（条件项）。
-> **基线**：2026-10-27，master（P4-1~P4-4 后）；`pnpm test` 29 files / 177 tests、`cargo test` 169 passed / 10 ignored。
+> **状态**：P1、P2-1~P2-8、P3-2、P3-4、P4-1~P4-5 已完成并从本文件移除（历史见 git log）。剩余：P4-6~P4-7（主线）、P4-8（低优先）、P4-9（条件项）、P3-1（可选）、P3-3（条件项）。
+> **基线**：2026-10-27，master（P4-1~P4-5 后）；`pnpm test` 30 files / 187 tests、`cargo test` 169 passed / 10 ignored。
 > **适用对象**：后续接手本仓库的编码智能体。
 > **配套文档**：[AGENTS.md](AGENTS.md)（契约、命令、易错点，优先于本文件）、[ROADMAP.md](ROADMAP.md)（功能方向）。
 > **定位说明**：任务卡里的行号是基线行号，代码变动后会漂移；定位时按符号名（函数/结构体/常量）搜索，不要机械相信行号。
@@ -12,13 +12,13 @@
 
 主体重构已经结束。当前维护成本集中在：
 
-1. **测试盲区**（P4 主线）：收藏动作与详情数据层、IPC/缓存/搜索守卫还没有直接单测。
+1. **测试盲区**（P4 主线）：详情数据层、IPC/缓存/搜索守卫还没有直接单测。
 2. **少量叶子重复**：`KNOWN_PLATFORMS` 三处（P4-8）；其余重复已记录为例外，不要强行统一。
 3. **按需项**：P3-1 其余 DTO 契约只在 wire 结构变化时补；P3-3 分页索引只在有 benchmark 时做。
 
 执行顺序：
 
-1. **P4-5 → P4-6 → P4-7**；P4-8 低优先，P4-9 条件项。
+1. **P4-6 → P4-7**；P4-8 低优先，P4-9 条件项。
 2. P3-1 随 wire 变化推进；P3-3 有性能证据再做。
 
 一次只做一个任务卡，独立提交；先加失败用例再修缺陷；结构拆分、行为修复、测试补齐不要混在同一提交。
@@ -57,20 +57,19 @@
 
 | 模块 | 行数 | 为什么高风险 |
 | --- | ---: | --- |
-| `src/composables/useFavoriteAction.ts` | 186 | 短按/长按/分组/切换作品 |
 | `src/composables/useComicDetail.ts` | 286 | 在线详情、下载索引、历史、续读回退 |
 | `src/composables/useDownloadedComicDetail.ts` | 204 | 已下载详情与本地续读 |
 | `src/api/client.ts` | 35 | IPC 单入口与 ECH 等待约定 |
 | `src/composables/useCachedImage.ts` | 102 | 局部 requestId 例外 |
 | `src/stores/search.ts` | 90 | 局部 requestId 例外；URL-free 搜索会话 |
 
-这些模块合计约 900 行。P4 不按覆盖率数字推进，按对应卡片的行为矩阵补测试。
+这些模块合计约 700 行。P4 不按覆盖率数字推进，按对应卡片的行为矩阵补测试。
 
 ### 2.3 验证基线
 
 ```powershell
 # 仓库根目录
-pnpm test        # 29 files / 177 tests
+pnpm test        # 30 files / 187 tests
 pnpm build       # vue-tsc --noEmit + Vite build
 
 # src-tauri/
@@ -143,22 +142,6 @@ BUG-1~BUG-10、BUG-12、BUG-13 的已修复项不再保留；需要追溯时看 
 - Pinia store 测试按 `src/stores/settings.test.ts` 的模式：先 `createApp(...).use(pinia)`，再创建 store，否则持久化插件不会执行。
 - 测试文件与源码同级（`src/**/*.test.ts`），命名沿用现有风格，不新建 `__tests__/` 目录。
 
-#### P4-5 收藏动作单测（test）
-
-- **状态**：todo
-- **依赖**：无（复用 P4-0 的 `NMessageProvider` harness）
-- **证据**：`src/composables/useFavoriteAction.ts` 约 186 行、0 测试；短按 toggle、长按抑制 click、分组选择器、详情切换时的 reset 都只有人工冒烟。
-- **用例**：
-  - 详情从 null 变为非空才触发 `getFavorite`（watch 没有 `immediate`）；查询失败按未收藏处理且按钮可用。
-  - 短按：未收藏 → `addFavorite`（默认分组），已收藏 → `removeFavorite`；成功/失败提示与本地化文案。
-  - 长按：`consumeClick()` 为 true 时 `toggle` 不执行；右键/`Shift+Enter` 打开选择器；`disabled`（loading/pending/无详情）时不打开。
-  - 切换作品：旧请求的结果被丢弃；`reset` 清空 entry/pending/picker。
-  - `onSaved(entry)` 更新 entry 并关闭选择器。
-- **验收**：
-  - [ ] 不改变 `getFavorite`/`addFavorite` 的幂等语义与错误处理。
-  - [ ] `pnpm test`、`pnpm build` 通过。
-- **建议提交**：`test(detail): cover favorite actions`
-
 #### P4-6 详情数据层单测（test）
 
 - **状态**：todo
@@ -209,7 +192,7 @@ BUG-1~BUG-10、BUG-12、BUG-13 的已修复项不再保留；需要追溯时看 
 
 #### P4-9 阅读器路由编排可测化（conditional）
 
-- **状态**：conditional（未开始；只有 P4-5~P4-7 完成后才评估）
+- **状态**：conditional（未开始；只有 P4-6~P4-7 完成后才评估）
 - **证据**：`ComicReaderView.vue` 约 463 行，包含缓存/在途页源选择、manhuagui 无章节深链解析首章、`?page=last`、URL query 同步、历史记录去抖 gate、body overflow；这些逻辑没有单测。
 - **做法**：抽出 `useReaderChapterSource`（或等价 composable）负责“路由参数 → 章节数据/页码/URL/历史”的编排，视图只做渲染；用 mock 的 router + api 测。若评估认为抽取会破坏既定阅读器行为，保持现状并在任务卡记录理由，不要强行拆。
 - **验收**：抽取后 `pnpm test`、`pnpm build` 通过；若环境可用，E2E 行为不变。
@@ -247,7 +230,7 @@ P4 只按自动化门禁验收；真实窗口冒烟（`pnpm tauri dev`）建议�
 
 ### P4 完成
 
-- [ ] P4-5~P4-7 全部状态为 done（P4-8 低优先、P4-9 条件项）。
+- [ ] P4-6~P4-7 全部状态为 done（P4-8 低优先、P4-9 条件项）。
 - [ ] `pnpm test` 覆盖新增用例；`pnpm build`、`cargo test`、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings` 全绿。
 - [ ] 新增测试不依赖网络、真实 Tauri runtime、WebDriver 或真机。
 - [ ] 测试暴露的行为缺陷有独立 `fix` 提交和回归用例。
