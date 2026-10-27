@@ -1,7 +1,7 @@
 # 重构与修复计划（待办）
 
-> **状态**：P1、P2-1~P2-8、P3-2、P3-4 已完成并从本文件移除（历史见 git log，基线 `d913cdb`）。剩余：P4 测试补强（主线）、P3-1 其余 DTO（可选）、P3-3 分页索引（条件项）。
-> **基线**：2026-10-27，master `d913cdb`；`pnpm test` 24 files / 130 tests、`cargo test` 169 passed / 10 ignored。
+> **状态**：P1、P2-1~P2-8、P3-2、P3-4、P4-4 已完成并从本文件移除（历史见 git log）。剩余：P4-1~P4-3、P4-5~P4-7（主线）、P4-8（低优先）、P4-9（条件项）、P3-1（可选）、P3-3（条件项）。
+> **基线**：2026-10-27，master（P4-4 后）；`pnpm test` 25 files / 136 tests、`cargo test` 169 passed / 10 ignored。
 > **适用对象**：后续接手本仓库的编码智能体。
 > **配套文档**：[AGENTS.md](AGENTS.md)（契约、命令、易错点，优先于本文件）、[ROADMAP.md](ROADMAP.md)（功能方向）。
 > **定位说明**：任务卡里的行号是基线行号，代码变动后会漂移；定位时按符号名（函数/结构体/常量）搜索，不要机械相信行号。
@@ -12,14 +12,13 @@
 
 主体重构已经结束。当前维护成本集中在：
 
-1. **测试盲区**（P4 主线）：阅读器手势/缩放、跨章预加载、详情动作与数据层、IPC/缓存/搜索守卫都没有直接单测。
-2. **一个已确认缺陷**：开始下载过程中切换作品，`pending` 不复位，下载按钮永久禁用（P4-4）。
-3. **少量叶子重复**：`KNOWN_PLATFORMS` 三处（P4-8）；其余重复已记录为例外，不要强行统一。
-4. **按需项**：P3-1 其余 DTO 契约只在 wire 结构变化时补；P3-3 分页索引只在有 benchmark 时做。
+1. **测试盲区**（P4 主线）：阅读器手势/缩放、跨章预加载、收藏动作与详情数据层、IPC/缓存/搜索守卫还没有直接单测。
+2. **少量叶子重复**：`KNOWN_PLATFORMS` 三处（P4-8）；其余重复已记录为例外，不要强行统一。
+3. **按需项**：P3-1 其余 DTO 契约只在 wire 结构变化时补；P3-3 分页索引只在有 benchmark 时做。
 
 执行顺序：
 
-1. **P4-1 → P4-2 → P4-3 → P4-4 → P4-5 → P4-6 → P4-7**；P4-8 低优先，P4-9 条件项。
+1. **P4-1 → P4-2 → P4-3 → P4-5 → P4-6 → P4-7**；P4-8 低优先，P4-9 条件项。
 2. P3-1 随 wire 变化推进；P3-3 有性能证据再做。
 
 一次只做一个任务卡，独立提交；先加失败用例再修缺陷；结构拆分、行为修复、测试补齐不要混在同一提交。
@@ -61,7 +60,6 @@
 | `src/composables/useReaderGestures.ts` | 406 | 手势/双指/防误触全部内联；E2E 只覆盖基础滑动与点击区 |
 | `src/composables/useReaderZoom.ts` | 122 | 缩放锚点与边界 clamp 是数学核心 |
 | `src/composables/useNextChapterPreload.ts` | 93 | 跨章预热链路、去重与失败静默 |
-| `src/composables/useDownloadAction.ts` | 150 | 轮询/按钮状态/切作品 pending（已确认泄漏） |
 | `src/composables/useFavoriteAction.ts` | 186 | 短按/长按/分组/切换作品 |
 | `src/composables/useComicDetail.ts` | 286 | 在线详情、下载索引、历史、续读回退 |
 | `src/composables/useDownloadedComicDetail.ts` | 204 | 已下载详情与本地续读 |
@@ -69,13 +67,13 @@
 | `src/composables/useCachedImage.ts` | 102 | 局部 requestId 例外 |
 | `src/stores/search.ts` | 90 | 局部 requestId 例外；URL-free 搜索会话 |
 
-这些模块合计约 1,700 行。P4 不按覆盖率数字推进，按对应卡片的行为矩阵补测试。
+这些模块合计约 1,500 行。P4 不按覆盖率数字推进，按对应卡片的行为矩阵补测试。
 
 ### 2.3 验证基线
 
 ```powershell
 # 仓库根目录
-pnpm test        # 24 files / 130 tests
+pnpm test        # 25 files / 136 tests
 pnpm build       # vue-tsc --noEmit + Vite build
 
 # src-tauri/
@@ -109,9 +107,8 @@ Windows 下 `cargo test` 若以 `STATUS_ENTRYPOINT_NOT_FOUND (0xc0000139)` 退�
 | ID | 症状 | 状态 | 对应任务 |
 | --- | --- | --- | --- |
 | BUG-11 | Rust/TS 类型漂移 | partial：ReaderChapter/DownloadDetail/HistoryPage 有契约测试，其余 DTO 未生成 | P3-1 |
-| BUG-13 | 开始下载过程中切换作品，`pending` 不复位，下载按钮永久禁用 | 已确认，待修 | P4-4 |
 
-BUG-1~BUG-10、BUG-12 的已修复项不再保留；需要追溯时看 git log。
+BUG-1~BUG-10、BUG-12、BUG-13 的已修复项不再保留；需要追溯时看 git log。
 
 ---
 
@@ -209,31 +206,10 @@ BUG-1~BUG-10、BUG-12 的已修复项不再保留；需要追溯时看 git log�
   - [ ] `pnpm test`、`pnpm build` 通过；测试期间没有真实网络请求。
 - **建议提交**：`test(reader): cover next-chapter preloading`
 
-#### P4-4 下载动作：pending 泄漏修复 + 生命周期测试（fix/test）
-
-- **状态**：todo（先加回归测试，再修）
-- **依赖**：无
-- **证据（缺陷）**：`useDownloadAction` 用 `useComicDetail` 的 `latest.snapshot()` 作为 token；切换作品时 `useComicDetail.load()` 调用 `begin()` 使旧 token 失效，而 `onDownloadClick` 的 `finally` 只在 `isCurrent(token)` 时清 `pending`。于是 `pending` 永久为 true，`DetailActions.vue` 的下载按钮按 `downloadLoading || downloadPending` 永久禁用。当前没有测试覆盖“开始下载过程中切换作品”。（定位用符号名：`useDownloadAction.ts` 的 `onDownloadClick`、`useComicDetail.ts` 的 `load`、`DetailActions.vue` 的 `:disabled`。）
-- **目标**：修掉跨作品的 pending 泄漏；给下载按钮状态、轮询、错误提示补测试。
-- **做法**：
-  - 在 `useDownloadAction` 内监听 `options.platform`/`options.id`，变化时清 `pending` 并 `clearPolling()`；或改成本地请求序号，不依赖详情 token。二选一，保持与 `useFavoriteAction` 的 `reset()` 语义一致。
-  - 不要改变 `startDownload` 参数、按钮文案或跳转行为。
-- **测试用例**：
-  - 点击开始 → 调用 `startDownload`（含完整章节列表），成功后 `reloadDownload()`；失败显示本地化错误并复位 pending。
-  - 状态为 `queued/downloading` 时启动 1.5s 轮询；`document.visibilityState === "hidden"` 时跳过；状态变为 `completed` 或卸载后清定时器（假定时器断言 `clearInterval` 被调用）。
-  - 已 active/已完成时点击只 `router.push({ name: "downloads" })`，不再发命令。
-  - 回归：开始下载未完成时切换作品 → `pending` 复位，新作品按钮可用。
-- **验收**：
-  - [ ] 回归测试在修复前失败、修复后通过；或先提交失败测试再提交修复。
-  - [ ] `pnpm test`、`pnpm build` 通过；不改 IPC 参数/错误码。
-- **建议提交**：
-  1. `test(detail): cover the download action lifecycle`
-  2. `fix(detail): reset the download action when the work changes`
-
 #### P4-5 收藏动作单测（test）
 
 - **状态**：todo
-- **依赖**：无（可与 P4-4 共用 `NMessageProvider` harness）
+- **依赖**：无（复用 P4-0 的 `NMessageProvider` harness）
 - **证据**：`src/composables/useFavoriteAction.ts` 约 186 行、0 测试；短按 toggle、长按抑制 click、分组选择器、详情切换时的 reset 都只有人工冒烟。
 - **用例**：
   - 详情从 null 变为非空才触发 `getFavorite`（watch 没有 `immediate`）；查询失败按未收藏处理且按钮可用。
@@ -334,7 +310,7 @@ P4 只按自动化门禁验收；真实窗口冒烟（`pnpm tauri dev`）建议�
 
 ### P4 完成
 
-- [ ] P4-1 ~ P4-7 全部状态为 done（P4-8 低优先、P4-9 条件项）。
+- [ ] P4-1~P4-3、P4-5~P4-7 全部状态为 done（P4-8 低优先、P4-9 条件项）。
 - [ ] `pnpm test` 覆盖新增用例；`pnpm build`、`cargo test`、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings` 全绿。
 - [ ] 新增测试不依赖网络、真实 Tauri runtime、WebDriver 或真机。
 - [ ] 测试暴露的行为缺陷有独立 `fix` 提交和回归用例。
@@ -353,4 +329,4 @@ P4 只按自动化门禁验收；真实窗口冒烟（`pnpm tauri dev`）建议�
 
 > 只记录当前未完成任务的偏离与结论；完成的任务随任务卡一起删除。
 
-- 2026-10-27 / P4 规划 / 现状复核：前端 130 个测试、Rust 169 个测试均通过；临时 spike 验证了 jsdom 下伪造 PointerEvent + stub pointer capture 可驱动手势，`NMessageProvider` 包裹可测详情动作（spike 已删除）。发现 `useDownloadAction` 在切换作品时 pending 泄漏（P4-4）。未改动业务代码。
+- 2026-10-27 / P4 规划 / 现状复核：前端 130 个测试、Rust 169 个测试均通过；临时 spike 验证了 jsdom 下伪造 PointerEvent + stub pointer capture 可驱动手势，`NMessageProvider` 包裹可测详情动作（spike 已删除）。未改动业务代码。
