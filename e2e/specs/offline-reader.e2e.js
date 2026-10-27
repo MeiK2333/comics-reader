@@ -118,7 +118,7 @@ describe("offline reading", () => {
     expect(await $(".detail-page").getText()).toContain(
       "E2E Offline Gallery",
     );
-    expect(await $(".offline-notice").isExisting()).toBe(true);
+    expect(await $(".offline-summary .n-tag").isExisting()).toBe(true);
   });
 
   it("renders downloaded pages and turns a page with the keyboard", async () => {
