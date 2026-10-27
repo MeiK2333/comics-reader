@@ -1,6 +1,6 @@
 # 重构与修复计划
 
-> **状态**：P1 + P2-1 已完成；P2-2a~f（页码/边界、`usePageTurn`、滚轮/键盘、`ReaderTrack`、`ReaderChrome`、平台兜底）已完成；P2-2 手势与 P2-3~P3 待执行
+> **状态**：P1 + P2-1 已完成；P2-2a~f 已完成，滑动/点击 E2E 覆盖已补；P2-2 手势 composable 与 P2-3~P3 待执行
 > **基线**：2026-10-27，当前 master 工作区
 > **适用对象**：后续接手本仓库的编码智能体
 > **配套文档**：[AGENTS.md](AGENTS.md)（契约、命令、易错点）、[ROADMAP.md](ROADMAP.md)（功能方向）
@@ -843,3 +843,4 @@ refactor(reader): add pure page-boundary helpers
 - 2026-10-27 / P2-2d / 新增 `ReaderTrack.vue`（三槽位、方向类、slot 尺寸事件、轨道样式）；`ComicViewer` 从 1168 行降到 1086 行，模板只保留 stage 手势和空态。验证：`pnpm test` 112 passed、`pnpm build`、`pnpm test:e2e` 4/4。P2-2 剩余：手势 composable、`ReaderChrome`、`viewerPlatform` 假兜底。
 - 2026-10-27 / P2-2e / 新增 `ReaderChrome.vue`（顶栏、底栏、HUD、sr-only 页码、电量），chrome 显隐改为组件内的 `viewer__bar--hidden` 类；`ComicViewer` 从 1086 行降到 680 行，累计从 1434 行降到 680 行。验证：`pnpm test` 112 passed、`pnpm build`、`pnpm test:e2e` 4/4。P2-2 剩余：手势 composable、`viewerPlatform` 假兜底。
 - 2026-10-27 / P2-2f / 删除 `viewerPlatform` 的 `"nhentai"` 假兜底：`ComicReaderView` 只在 `chapter`、非空页和 `platform` 同时成立时渲染 `ComicViewer`，并传真实平台。验证：`pnpm test` 112 passed、`pnpm build`、`pnpm test:e2e` 4/4。P2-2 仅剩手势 composable。
+- 2026-10-27 / P2-2 手势覆盖 / `e2e/specs/offline-reader.e2e.js` 新增真实 WebView2 手势用例：左/右滑动翻页、左右点击区、中间点击切换 chrome。首次尝试发现 HUD 在动画开始时就显示目标页，导致下一次手势落在 `trackAnimating` 期间被忽略；用例改为等待轨道 transition 结束（`waitForTurnSettled`）后再继续。验证：`pnpm test:e2e` 4/4，offline-reader 3 个用例通过。P2-2 仅剩手势 composable。
