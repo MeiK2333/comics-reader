@@ -32,13 +32,14 @@
 - `src/views/`：页面（含收藏、下载列表）；`src/components/`：搜索、结果卡片、收藏分组选择器、详情、阅读器。
 - `src/stores/`：`settings`（唯一持久化）、`search`（内存态）、`runtime`（ECH 启动状态）。
 - `src/composables/`：主题、语言、错误文案、图片缓存、缩放、长按手势、阅读历史写入、分页资源、请求竞态守卫。
+- `src/lib/`：阅读器纯函数（`reader-navigation.ts`、`reader-gestures.ts`），由 composable/视图调用。
 - `src/api/`：`client.ts` 是唯一 IPC 入口（`invokeCommand`/`invokeLocal`），其余为各领域封装；`src/i18n/`：类型化语言包；`src/router/`：hash 路由、导航栈、守卫、窗口标题。
 - `src/test/setup.ts`：Vitest 全局 setup（WebCrypto polyfill、每例 `clearMocks()`）；测试配置在 `vitest.config.ts`。
 - `e2e/`：WebDriver 配置、离线种子数据与 specs；`run.mjs` 启动 tauri-driver 并清理测试数据。`src-tauri/tauri.e2e.conf.json` 覆盖 identifier。
 - `src-tauri/src/`：
   - `lib.rs`：Builder、插件、命令注册；`error.rs`：AppError/ErrorCode。
   - `image/`：HTTP、缓存、平台搜索/详情/阅读页源。
-  - `ech/`：ECH bootstrap、DoH、TLS；`history.rs`（JSONL 历史）、`favorites.rs`（v2 JSON 收藏与分组）、`downloads/`（索引状态机、worker、命令、model/index/local）、`logging.rs`（JSONL 日志）、`storage.rs`（收藏/下载索引的原子写、备份、分页、时间戳）。
+  - `ech/`：ECH bootstrap、DoH、TLS；`history.rs`（JSONL 历史）、`favorites.rs`（v2 JSON 收藏与分组）、`downloads/`（索引状态机、worker、命令、model/index/local）、`logging.rs`（JSONL 日志）、`storage.rs`（收藏/下载索引的原子写、备份、分页、时间戳）、`platforms.rs`（历史/收藏/下载共享的平台 id 校验）。
 - `capabilities/default.json`：窗口权限；`tauri.conf.json`：窗口、构建、资产协议、打包。
 - 忽略：`node_modules/`、`dist/`、`src-tauri/target/`、`src-tauri/gen/**/build/`、`scripts/.venv/`。
 
@@ -194,7 +195,7 @@
 | 新错误码 | `error.rs`、`src/errors.ts`、`useErrorMessage.ts`、两个语言包，五处一次改完。 |
 | 新界面文案 | `en.json` + `zh-CN.json`；通过 `useAppI18n()` 使用。 |
 | 新路由 | `src/views/` + `router/index.ts`（`RouteTitleKey`/meta）+ 两个语言包；路由放在现有 RouterView 内继承安全区。 |
-| 新平台 | `image/platform/` 实现 trait 并注册；`model.rs` + `src/api/comics.ts` 判别联合；`PlatformPicker`、结果卡片、详情组件、图标、fixture、`cache_version`。 |
+| 新平台 | `image/platform/` 实现 trait 并注册；`src-tauri/src/platforms.rs` 加平台 id；`model.rs` + `src/api/comics.ts` 判别联合；`PlatformPicker`、结果卡片、详情组件、图标、fixture、`cache_version`。 |
 | 改设置 | `stores/settings.ts` + `SettingsView.vue`；若同步 Rust，加对应 `src/api/*.ts` 与命令。 |
 | 改阅读器/页源 | `components/reader/`、`views/ComicReaderView.vue`、`router/index.ts`、`api/reader.ts`、`image/model.rs`、`image/platform/`、`image/mod.rs`。 |
 | 改收藏 | `src-tauri/src/favorites.rs`、`src/api/favorites.ts`、`FavoritesView.vue`、`ComicDetailView.vue`、`FavoriteGroupPicker.vue`、`useLongPress.ts`、两个语言包。 |
@@ -250,8 +251,8 @@
   - 收藏分组：v1→v2 迁移、创建/重命名/删除、计数/筛选、短按默认、长按选择、右键 / `Shift+Enter`、从收藏进详情返回收藏。
   - 下载：三平台各下载一本、封面/页图、详情按钮状态、暂停/继续/删除、重启后恢复为暂停；下载页点条目进已下载详情，断网时从下载页进入已下载详情，开始阅读/继续阅读（含历史页码）可用；在线详情失败不再回退到下载索引；删除后阅读器不再命中旧本地页。
   - 移动端安全区：所有页面从安全区下方开始，滚动不盖状态栏；toast 与 Modal 也不越过顶部/左右/底部安全区。
-- Rust ↔ TS wire 契约：`contracts/reader-chapter.json`、`contracts/download-detail.json`、`contracts/history-page.json` 同时被 Rust 序列化测试和 `src/api/contract.test.ts` 的类型/字段断言引用；改对应 Rust 结构或 TS 类型时必须同步 fixture。
-- 前端已有 Vitest 单元测试（`src/**/*.test.ts`），覆盖错误契约、图片/章节缓存时序、预加载、长按、返回栈、设置持久化，并有少量组件测试（电量、详情骨架、阅读页图片）；`e2e/` 另有本地 WebDriver 套件，仍无 CI，不要声称存在。新增测试体系要加 `package.json` 脚本并同步本文件。
+- Rust ↔ TS wire 契约：`contracts/{reader-chapter,download-detail,history-page,search-page,comic-details,favorites-page,favorite-groups,log-snapshot}.json` 同时被 Rust 序列化测试和 `src/api/contract.test.ts` 的类型/字段断言引用；改对应 Rust 结构或 TS 类型时必须同步 fixture。
+- 前端已有 Vitest 单元测试（`src/**/*.test.ts`），覆盖错误契约、wire fixture、图片/章节缓存时序、预加载、阅读器手势/缩放、详情动作与数据层、IPC/搜索守卫、长按、返回栈、设置持久化，并有少量组件测试（电量、详情骨架、阅读页图片）；`e2e/` 另有本地 WebDriver 套件，仍无 CI，不要声称存在。新增测试体系要加 `package.json` 脚本并同步本文件。
 - 前端测试跑在 jsdom、不启动 Tauri；Pinia 4 把插件排队到 `app.use(pinia)` 之后，测试里创建 store 前要先 `createApp(...).use(pinia)`，否则持久化插件不生效。
 - Rust 测试数量和联网测试的实测结果会变化；以 `cargo test` 输出为准，不要把具体数字当契约。
 
