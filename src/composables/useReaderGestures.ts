@@ -1,8 +1,16 @@
 import { onScopeDispose } from "vue";
 import type { ComputedRef, Ref } from "vue";
+import {
+  atPageBoundary,
+  dragLimit,
+  isForwardGesture,
+  swipeTarget,
+  tapTurnsForward,
+  tapZone,
+} from "../lib/reader-gestures";
+import type { TapSide } from "../lib/reader-gestures";
 import type { ReaderDirection } from "../stores/settings";
 
-const TAP_ZONE_RATIO = 1 / 3;
 const MIN_MOVE_PX = 4;
 const SWIPE_MIN_PX = 48;
 const SWIPE_SPAN_RATIO = 0.12;
@@ -237,15 +245,19 @@ export function useReaderGestures(options: ReaderGestureOptions) {
 
     if (options.total.value > 1) {
       const primary = options.horizontal.value ? drag.totalX : drag.totalY;
-      const wantsNext = options.horizontal.value
-        ? options.direction() === "rtl"
-          ? primary > 0
-          : primary < 0
-        : primary < 0;
-      const atBoundary = wantsNext
-        ? options.displayPage.value >= options.total.value
-        : options.displayPage.value <= 1;
-      const limit = options.stageSpan() * (atBoundary ? 0.18 : 1);
+      const forward = isForwardGesture(
+        options.direction(),
+        options.horizontal.value,
+        primary,
+      );
+      const limit = dragLimit(
+        options.stageSpan(),
+        atPageBoundary(
+          options.displayPage.value,
+          options.total.value,
+          forward,
+        ),
+      );
       options.trackOffset.value = Math.max(-limit, Math.min(limit, primary));
     }
   }
@@ -257,10 +269,8 @@ export function useReaderGestures(options: ReaderGestureOptions) {
     }
   }
 
-  function turnFromTap(side: "left" | "right") {
-    const forward =
-      options.direction() === "rtl" ? side === "left" : side === "right";
-    if (forward) {
+  function turnFromTap(side: TapSide) {
+    if (tapTurnsForward(options.direction(), side)) {
       options.nextPage();
     } else {
       options.previousPage();
@@ -278,17 +288,12 @@ export function useReaderGestures(options: ReaderGestureOptions) {
       return;
     }
 
-    const ratio = (event.clientX - rect.left) / rect.width;
-    if (ratio < TAP_ZONE_RATIO) {
-      turnFromTap("left");
+    const zone = tapZone((event.clientX - rect.left) / rect.width);
+    if (zone === "middle") {
+      options.toggleChrome();
       return;
     }
-    if (ratio > 1 - TAP_ZONE_RATIO) {
-      turnFromTap("right");
-      return;
-    }
-
-    options.toggleChrome();
+    turnFromTap(zone);
   }
 
   function finishPinch() {
@@ -334,13 +339,17 @@ export function useReaderGestures(options: ReaderGestureOptions) {
       const threshold = Math.max(SWIPE_MIN_PX, options.stageSpan() * SWIPE_SPAN_RATIO);
 
       if (Math.abs(primary) >= threshold) {
-        const forward = options.horizontal.value
-          ? options.direction() === "rtl"
-            ? primary > 0
-            : primary < 0
-          : primary < 0;
-        const target = options.displayPage.value + (forward ? 1 : -1);
-        if (target >= 1 && target <= options.total.value) {
+        const forward = isForwardGesture(
+          options.direction(),
+          options.horizontal.value,
+          primary,
+        );
+        const target = swipeTarget(
+          options.displayPage.value,
+          options.total.value,
+          forward,
+        );
+        if (target !== null) {
           options.turnTo(target);
           return;
         }
