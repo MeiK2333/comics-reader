@@ -26,7 +26,13 @@ pub fn run() {
                 eprintln!("failed to initialize the application log: {error}");
             }
             let cache_dir = app.path().app_cache_dir()?;
-            app.manage(image::ImageCache::new(cache_dir));
+            let cache = image::ImageCache::new(cache_dir);
+            app.manage(cache.clone());
+            tauri::async_runtime::spawn(async move {
+                if let Err(error) = cache.sweep_default().await {
+                    logging::warn("cache", format!("image cache sweep failed: {error}"));
+                }
+            });
             Ok(())
         })
         .manage(image::HttpClient::default())

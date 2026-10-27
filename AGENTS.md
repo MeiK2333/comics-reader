@@ -85,7 +85,7 @@
 
 - 图片全部由 Rust 处理：`ComicThumb` → `fetch_image` → `convertFileSrc` 资产协议。不要直接用远程 URL、blob/object URL 或浏览器 `fetch`。
 - 资产协议三处同时成立：`tauri` 的 `protocol-asset` feature、`tauri.conf.json` 的 `app.security.assetProtocol.enable`、覆盖 `$APPCACHE/images/**` 与 `$APPDATA/downloads/**` 的 scope；缺一为 403/空白。
-- 缓存键 = 平台 + 平台 `cache_version` + URL 的 SHA-256；manhuagui/JM 忽略 query。写入 `app_cache_dir()/images/<platform>/<hash>.<ext>`；格式按魔数，扩展名决定 MIME。修改平台请求头/缓存语义要提升该平台 `cache_version`；改 URL 归一化或目录提升 `CACHE_VERSION`。当前无自动清理/容量上限。
+- 缓存键 = 平台 + 平台 `cache_version` + URL 的 SHA-256；manhuagui/JM 忽略 query。写入 `app_cache_dir()/images/<platform>/<hash>.<ext>`；格式按魔数，扩展名决定 MIME。修改平台请求头/缓存语义要提升该平台 `cache_version`；改 URL 归一化或目录提升 `CACHE_VERSION`。启动后后台清扫：超过 30 天或总量超过 512 MiB 的图片会被删除，最近 1 小时文件受保护；下载目录不参与清扫。
 - 所有远程请求走 `HttpClient::send`（代理/ECH）：ECH 关闭用普通 client（可走代理），开启用 `no_proxy` 的 ECH/plain client。不要另建 client。
 - ECH 内部细节（`cloudflare-ech.com` 配置、Cloudflare DoH、TTL、fallback 缓存）以 `image/http/`、`ech/` 和测试为准。必须保留的约束：代理与 ECH 互斥；启动初始化要等待；非 Cloudflare 站点 plain TLS 回退是预期。
 - 平台集中在 `image/platform/`：`ImageProfile` 负责图片抓取（`id`/`matches`/`configure`/`cache`/fallback/decode），`Catalog: ImageProfile` 负责搜索/详情/阅读（`prepare`/`note_request_outcome`/request+parse）。当前 `generic` 只有 profile，`manhuagui`/`jm`/`nhentai` 是 catalog。`platform` 参数可省略时按 host 识别；已知平台显式传，JM 尤其。JM 在首个搜索/详情/阅读命令前通过 `prepare` 请求 `/setting` 同步 `jm3_version`（进程一次，失败下次重试），`tokenparam` 使用运行时版本。镜像健康只在平台解析成功后记为成功；HTTP 2xx 的挑战页不算。
@@ -219,7 +219,7 @@
 - 返回按钮不要用 `router.push`：用 `useBackNavigation` 在上一页等于目标时 pop，否则 replace；push 会把当前页留在历史栈，系统返回会重新进入刚离开的页面（搜索 → 漫画 → 返回 → 漫画）。阅读器切章同样用 `router.replace`。
 - 首页/结果页用 View Transition；不要用延迟 `router.push` 等动画；不支持时直接导航。
 - 生成文件不要手改；`README.md` 只是上游模板。
-- 缓存没有自动清理/容量上限；图片格式和缓存键变更要提升版本。预加载设置只影响预热窗口，不改变这一点。
+- 缓存启动后会按年龄/容量清扫（30 天或 512 MiB，最近 1 小时文件受保护），不要假设缓存永久保留；图片格式和缓存键变更仍要提升版本。
 - 阅读器边界切换必须走 `page-boundary` + `router.replace`；上一章末页用内部 `?page=last`，加载后必须换成真实页码，不能留在 URL 里。
 - `readerPreloadNextChapter` 只预热下一章图片，不改变末页自动跳章；跨章预热必须用 `get_reader_chapter` + `fetch_image`，失败静默且不能阻塞阅读。
 - 只预热磁盘而不复用 `ReaderChapter`/已解析路径，用户仍会看到章节 loading 与图片 spinner；跨章预加载必须同时走页源缓存和图片路径缓存。

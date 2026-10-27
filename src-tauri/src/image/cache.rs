@@ -3,17 +3,26 @@
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, SystemTime};
 
 use sha2::{Digest, Sha256};
 use tokio::io::AsyncWriteExt;
 use url::Url;
 
 use crate::error::{AppError, Result};
+use crate::logging;
 
 use super::CACHE_VERSION;
 
+/// Keep the disposable image cache bounded without touching downloaded works.
+const SWEEP_MAX_BYTES: u64 = 512 * 1024 * 1024;
+const SWEEP_MAX_AGE: Duration = Duration::from_secs(30 * 24 * 60 * 60);
+/// Files touched this recently may belong to an in-flight image request.
+const SWEEP_PROTECT: Duration = Duration::from_secs(60 * 60);
+
 /// `ImageCache` owns the cache root so the app resolves `app_cache_dir()` once
 /// at startup instead of on every image request.
+#[derive(Clone)]
 pub(crate) struct ImageCache {
     base: PathBuf,
 }
@@ -45,6 +54,99 @@ impl ImageCache {
         let path = directory.join(format!("{key}.{}", format.extension()));
         write_atomically(&directory, &path, key, bytes).await?;
         Ok(path)
+    }
+
+    pub(crate) async fn sweep_default(&self) -> Result<()> {
+        self.sweep(SWEEP_MAX_BYTES, SWEEP_MAX_AGE).await
+    }
+
+    /// Delete files older than `max_age`, then the oldest files until the
+    /// remaining bytes fit `max_bytes`. Fresh files are never removed by the
+    /// size pass because they may be part of an in-flight request.
+    pub(super) async fn sweep(&self, max_bytes: u64, max_age: Duration) -> Result<()> {
+        let mut files = Vec::new();
+        collect_cache_files(&self.base, &mut files).await?;
+
+        let now = SystemTime::now();
+        let mut kept = Vec::new();
+        for (path, size, modified) in files {
+            if now.duration_since(modified).unwrap_or_default() > max_age {
+                remove_cache_file(&path).await;
+            } else {
+                kept.push((path, size, modified));
+            }
+        }
+
+        let mut total = kept.iter().map(|(_, size, _)| *size).sum::<u64>();
+        if total <= max_bytes {
+            return Ok(());
+        }
+
+        kept.sort_by_key(|(_, _, modified)| *modified);
+        for (path, size, modified) in kept {
+            if total <= max_bytes {
+                break;
+            }
+            if now.duration_since(modified).unwrap_or_default() < SWEEP_PROTECT {
+                continue;
+            }
+            if remove_cache_file(&path).await {
+                total = total.saturating_sub(size);
+            }
+        }
+
+        Ok(())
+    }
+}
+
+async fn collect_cache_files(
+    directory: &Path,
+    files: &mut Vec<(PathBuf, u64, SystemTime)>,
+) -> Result<()> {
+    let mut entries = match tokio::fs::read_dir(directory).await {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+
+    while let Some(entry) = entries.next_entry().await? {
+        let metadata = match entry.metadata().await {
+            Ok(metadata) => metadata,
+            Err(error) => {
+                logging::warn(
+                    "cache",
+                    format!(
+                        "failed to inspect cache entry {}: {error}",
+                        entry.path().display()
+                    ),
+                );
+                continue;
+            }
+        };
+        if metadata.is_dir() {
+            Box::pin(collect_cache_files(&entry.path(), files)).await?;
+        } else if metadata.is_file() {
+            files.push((
+                entry.path(),
+                metadata.len(),
+                metadata.modified().unwrap_or_else(|_| SystemTime::now()),
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+async fn remove_cache_file(path: &Path) -> bool {
+    match tokio::fs::remove_file(path).await {
+        Ok(()) => true,
+        Err(error) => {
+            logging::warn(
+                "cache",
+                format!("failed to remove cache file {}: {error}", path.display()),
+            );
+            false
+        }
     }
 }
 
@@ -285,6 +387,24 @@ impl ImageFormat {
 mod tests {
     use super::*;
 
+    fn temp_cache(tag: &str) -> (PathBuf, ImageCache) {
+        let root = std::env::temp_dir().join(format!(
+            "comics-reader-image-cache-{}-{}-{tag}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let cache = ImageCache::new(root.clone());
+        (root, cache)
+    }
+
+    fn set_age(path: &Path, age: Duration) {
+        let file = std::fs::OpenOptions::new().write(true).open(path).unwrap();
+        file.set_modified(SystemTime::now() - age).unwrap();
+    }
+
     #[test]
     fn cache_key_is_scoped_by_platform_and_version() {
         let url = "https://example.com/a.jpg";
@@ -353,15 +473,7 @@ mod tests {
 
     #[tokio::test]
     async fn image_cache_lookup_and_write_round_trip() {
-        let root = std::env::temp_dir().join(format!(
-            "comics-reader-image-cache-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        let cache = ImageCache::new(root.clone());
+        let (root, cache) = temp_cache("round-trip");
 
         let path = cache
             .write("generic", "key", ImageFormat::Png, b"\x89PNG\r\n\x1a\n")
@@ -374,6 +486,76 @@ mod tests {
         );
         assert_eq!(cache.lookup("generic", "other").await.unwrap(), None);
 
+        let _ = tokio::fs::remove_dir_all(&root).await;
+    }
+
+    #[tokio::test]
+    async fn sweep_removes_expired_files() {
+        let (root, cache) = temp_cache("sweep-age");
+        let old = cache
+            .write("generic", "old", ImageFormat::Png, b"old")
+            .await
+            .unwrap();
+        let fresh = cache
+            .write("generic", "fresh", ImageFormat::Png, b"new")
+            .await
+            .unwrap();
+        set_age(&old, Duration::from_secs(2 * 60 * 60));
+
+        cache
+            .sweep(1024 * 1024, Duration::from_secs(60 * 60))
+            .await
+            .unwrap();
+
+        assert!(!old.exists());
+        assert!(fresh.exists());
+        let _ = tokio::fs::remove_dir_all(&root).await;
+    }
+
+    #[tokio::test]
+    async fn sweep_enforces_size_from_the_oldest_files() {
+        let (root, cache) = temp_cache("sweep-size");
+        let oldest = cache
+            .write("generic", "oldest", ImageFormat::Png, &[0u8; 10])
+            .await
+            .unwrap();
+        let middle = cache
+            .write("generic", "middle", ImageFormat::Png, &[1u8; 10])
+            .await
+            .unwrap();
+        let newest = cache
+            .write("generic", "newest", ImageFormat::Png, &[2u8; 10])
+            .await
+            .unwrap();
+        set_age(&oldest, Duration::from_secs(4 * 60 * 60));
+        set_age(&middle, Duration::from_secs(3 * 60 * 60));
+        set_age(&newest, Duration::from_secs(2 * 60 * 60));
+
+        cache
+            .sweep(15, Duration::from_secs(30 * 24 * 60 * 60))
+            .await
+            .unwrap();
+
+        assert!(!oldest.exists());
+        assert!(!middle.exists());
+        assert!(newest.exists());
+        let _ = tokio::fs::remove_dir_all(&root).await;
+    }
+
+    #[tokio::test]
+    async fn sweep_does_not_delete_recent_files_for_capacity() {
+        let (root, cache) = temp_cache("sweep-protect");
+        let fresh = cache
+            .write("generic", "fresh", ImageFormat::Png, &[0u8; 20])
+            .await
+            .unwrap();
+
+        cache
+            .sweep(1, Duration::from_secs(30 * 24 * 60 * 60))
+            .await
+            .unwrap();
+
+        assert!(fresh.exists());
         let _ = tokio::fs::remove_dir_all(&root).await;
     }
 

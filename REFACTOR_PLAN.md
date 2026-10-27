@@ -1,6 +1,6 @@
 # 重构与修复计划
 
-> **状态**：P1 + P2-1~P2-7 已完成；P3 长期项待执行
+> **状态**：P1 + P2-1~P2-7 已完成；P3-2 缓存清扫完成；P3-1/3/4 待执行
 > **基线**：2026-10-27，当前 master 工作区
 > **适用对象**：后续接手本仓库的编码智能体
 > **配套文档**：[AGENTS.md](AGENTS.md)（契约、命令、易错点）、[ROADMAP.md](ROADMAP.md)（功能方向）
@@ -637,17 +637,16 @@ export async function invokeCommand<T>(
 
 #### P3-2 图片缓存清扫（feat）
 
-- **状态**：todo
-- **依赖**：P1-7、P2-5
+- **状态**：done（2026-10-27：启动后台 sweep，30 天/512 MiB，最近 1 小时文件受保护）
 - **目标**：给可丢弃缓存加容量/年龄上限，版本 bump 后清旧目录。
 - **做法**：
   - `ImageCache::sweep(max_bytes, max_age)`；启动后后台执行，避免阻塞首屏。
   - 删除旧 `CACHE_VERSION`/旧平台 `cache_version` 目录；或按“最后访问时间”淘汰。
   - 下载目录不在清扫范围（`app_data_dir()/downloads/` 是用户数据）。
 - **验收**：
-  - [ ] 缓存超过上限会降下来；正在使用的文件不会被删（同一进程内至少按 mtime/最后访问）。
-  - [ ] 清扫失败只记日志，不影响阅读。
-  - [ ] 单测用临时目录。
+  - [x] 缓存超过上限会降下来；正在使用的文件不会被删（同一进程内至少按 mtime/最后访问）。
+  - [x] 清扫失败只记日志，不影响阅读。
+  - [x] 单测用临时目录。
 
 #### P3-3 分页索引（conditional）
 
@@ -854,3 +853,4 @@ refactor(reader): add pure page-boundary helpers
 - 2026-10-27 / P2-5c / 新增 `ImageCache { base }`（`image/cache.rs`）：`new` 在 setup 解析一次 `app_cache_dir()/images`，`lookup/write` 封装现有 `find_cached`/`write_atomically`；`lib.rs` setup `app.manage(ImageCache)`，`fetch_image` 命令改为 `State<ImageCache>`，`fetch_image_inner` 接收 `&ImageCache`；下载 worker 从 `app.state` 取同一 cache，封面与页图复用。缓存键/布局/扩展名/零字节清理未变，新增 round-trip 单测。验证：`cargo test` 161 passed、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`。剩余可选：`read_limited` 去重、`ech` ↔ `http` 模块环。
 - 2026-10-27 / P2-6 / IPC 收口：新增 `api/client.ts`（`invokeCommand` 默认等 ECH、`invokeLocal` 不等）与 `api/echStartup.ts`（启动 gate，避免 client↔ech 环）；`ech.ts` 改为 re-export gate + `invokeLocal`；comics/images/reader/downloads/favorites/history/logs/proxy 全部迁移，网络命令默认等 ECH、本地索引/设置命令显式不等；`ComicThumb` 删除本地 `CachedImage` 与直接 `invoke`，改用 `fetchCachedImage` 复用 in-flight/已解析路径缓存。测试 mock 从 `./ech` 改为 `./echStartup`。验证：`pnpm test` 112 passed、`pnpm build`、`pnpm test:e2e` 4/4。
 - 2026-10-27 / P2-7 / 显式返回来源：Favorites/History/Downloads 的详情 RouterLink 与搜索结果分别写 `state: { from: ... }`；`useDetailReturnTarget` 新增 `readDetailOrigin`/`detailOriginFromPath`，优先 `state.from`，其次旧 `previousPath()`（favorites/history/downloads），最后 `search.active` 或首页；`useBackNavigation` 的 pop/replace 语义不变。新增 `useDetailReturnTarget.test.ts` 4 个纯函数用例。验证：`pnpm test` 116 passed、`pnpm build`、`pnpm test:e2e` 4/4。
+- 2026-10-27 / P3-2 / `ImageCache` 新增 `sweep_default`/`sweep(max_bytes,max_age)`：递归扫描 `images/`，先删超过 30 天的文件，再按 mtime 从旧到新删到 512 MiB 以内；最近 1 小时文件不参与容量删除，删除失败只记日志；只清图片缓存，不碰下载目录。`lib.rs` setup 在 `manage` 后异步 spawn。新增 3 个临时目录单测（年龄、容量、最近文件保护）。验证：`cargo test` 164 passed、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`。
