@@ -8,6 +8,7 @@
 - 已有：manhuagui/JM/nhentai 搜索与详情；nhentai、JM 与 manhuagui 单页阅读器；阅读历史；收藏；按作品下载与离线阅读；设置（主题、语言、阅读方向、HTTP 代理、ECH、日志）；日志页。
 - 尚无：漫画库、通用章节列表、数据库、按章下载/导出。下载页不是占位页，不要按未实现处理。
 - README 是上游模板，不可信。以本文件、`package.json`、`src-tauri/Cargo.toml`、`tauri.conf.json` 和代码为准。
+- 重构与缺陷修复任务见 [`REFACTOR_PLAN.md`](REFACTOR_PLAN.md)；执行大规模改动前先读任务卡、验收与禁止事项。
 
 ## 环境与命令
 
@@ -30,14 +31,14 @@
 - `src/App.vue`：Naive UI Provider、消息 Provider、顶部安全区、RouterView；没有 NDialogProvider，删除确认用 `NPopconfirm`/`NModal`。
 - `src/views/`：页面（含收藏、下载列表）；`src/components/`：搜索、结果卡片、收藏分组选择器、详情、阅读器。
 - `src/stores/`：`settings`（唯一持久化）、`search`（内存态）、`runtime`（ECH 启动状态）。
-- `src/composables/`：主题、语言、错误文案、图片缓存、缩放、长按手势、阅读历史写入。
+- `src/composables/`：主题、语言、错误文案、图片缓存、缩放、长按手势、阅读历史写入、分页资源、请求竞态守卫。
 - `src/api/`：Tauri invoke 封装（含 `favorites.ts`、`downloads.ts`）；`src/i18n/`：类型化语言包；`src/router/`：hash 路由、守卫、窗口标题。
 - `src/test/setup.ts`：Vitest 全局 setup（WebCrypto polyfill、每例 `clearMocks()`）；测试配置在 `vitest.config.ts`。
 - `e2e/`：WebDriver 配置、离线种子数据与 specs；`run.mjs` 启动 tauri-driver 并清理测试数据。`src-tauri/tauri.e2e.conf.json` 覆盖 identifier。
 - `src-tauri/src/`：
   - `lib.rs`：Builder、插件、命令注册；`error.rs`：AppError/ErrorCode。
   - `image/`：HTTP、缓存、平台搜索/详情/阅读页源。
-  - `ech/`：ECH bootstrap、DoH、TLS；`history.rs`（JSONL 历史）、`favorites.rs`（v2 JSON 收藏与分组）、`downloads.rs`（下载索引、任务与离线章节）、`logging.rs`（JSONL 日志）。
+  - `ech/`：ECH bootstrap、DoH、TLS；`history.rs`（JSONL 历史）、`favorites.rs`（v2 JSON 收藏与分组）、`downloads.rs`（下载索引、任务与离线章节）、`logging.rs`（JSONL 日志）、`storage.rs`（收藏/下载索引的原子写、备份、分页、时间戳）。
 - `capabilities/default.json`：窗口权限；`tauri.conf.json`：窗口、构建、资产协议、打包。
 - 忽略：`node_modules/`、`dist/`、`src-tauri/target/`、`src-tauri/gen/**/build/`、`scripts/.venv/`。
 
@@ -91,7 +92,7 @@
 - 搜索会话由 `search` store 管理；`/search` 不携带 query，刷新/深链会被守卫送回首页；首页图标固定回首页。
 - 详情 `/comic/:platform/:id` 不依赖搜索会话，直接 `get_comic`，刷新/深链可用；在线详情失败、或等待约 1.5s 仍未返回而本地有已完成章节的下载时，先用 `get_download`（返回 `DownloadDetail`：列表摘要 + `chapters`）渲染离线详情（在线详情随后返回则替换为完整详情），封面用 `coverPath`，开始阅读取首个已下载章节，继续阅读优先历史章节/页码，章节不可用时回退首个已下载章节第 1 页。返回目标是上一页为 `/favorites`、`/history` 或 `/downloads` 时回对应页面，否则搜索会话有效时 `/search`，否则首页，但必须走 `useBackNavigation`：上一页就是目标时 `router.back()`，否则 `router.replace`。
 - 搜索返回 `{ total, page_size, result: [{ id, title, thumb, platform, extra }] }`，详情 `{ platform, title, thumb, extra }`；`platform` 判别，`extra` 强类型（Rust `SearchExtra`/`DetailExtra`，前端判别联合）。不要退回 `Record<string, unknown>` 或 JSON 兜底。
-- 阅读页源 `get_reader_chapter(platform, id, chapterId?)`；nhentai、JM、manhuagui 均已实现。页图片仍逐页 `fetch_image`，不新增缓存目录。JM 页图在缓存前由 Rust 按 `scramble_id` 还原并重编码为 JPEG（缓存键带 `?decoded`，`scramble_id` 每章节请求一次并缓存）。
+- 阅读页源 `get_reader_chapter(platform, id, chapterId?)`；nhentai、JM、manhuagui 均已实现。页图片仍逐页 `fetch_image`，不新增缓存目录。JM 页图在缓存前由 Rust 按 `scramble_id` 还原并重编码为 JPEG（缓存键带 `?decoded=v1`，算法变更必须提升 `IMAGE_DECODE_VERSION`；`scramble_id` 每章节请求一次并缓存）。空页统一返回 `notFound`。
 - manhuagui 详情优先解 `#__VIEWSTATE`（R18/隐藏列表，LZString），失败再读 `.chapter-list`；`h4` 与 `.chapter-list` 配对成 `ManhuaguiExtra.chapterGroups`，每个 `ul` 内的 `li` 逆序得到阅读顺序；无标题分组传空标题由前端本地化。搜索结果 `chapterGroups` 为空。阅读页地址 `/comic/{id}/{chapterId}.html`，`chapterId` 必需；详情“开始阅读”取分组扁平化后的首章，`ComicReaderView` 对无章节深链先取详情首章并 `router.replace`。
 - 详情章节用 `NCollapse` 按分组展示，默认展开继续阅读所在组、否则首组，并提供展开全部/收起全部；不要恢复单块 `max-height` 内滚动。
 - manhuagui 页源按 `lanyeeee/manhuagui-downloader` 的 `decrypt.rs` 算法：正则提取 packed payload、`a/c` 与压缩字典，`lz_str` 解压字典后按 token 替换，解析 `files/path/bname/cname/bpic/nextId/prevId`。图片为 `https://i.hamreus.com{path}{file}`，先去掉文件名的 `.webp` 后缀且不带 query（`cf.hamreus.com` 备用）；`cache_version` 因 URL 归一化改为 3。上一/下一章优先用 `nextId/prevId`，缺失才解析 HTML 链接；不要在前端拼 manhuagui 图片地址。
@@ -142,7 +143,7 @@
 - Rust 拥有 `app_data_dir()/downloads.json`（version 1）和 `app_data_dir()/downloads/<platform>/<work-id>/`；每章完成写 `manifest.json`，页面与索引原子写入。不要把下载放 `app_cache_dir()`，也不要依赖图片缓存清理。
 - 下载复用 `image::fetch_image_inner` / `get_reader_chapter_inner`，页面从缓存复制到下载目录；重复磁盘占用是接受的取舍，不要另写平台请求逻辑。
 - 同一时间只跑一个作品；章节按详情顺序，页页串行。索引只在开始、章节边界、暂停和结束时写，不要每页重写整个索引。
-- 状态为 `queued/downloading/paused/completed/partial/failed`；启动/首次加载把遗留 active 状态改为 `paused`，不自动联网续传。暂停/续传用 run id 让旧 worker 失效；删除只允许非 active 状态。
+- 状态为 `queued/downloading/paused/completed/partial/failed`；启动/首次加载把遗留 active 状态改为 `paused`，不自动联网续传。暂停/续传用 run id 让旧 worker 失效；run id 进程内单调分配、删除后也不复用；删除只允许非 active 状态。
 - `get_downloaded_chapter` 返回带 `localPath` 的 `ReaderChapter`；`get_reader_chapter` 的前端封装先查本地再等 ECH。本地章节的 `previous`/`next` 只包含已下载章节，离线翻章不会跳到需要联网的章节。详情页离线回退的“开始阅读/继续阅读”也只用已完成下载章节，不被在线详情阻塞。
 - 资产协议必须同时放行 `$APPCACHE/images/**` 与 `$APPDATA/downloads/**`；`ReaderPageImage`/`useCachedImage`/`ComicThumb` 优先使用 `localPath`，阅读器预加载必须跳过本地页。
 - 下载进度用活动期间轮询（下载页 1s、详情页 1.5s），不要为此增加事件权限；页面卸载必须清定时器。
