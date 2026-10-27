@@ -38,6 +38,7 @@ import {
   useBackNavigation,
 } from "../composables/useBackNavigation";
 import { useErrorMessage } from "../composables/useErrorMessage";
+import { useLatestRequest } from "../composables/useLatestRequest";
 import { useLongPress } from "../composables/useLongPress";
 import { AppError, toAppError } from "../errors";
 import { useAppI18n } from "../i18n";
@@ -64,7 +65,7 @@ const offline = ref(false);
 const downloadLoading = ref(false);
 const downloadPending = ref(false);
 const showGroupPicker = ref(false);
-let requestId = 0;
+const latest = useLatestRequest();
 let downloadTimer: ReturnType<typeof setInterval> | undefined;
 let offlineTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -435,17 +436,17 @@ async function loadFavoriteState(
 
   try {
     const saved = await getFavorite(comicPlatform, comicId);
-    if (currentRequest === requestId) {
+    if (latest.isCurrent(currentRequest)) {
       favoriteEntry.value = saved;
     }
   } catch {
     // The status lookup is auxiliary. The toggle is idempotent, so a failure
     // should leave the button usable instead of blocking the detail page.
-    if (currentRequest === requestId) {
+    if (latest.isCurrent(currentRequest)) {
       favoriteEntry.value = null;
     }
   } finally {
-    if (currentRequest === requestId) {
+    if (latest.isCurrent(currentRequest)) {
       favoriteLoading.value = false;
     }
   }
@@ -458,12 +459,12 @@ async function loadHistoryState(
 ) {
   try {
     const entry = await getHistoryEntry(comicPlatform, comicId);
-    if (currentRequest === requestId) {
+    if (latest.isCurrent(currentRequest)) {
       historyEntry.value = entry;
     }
   } catch {
     // History only adds a convenience button; never block the detail page.
-    if (currentRequest === requestId) {
+    if (latest.isCurrent(currentRequest)) {
       historyEntry.value = null;
     }
   }
@@ -498,7 +499,7 @@ function syncDownloadPolling() {
   }
 
   downloadTimer = setInterval(() => {
-    void loadDownloadState(currentPlatform, currentId, requestId, true);
+    void loadDownloadState(currentPlatform, currentId, latest.snapshot(), true);
   }, DOWNLOAD_POLL_MS);
 }
 
@@ -516,17 +517,17 @@ async function loadDownloadState(
   try {
     const saved = await getDownload(comicPlatform, comicId);
     loaded = saved;
-    if (currentRequest === requestId) {
+    if (latest.isCurrent(currentRequest)) {
       download.value = saved;
     }
   } catch {
     // Download status is auxiliary. The detail page stays usable when the
     // index is unavailable, and the download action reports its own errors.
-    if (currentRequest === requestId && !silent) {
+    if (latest.isCurrent(currentRequest) && !silent) {
       download.value = null;
     }
   } finally {
-    if (currentRequest === requestId) {
+    if (latest.isCurrent(currentRequest)) {
       if (!silent) {
         downloadLoading.value = false;
       }
@@ -556,7 +557,7 @@ async function onDownloadClick() {
     return;
   }
 
-  const currentRequest = requestId;
+  const currentRequest = latest.snapshot();
   downloadPending.value = true;
 
   try {
@@ -567,17 +568,17 @@ async function onDownloadClick() {
       thumb: current.thumb,
       chapters: downloadChapters.value,
     });
-    if (currentRequest === requestId) {
+    if (latest.isCurrent(currentRequest)) {
       message.success(t("downloads.queuedToast"));
       // Re-read the detail so the stored chapter list stays in sync.
       await loadDownloadState(currentPlatform, currentId, currentRequest);
     }
   } catch (cause) {
-    if (currentRequest === requestId) {
+    if (latest.isCurrent(currentRequest)) {
       message.error(formatError(cause));
     }
   } finally {
-    if (currentRequest === requestId) {
+    if (latest.isCurrent(currentRequest)) {
       downloadPending.value = false;
     }
   }
@@ -596,13 +597,13 @@ async function toggleFavorite() {
     return;
   }
 
-  const currentRequest = requestId;
+  const currentRequest = latest.snapshot();
   favoritePending.value = true;
 
   try {
     if (favorited.value) {
       await removeFavorite(current.platform, id.value);
-      if (currentRequest === requestId) {
+      if (latest.isCurrent(currentRequest)) {
         favoriteEntry.value = null;
         message.success(t("favorites.removedToast"));
       }
@@ -613,17 +614,17 @@ async function toggleFavorite() {
         title: current.title,
         thumb: current.thumb,
       });
-      if (currentRequest === requestId) {
+      if (latest.isCurrent(currentRequest)) {
         favoriteEntry.value = saved;
         message.success(t("favorites.addedToast"));
       }
     }
   } catch (cause) {
-    if (currentRequest === requestId) {
+    if (latest.isCurrent(currentRequest)) {
       message.error(formatError(cause));
     }
   } finally {
-    if (currentRequest === requestId) {
+    if (latest.isCurrent(currentRequest)) {
       favoritePending.value = false;
     }
   }
@@ -635,7 +636,7 @@ function onGroupSaved(entry: FavoriteEntry) {
 }
 
 async function load() {
-  const currentRequest = ++requestId;
+  const currentRequest = latest.begin();
   const currentPlatform = platform.value;
   const currentId = id.value;
 
@@ -678,7 +679,7 @@ async function load() {
   offlineTimer = setTimeout(() => {
     void downloadTask.then((saved) => {
       if (
-        currentRequest !== requestId ||
+        !latest.isCurrent(currentRequest) ||
         detail.value ||
         error.value ||
         !saved ||
@@ -694,7 +695,7 @@ async function load() {
 
   try {
     const result = await getComic(currentPlatform, currentId);
-    if (currentRequest !== requestId) {
+    if (!latest.isCurrent(currentRequest)) {
       return;
     }
     clearOfflineFallback();
@@ -703,12 +704,12 @@ async function load() {
     setWindowTitle(`${result.title} · ${t("app.name")}`);
     void loadFavoriteState(currentPlatform, currentId, currentRequest);
   } catch (cause) {
-    if (currentRequest !== requestId) {
+    if (!latest.isCurrent(currentRequest)) {
       return;
     }
     clearOfflineFallback();
     const saved = await downloadTask;
-    if (currentRequest !== requestId) {
+    if (!latest.isCurrent(currentRequest)) {
       return;
     }
     if (saved && saved.completedChapters > 0) {
@@ -720,7 +721,7 @@ async function load() {
     }
   } finally {
     clearOfflineFallback();
-    if (currentRequest === requestId) {
+    if (latest.isCurrent(currentRequest)) {
       loading.value = false;
     }
   }
@@ -729,7 +730,6 @@ async function load() {
 watch([platform, id], () => void load(), { immediate: true });
 
 onBeforeUnmount(() => {
-  requestId++;
   clearDownloadPolling();
   clearOfflineFallback();
 });

@@ -1,65 +1,40 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onMounted } from "vue";
 import type { RouteLocationRaw } from "vue-router";
 import { RouterLink } from "vue-router";
 import { useBackNavigation } from "../composables/useBackNavigation";
-import type { ComicPlatform } from "../api/comics";
 import { listHistory, type HistoryEntry } from "../api/history";
 import ComicThumb from "../components/ComicThumb.vue";
 import { useErrorMessage } from "../composables/useErrorMessage";
-import { toAppError, type AppError } from "../errors";
-import { resolveLocale, useAppI18n, type MessageKey } from "../i18n";
-import { useSettingsStore } from "../stores/settings";
-
-const PAGE_SIZE = 50;
+import { usePagedResource } from "../composables/usePagedResource";
+import { useDateTimeFormatter } from "../i18n/format";
+import { platformLabelKey } from "../i18n/platform";
+import { useAppI18n } from "../i18n";
 
 const { goBack } = useBackNavigation();
-const settings = useSettingsStore();
 const { t } = useAppI18n();
 const formatError = useErrorMessage();
 
-const entries = ref<HistoryEntry[]>([]);
-const total = ref(0);
-const page = ref(1);
-const loading = ref(true);
-const loadError = ref<AppError | null>(null);
-let requestId = 0;
+const { format: formatTimestamp, toIso: isoTimestamp } =
+  useDateTimeFormatter();
+const {
+  entries,
+  total,
+  page,
+  pageCount,
+  loading,
+  error: loadError,
+  load,
+  reload,
+  changePage,
+} = usePagedResource<HistoryEntry>({
+  fetch: (offset, limit) => listHistory(offset, limit),
+});
 
-const pageCount = computed(() =>
-  Math.max(1, Math.ceil(total.value / PAGE_SIZE)),
-);
 const countText = computed(() => t("history.count", { count: total.value }));
 const errorText = computed(() =>
   loadError.value ? formatError(loadError.value) : "",
 );
-
-const PLATFORM_LABEL_KEYS: Record<ComicPlatform, MessageKey> = {
-  manhuagui: "home.search.platforms.manhuagui",
-  jm: "home.search.platforms.jm",
-  nhentai: "home.search.platforms.nhentai",
-};
-
-// Rebuild the formatter when the app language changes instead of following
-// the system locale, which may differ from the selected UI language.
-const timestampFormatter = computed(
-  () =>
-    new Intl.DateTimeFormat(resolveLocale(settings.locale), {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    }),
-);
-
-function formatTimestamp(timestamp: number): string {
-  return timestampFormatter.value.format(new Date(timestamp));
-}
-
-function isoTimestamp(timestamp: number): string {
-  return new Date(timestamp).toISOString();
-}
 
 function entryKey(entry: HistoryEntry): string {
   return `${entry.platform}:${entry.id}`;
@@ -72,53 +47,12 @@ function detailTarget(entry: HistoryEntry): RouteLocationRaw {
   };
 }
 
-async function load() {
-  const current = ++requestId;
-  loading.value = true;
-  loadError.value = null;
-
-  try {
-    const result = await listHistory(
-      (page.value - 1) * PAGE_SIZE,
-      PAGE_SIZE,
-    );
-    if (current !== requestId) {
-      return;
-    }
-    total.value = result.total;
-    entries.value = result.entries;
-  } catch (cause) {
-    if (current !== requestId) {
-      return;
-    }
-    loadError.value = toAppError(cause);
-  } finally {
-    if (current === requestId) {
-      loading.value = false;
-    }
-  }
-}
-
-function changePage(next: number) {
-  if (next === page.value) {
-    return;
-  }
-  page.value = next;
-  // Pagination sits below a long list; start the new page from the top.
-  window.scrollTo({ top: 0, behavior: "smooth" });
-  void load();
-}
-
 function goHome() {
   goBack({ name: "home" });
 }
 
 onMounted(() => {
   void load();
-});
-
-onBeforeUnmount(() => {
-  requestId++;
 });
 </script>
 
@@ -147,7 +81,7 @@ onBeforeUnmount(() => {
       <NAlert v-if="loadError" class="history-alert" type="error" :bordered="false">
         <div class="history-alert__body">
           <span>{{ errorText }}</span>
-          <NButton size="small" @click="load">
+          <NButton size="small" @click="reload">
             {{ t("history.retry") }}
           </NButton>
         </div>
@@ -176,7 +110,7 @@ onBeforeUnmount(() => {
               </span>
               <span class="history-entry__meta">
                 <NTag size="tiny" :bordered="false">
-                  {{ t(PLATFORM_LABEL_KEYS[entry.platform]) }}
+                  {{ t(platformLabelKey(entry.platform)) }}
                 </NTag>
                 <span>
                   {{
@@ -196,7 +130,7 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <div v-if="total > PAGE_SIZE" class="history-pagination">
+      <div v-if="pageCount > 1" class="history-pagination">
         <NPagination :page="page" :page-count="pageCount" :page-slot="7" :disabled="loading"
           @update:page="changePage" />
       </div>

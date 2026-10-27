@@ -2,7 +2,7 @@
 import { computed } from "vue";
 import type { ComicPlatform } from "../../api/comics";
 import { useAppI18n } from "../../i18n";
-import type { MessageKey } from "../../i18n";
+import { platformLabelKey } from "../../i18n/platform";
 import ComicThumb from "../ComicThumb.vue";
 
 const props = defineProps<{
@@ -16,13 +16,7 @@ const props = defineProps<{
 
 const { t } = useAppI18n();
 
-const PLATFORM_LABEL_KEYS: Record<ComicPlatform, MessageKey> = {
-  manhuagui: "home.search.platforms.manhuagui",
-  jm: "home.search.platforms.jm",
-  nhentai: "home.search.platforms.nhentai",
-};
-
-const platformLabel = computed(() => t(PLATFORM_LABEL_KEYS[props.platform]));
+const platformLabel = computed(() => t(platformLabelKey(props.platform)));
 </script>
 
 <template>

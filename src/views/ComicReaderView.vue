@@ -12,6 +12,7 @@ import {
 import ComicViewer from "../components/reader/ComicViewer.vue";
 import { useBackNavigation } from "../composables/useBackNavigation";
 import { useErrorMessage } from "../composables/useErrorMessage";
+import { useLatestRequest } from "../composables/useLatestRequest";
 import { useNextChapterPreload } from "../composables/useNextChapterPreload";
 import { useReadingHistory } from "../composables/useReadingHistory";
 import { AppError, toAppError } from "../errors";
@@ -40,7 +41,7 @@ const page = ref(1);
 const preloadCount = computed(() =>
   clampReaderPreloadCount(settings.readerPreloadCount),
 );
-let requestId = 0;
+const latest = useLatestRequest();
 let previousBodyOverflow = "";
 let recordedPage = 0;
 
@@ -221,7 +222,7 @@ function applyChapter(result: ReaderChapter, startAtEnd: boolean) {
 async function load() {
   // Capture the outgoing chapter's last page before clearing its state.
   readingHistory.flush();
-  const currentRequest = ++requestId;
+  const currentRequest = latest.begin();
   const currentPlatform = platform.value;
   const currentId = id.value;
   const currentChapterId = chapterId.value;
@@ -264,7 +265,7 @@ async function load() {
       // first chapter from the detail page, then replace the URL so history and
       // sharing keep the chapter id.
       const detail = await getComic(currentPlatform, currentId);
-      if (currentRequest !== requestId) {
+      if (!latest.isCurrent(currentRequest)) {
         return;
       }
       const first =
@@ -297,19 +298,19 @@ async function load() {
           getReaderChapter(currentPlatform, currentId, loadChapterId),
         )
       : await getReaderChapter(currentPlatform, currentId, loadChapterId);
-    if (currentRequest !== requestId) {
+    if (!latest.isCurrent(currentRequest)) {
       return;
     }
 
     applyChapter(result, startAtEnd);
   } catch (cause) {
-    if (currentRequest !== requestId) {
+    if (!latest.isCurrent(currentRequest)) {
       return;
     }
     error.value = toAppError(cause);
     updateWindowTitle();
   } finally {
-    if (currentRequest === requestId) {
+    if (latest.isCurrent(currentRequest)) {
       loading.value = false;
     }
   }
@@ -353,7 +354,6 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   readingHistory.flush();
-  requestId++;
   document.body.style.overflow = previousBodyOverflow;
 });
 </script>

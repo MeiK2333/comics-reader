@@ -2,7 +2,6 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { RouterLink } from "vue-router";
 import { useMessage } from "naive-ui";
-import type { ComicPlatform } from "../api/comics";
 import {
   deleteDownload,
   isDownloadActive,
@@ -16,31 +15,38 @@ import { clearReaderChapterCache } from "../api/reader";
 import ComicThumb from "../components/ComicThumb.vue";
 import { useBackNavigation } from "../composables/useBackNavigation";
 import { useErrorMessage } from "../composables/useErrorMessage";
-import { toAppError, type AppError } from "../errors";
-import { resolveLocale, useAppI18n, type MessageKey } from "../i18n";
-import { useSettingsStore } from "../stores/settings";
+import { useLatestRequest } from "../composables/useLatestRequest";
+import { usePagedResource } from "../composables/usePagedResource";
+import { useByteFormatter, useDateTimeFormatter } from "../i18n/format";
+import { platformLabelKey } from "../i18n/platform";
+import { useAppI18n, type MessageKey } from "../i18n";
 
-const PAGE_SIZE = 50;
 const POLL_MS = 1_000;
 
 const { goBack } = useBackNavigation();
 const message = useMessage();
-const settings = useSettingsStore();
 const { t } = useAppI18n();
 const formatError = useErrorMessage();
+const latest = useLatestRequest();
+const { format: formatTimestamp, toIso: isoTimestamp } =
+  useDateTimeFormatter();
+const { format: formatBytes } = useByteFormatter();
 
-const entries = ref<DownloadSummary[]>([]);
-const total = ref(0);
-const page = ref(1);
-const loading = ref(true);
-const loadError = ref<AppError | null>(null);
+const {
+  entries,
+  total,
+  page,
+  pageCount,
+  loading,
+  error: loadError,
+  load: loadPage,
+  changePage: changeResourcePage,
+} = usePagedResource<DownloadSummary>({
+  fetch: (offset, limit) => listDownloads(offset, limit),
+});
 const actionKey = ref<string | null>(null);
-let requestId = 0;
 let pollTimer: ReturnType<typeof setInterval> | undefined;
 
-const pageCount = computed(() =>
-  Math.max(1, Math.ceil(total.value / PAGE_SIZE)),
-);
 const countText = computed(() => t("downloads.count", { count: total.value }));
 const errorText = computed(() =>
   loadError.value ? formatError(loadError.value) : "",
@@ -49,12 +55,6 @@ const hasActive = computed(() =>
   entries.value.some((entry) => isDownloadActive(entry.status)),
 );
 const busy = computed(() => actionKey.value !== null);
-
-const PLATFORM_LABEL_KEYS: Record<ComicPlatform, MessageKey> = {
-  manhuagui: "home.search.platforms.manhuagui",
-  jm: "home.search.platforms.jm",
-  nhentai: "home.search.platforms.nhentai",
-};
 
 const STATUS_LABEL_KEYS: Record<DownloadStatus, MessageKey> = {
   queued: "downloads.status.queued",
@@ -75,47 +75,6 @@ const STATUS_TYPES: Record<DownloadStatus, TagType> = {
   partial: "warning",
   failed: "error",
 };
-
-const timestampFormatter = computed(
-  () =>
-    new Intl.DateTimeFormat(resolveLocale(settings.locale), {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    }),
-);
-
-const byteFormatter = computed(
-  () =>
-    new Intl.NumberFormat(resolveLocale(settings.locale), {
-      maximumFractionDigits: 1,
-    }),
-);
-
-function formatTimestamp(timestamp: number): string {
-  return timestampFormatter.value.format(new Date(timestamp));
-}
-
-function isoTimestamp(timestamp: number): string {
-  return new Date(timestamp).toISOString();
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes <= 0) {
-    return "0 B";
-  }
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  let value = bytes;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit += 1;
-  }
-  return `${byteFormatter.value.format(value)} ${units[unit]}`;
-}
 
 function entryKey(entry: DownloadSummary): string {
   return `${entry.platform}:${entry.id}`;
@@ -172,45 +131,13 @@ function syncPolling() {
 }
 
 async function load(silent = false) {
-  const current = ++requestId;
-  if (!silent) {
-    loading.value = true;
-    loadError.value = null;
-  }
-
-  try {
-    const result = await listDownloads(
-      (page.value - 1) * PAGE_SIZE,
-      PAGE_SIZE,
-    );
-    if (current !== requestId) {
-      return;
-    }
-    total.value = result.total;
-    entries.value = result.entries;
-    loadError.value = null;
-  } catch (cause) {
-    if (current !== requestId) {
-      return;
-    }
-    if (!silent) {
-      loadError.value = toAppError(cause);
-    }
-  } finally {
-    if (current === requestId) {
-      loading.value = false;
-      syncPolling();
-    }
-  }
+  await loadPage(silent);
+  syncPolling();
 }
 
-function changePage(next: number) {
-  if (next === page.value) {
-    return;
-  }
-  page.value = next;
-  window.scrollTo({ top: 0, behavior: "smooth" });
-  void load();
+async function changePage(next: number) {
+  await changeResourcePage(next);
+  syncPolling();
 }
 
 async function pause(entry: DownloadSummary) {
@@ -219,16 +146,16 @@ async function pause(entry: DownloadSummary) {
   }
   const key = entryKey(entry);
   actionKey.value = key;
-  const currentRequest = requestId;
+  const token = latest.begin();
 
   try {
     await pauseDownload(entry.platform, entry.id);
-    if (currentRequest === requestId) {
+    if (latest.isCurrent(token)) {
       message.success(t("downloads.pausedToast"));
       await load(true);
     }
   } catch (cause) {
-    if (currentRequest === requestId) {
+    if (latest.isCurrent(token)) {
       message.error(formatError(cause));
     }
   } finally {
@@ -242,16 +169,16 @@ async function resume(entry: DownloadSummary) {
   }
   const key = entryKey(entry);
   actionKey.value = key;
-  const currentRequest = requestId;
+  const token = latest.begin();
 
   try {
     await resumeDownload(entry.platform, entry.id);
-    if (currentRequest === requestId) {
+    if (latest.isCurrent(token)) {
       message.success(t("downloads.resumedToast"));
       await load(true);
     }
   } catch (cause) {
-    if (currentRequest === requestId) {
+    if (latest.isCurrent(token)) {
       message.error(formatError(cause));
     }
   } finally {
@@ -265,18 +192,20 @@ async function remove(entry: DownloadSummary) {
   }
   const key = entryKey(entry);
   actionKey.value = key;
+  const token = latest.begin();
 
   try {
     await deleteDownload(entry.platform, entry.id);
+    if (!latest.isCurrent(token)) {
+      return;
+    }
     clearReaderChapterCache();
     message.success(t("downloads.deleted"));
-    const lastPage = Math.max(1, Math.ceil((total.value - 1) / PAGE_SIZE));
-    if (page.value > lastPage) {
-      page.value = lastPage;
-    }
     await load();
   } catch (cause) {
-    message.error(formatError(cause));
+    if (latest.isCurrent(token)) {
+      message.error(formatError(cause));
+    }
   } finally {
     actionKey.value = null;
   }
@@ -291,7 +220,6 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
-  requestId++;
   clearPolling();
 });
 </script>
@@ -389,7 +317,7 @@ onBeforeUnmount(() => {
 
               <span class="download-entry__meta">
                 <NTag size="tiny" :bordered="false">
-                  {{ t(PLATFORM_LABEL_KEYS[entry.platform]) }}
+                  {{ t(platformLabelKey(entry.platform)) }}
                 </NTag>
                 <NTag
                   size="tiny"
@@ -489,7 +417,7 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <div v-if="total > PAGE_SIZE" class="downloads-pagination">
+      <div v-if="pageCount > 1" class="downloads-pagination">
         <NPagination
           :page="page"
           :page-count="pageCount"

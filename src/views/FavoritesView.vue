@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import {
   computed,
-  onBeforeUnmount,
   onMounted,
   ref,
   watch,
@@ -9,7 +8,6 @@ import {
 import type { RouteLocationRaw } from "vue-router";
 import { RouterLink } from "vue-router";
 import { useMessage } from "naive-ui";
-import type { ComicPlatform } from "../api/comics";
 import {
   DEFAULT_GROUP_ID,
   createFavoriteGroup,
@@ -24,32 +22,44 @@ import {
 import ComicThumb from "../components/ComicThumb.vue";
 import { useBackNavigation } from "../composables/useBackNavigation";
 import { useErrorMessage } from "../composables/useErrorMessage";
+import { useLatestRequest } from "../composables/useLatestRequest";
+import { usePagedResource } from "../composables/usePagedResource";
+import { useDateTimeFormatter } from "../i18n/format";
+import { platformLabelKey } from "../i18n/platform";
+import { useAppI18n } from "../i18n";
 import { toAppError, type AppError } from "../errors";
-import { resolveLocale, useAppI18n, type MessageKey } from "../i18n";
-import { useSettingsStore } from "../stores/settings";
-
-const PAGE_SIZE = 50;
 
 const { goBack } = useBackNavigation();
 const message = useMessage();
-const settings = useSettingsStore();
 const { t } = useAppI18n();
 const formatError = useErrorMessage();
+const latest = useLatestRequest();
+const groupsLatest = useLatestRequest();
+const { format: formatTimestamp, toIso: isoTimestamp } =
+  useDateTimeFormatter();
 
-const entries = ref<FavoriteEntry[]>([]);
-const total = ref(0);
-const page = ref(1);
-const loading = ref(true);
-const loadError = ref<AppError | null>(null);
+const selectedGroupId = ref<string | null>(null);
+const {
+  entries,
+  total,
+  page,
+  pageCount,
+  loading,
+  error: loadError,
+  load: loadPage,
+  reload,
+  reset: resetPage,
+  changePage,
+} = usePagedResource<FavoriteEntry>({
+  fetch: (offset, limit) =>
+    listFavorites(offset, limit, selectedGroupId.value),
+});
 const removingKey = ref<string | null>(null);
-let requestId = 0;
 
 const groups = ref<FavoriteGroup[]>([]);
 const groupsTotal = ref(0);
 const groupsLoading = ref(true);
 const groupsError = ref<AppError | null>(null);
-const selectedGroupId = ref<string | null>(null);
-let groupsRequestId = 0;
 
 const groupDialogShow = ref(false);
 const groupDialogMode = ref<"create" | "rename">("create");
@@ -60,9 +70,6 @@ const groupDialogSaving = ref(false);
 const showGroupManager = ref(false);
 const deletingGroupId = ref<string | null>(null);
 
-const pageCount = computed(() =>
-  Math.max(1, Math.ceil(total.value / PAGE_SIZE)),
-);
 const countText = computed(() => t("favorites.count", { count: total.value }));
 const errorText = computed(() =>
   loadError.value ? formatError(loadError.value) : "",
@@ -88,34 +95,6 @@ const groupDialogTitle = computed(() =>
     ? t("favorites.group.createTitle")
     : t("favorites.group.renameTitle"),
 );
-
-const PLATFORM_LABEL_KEYS: Record<ComicPlatform, MessageKey> = {
-  manhuagui: "home.search.platforms.manhuagui",
-  jm: "home.search.platforms.jm",
-  nhentai: "home.search.platforms.nhentai",
-};
-
-// Build the formatter from the app language instead of the system locale, which
-// may differ from the selected UI language.
-const timestampFormatter = computed(
-  () =>
-    new Intl.DateTimeFormat(resolveLocale(settings.locale), {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    }),
-);
-
-function formatTimestamp(timestamp: number): string {
-  return timestampFormatter.value.format(new Date(timestamp));
-}
-
-function isoTimestamp(timestamp: number): string {
-  return new Date(timestamp).toISOString();
-}
 
 function entryKey(entry: FavoriteEntry): string {
   return `${entry.platform}:${entry.id}`;
@@ -144,42 +123,14 @@ function groupLabelById(groupId: string): string {
   );
 }
 
-async function load() {
-  const current = ++requestId;
-  loading.value = true;
-  loadError.value = null;
-
-  try {
-    const result = await listFavorites(
-      (page.value - 1) * PAGE_SIZE,
-      PAGE_SIZE,
-      selectedGroupId.value,
-    );
-    if (current !== requestId) {
-      return;
-    }
-    total.value = result.total;
-    entries.value = result.entries;
-  } catch (cause) {
-    if (current !== requestId) {
-      return;
-    }
-    loadError.value = toAppError(cause);
-  } finally {
-    if (current === requestId) {
-      loading.value = false;
-    }
-  }
-}
-
 async function loadGroups() {
-  const current = ++groupsRequestId;
+  const token = groupsLatest.begin();
   groupsLoading.value = true;
   groupsError.value = null;
 
   try {
     const result = await listFavoriteGroups();
-    if (current !== groupsRequestId) {
+    if (!groupsLatest.isCurrent(token)) {
       return;
     }
     groups.value = result.groups;
@@ -189,29 +140,18 @@ async function loadGroups() {
       !result.groups.some((group) => group.id === selectedGroupId.value)
     ) {
       selectedGroupId.value = null;
-      page.value = 1;
-      void load();
+      void resetPage();
     }
   } catch (cause) {
-    if (current !== groupsRequestId) {
+    if (!groupsLatest.isCurrent(token)) {
       return;
     }
     groupsError.value = toAppError(cause);
   } finally {
-    if (current === groupsRequestId) {
+    if (groupsLatest.isCurrent(token)) {
       groupsLoading.value = false;
     }
   }
-}
-
-function changePage(next: number) {
-  if (next === page.value) {
-    return;
-  }
-  page.value = next;
-  // Pagination sits below a long list; start the new page from the top.
-  window.scrollTo({ top: 0, behavior: "smooth" });
-  void load();
 }
 
 function selectGroup(groupId: string | null) {
@@ -219,9 +159,9 @@ function selectGroup(groupId: string | null) {
     return;
   }
   selectedGroupId.value = groupId;
-  page.value = 1;
+  // Pagination sits below a long list; start the filtered list from the top.
   window.scrollTo({ top: 0, behavior: "smooth" });
-  void load();
+  void resetPage();
 }
 
 async function remove(entry: FavoriteEntry) {
@@ -230,12 +170,12 @@ async function remove(entry: FavoriteEntry) {
   }
 
   const key = entryKey(entry);
-  const currentRequest = requestId;
+  const token = latest.begin();
   removingKey.value = key;
 
   try {
     await removeFavorite(entry.platform, entry.id);
-    if (currentRequest !== requestId) {
+    if (!latest.isCurrent(token)) {
       return;
     }
     entries.value = entries.value.filter((item) => entryKey(item) !== key);
@@ -244,14 +184,10 @@ async function remove(entry: FavoriteEntry) {
 
     // A removed row leaves a gap on the current page unless it was the last
     // row overall, so reload to backfill and clamp the page if needed.
-    const lastPage = Math.max(1, Math.ceil(total.value / PAGE_SIZE));
-    if (page.value > lastPage) {
-      page.value = lastPage;
-    }
-    await load();
+    await loadPage();
     await loadGroups();
   } catch (cause) {
-    if (currentRequest === requestId) {
+    if (latest.isCurrent(token)) {
       message.error(formatError(cause));
     }
   } finally {
@@ -322,9 +258,8 @@ async function saveGroup() {
       const created = await createFavoriteGroup(name);
       groupDialogShow.value = false;
       selectedGroupId.value = created.id;
-      page.value = 1;
       await loadGroups();
-      await load();
+      await resetPage();
       message.success(t("favorites.group.createdHint"), { duration: 6000 });
     } else {
       const groupId = groupDialogGroupId.value;
@@ -352,12 +287,16 @@ async function deleteGroup(group: FavoriteGroup) {
 
   try {
     await deleteFavoriteGroup(group.id);
-    if (selectedGroupId.value === group.id) {
+    const wasSelected = selectedGroupId.value === group.id;
+    if (wasSelected) {
       selectedGroupId.value = null;
-      page.value = 1;
     }
     await loadGroups();
-    await load();
+    if (wasSelected) {
+      await resetPage();
+    } else {
+      await loadPage();
+    }
     message.success(t("favorites.group.deleted"));
   } catch (cause) {
     message.error(formatError(cause));
@@ -376,12 +315,7 @@ watch(groupDialogName, () => {
 
 onMounted(() => {
   void loadGroups();
-  void load();
-});
-
-onBeforeUnmount(() => {
-  requestId++;
-  groupsRequestId++;
+  void loadPage();
 });
 </script>
 
@@ -497,7 +431,7 @@ onBeforeUnmount(() => {
       >
         <div class="favorites-alert__body">
           <span>{{ errorText }}</span>
-          <NButton size="small" @click="load">
+          <NButton size="small" @click="reload">
             {{ t("favorites.retry") }}
           </NButton>
         </div>
@@ -538,7 +472,7 @@ onBeforeUnmount(() => {
               </span>
               <span class="favorite-entry__meta">
                 <NTag size="tiny" :bordered="false">
-                  {{ t(PLATFORM_LABEL_KEYS[entry.platform]) }}
+                  {{ t(platformLabelKey(entry.platform)) }}
                 </NTag>
                 <NTag size="tiny" :bordered="false">
                   {{ groupLabelById(entry.groupId) }}
@@ -589,7 +523,7 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <div v-if="total > PAGE_SIZE" class="favorites-pagination">
+      <div v-if="pageCount > 1" class="favorites-pagination">
         <NPagination
           :page="page"
           :page-count="pageCount"
