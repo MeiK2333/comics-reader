@@ -39,7 +39,9 @@ export function useDownloadAction(options: UseDownloadActionOptions) {
   let pollTimer: ReturnType<typeof setInterval> | undefined;
 
   const inProgress = computed(
-    () => options.download.value !== null && isDownloadActive(options.download.value.status),
+    () =>
+      options.download.value !== null &&
+      isDownloadActive(options.download.value.status),
   );
 
   const buttonLabel = computed(() => {

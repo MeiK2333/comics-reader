@@ -147,7 +147,8 @@ export function useFavoriteAction(options: UseFavoriteActionOptions) {
           id: comicId,
           title: current.title,
           thumb: current.thumb,
-        });        if (latest.isCurrent(token)) {
+        });
+        if (latest.isCurrent(token)) {
           entry.value = saved;
           message.success(t("favorites.addedToast"));
         }
