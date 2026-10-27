@@ -1,7 +1,7 @@
 # 重构与修复计划（待办）
 
-> **状态**：P1、P2-1~P2-8、P3-2、P3-4、P4-1~P4-7 已完成并从本文件移除（历史见 git log）。剩余：P4-8（低优先）、P4-9（条件项）、P3-1（可选）、P3-3（条件项）。
-> **基线**：2026-10-27，master（P4-1~P4-7 后）；`pnpm test` 35 files / 229 tests、`cargo test` 169 passed / 10 ignored。
+> **状态**：P1、P2-1~P2-8、P3-2、P3-4、P4-1~P4-8 已完成并从本文件移除（历史见 git log）。剩余：P4-9（条件项）、P3-1（可选）、P3-3（条件项）。
+> **基线**：2026-10-27，master（P4-1~P4-8 后）；`pnpm test` 35 files / 229 tests、`cargo test` 170 passed / 10 ignored。
 > **适用对象**：后续接手本仓库的编码智能体。
 > **配套文档**：[AGENTS.md](AGENTS.md)（契约、命令、易错点，优先于本文件）、[ROADMAP.md](ROADMAP.md)（功能方向）。
 > **定位说明**：任务卡里的行号是基线行号，代码变动后会漂移；定位时按符号名（函数/结构体/常量）搜索，不要机械相信行号。
@@ -12,14 +12,12 @@
 
 主体重构已经结束。当前维护成本集中在：
 
-1. **少量叶子重复**：`KNOWN_PLATFORMS` 三处（P4-8）；其余重复已记录为例外，不要强行统一。
-2. **可选/条件项**：P4-8 去重与格式、P4-9 阅读器编排抽取（先评估）、P3-1 其余 DTO（只在 wire 变化时补）、P3-3 分页索引（只在有 benchmark 时做）。
+1. **条件/按需项**：P4-9 阅读器编排抽取（先评估）、P3-1 其余 DTO（只在 wire 变化时补）、P3-3 分页索引（只在有 benchmark 时做）。
 
 执行顺序：
 
-1. P4-8 低优先，可选。
-2. P4-9 先评估收益；不要为了覆盖率强行拆阅读器。
-3. P3-1 / P3-3 按需推进。
+1. P4-9 先评估收益；不要为了覆盖率强行拆阅读器。
+2. P3-1 / P3-3 按需推进。
 
 一次只做一个任务卡，独立提交；先加失败用例再修缺陷；结构拆分、行为修复、测试补齐不要混在同一提交。
 
@@ -51,7 +49,7 @@
 
 `favorites.rs` 1205、`manhuagui.rs` 1092、`downloads/store.rs` 688、`FavoritesView.vue` 941、`downloads/worker.rs` 614、`DownloadsView.vue` 676、`ComicViewer.vue` 360。行数含测试/样式；这些文件都已按职责拆过一轮。
 
-记录在案的例外（不是待办）：`KNOWN_PLATFORMS` 三处；`LogsView`/`NhentaiDetail` 各自构造 `Intl.DateTimeFormat`；`search`/`ComicThumb`/`useCachedImage`/`usePagedResource` 的局部 `requestId`。只有 `KNOWN_PLATFORMS` 由 P4-8 处理。
+记录在案的例外（不是待办）：`LogsView`/`NhentaiDetail` 各自构造 `Intl.DateTimeFormat`；`search`/`ComicThumb`/`useCachedImage`/`usePagedResource` 的局部 `requestId`。
 
 ### 2.2 测试覆盖
 
@@ -65,7 +63,7 @@ pnpm test        # 35 files / 229 tests
 pnpm build       # vue-tsc --noEmit + Vite build
 
 # src-tauri/
-cargo test       # 169 passed, 10 ignored
+cargo test       # 170 passed, 10 ignored
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 ```
@@ -120,27 +118,12 @@ BUG-1~BUG-10、BUG-12、BUG-13 的已修复项不再保留；需要追溯时看 
 
 ### P4：剩余可选与条件项
 
-> P4 主线（P4-1~P4-7）已完成并从本文件移除；这里只保留低优先去重与条件项。
+> P4 主线（P4-1~P4-7）与 P4-8 已完成并从本文件移除；这里只保留条件项。
 > 测试约定沿用现有测试：jsdom + `vi.mock`/`@tauri-apps/api/mocks`、`NMessageProvider` harness、`effectScope`；测试不联网、不启动 Tauri。
-
-#### P4-8 去重与整洁（chore，低优先）
-
-- **状态**：todo
-- **依赖**：无
-- **证据**：`KNOWN_PLATFORMS` 在 `favorites.rs`、`history.rs`、`downloads/mod.rs` 各一份；`useFavoriteAction.ts` 有一处两条语句挤在同一行（`});        if (latest.isCurrent(token)) {`），`useDownloadAction.ts` 有超长行；项目没有 formatter。
-- **做法**：
-  - Rust：新增 `src-tauri/src/platforms.rs`（或复用 `image::platform` 的公开常量），只放 `KNOWN_PLATFORMS` 与 `is_known_platform()`；三处改为引用，错误文案/错误码不变；补一个“未知平台被拒绝”的单测。不要顺手改校验顺序或 sanitize 语义。
-  - 前端：只修格式（拆行），不重排逻辑。
-- **不要做**：不要合并 `Intl.DateTimeFormat`（`LogsView` 用系统 locale，`NhentaiDetail` 是平台字段格式）；不要引入 Prettier/ESLint。
-- **验收**：
-  - [ ] `cargo test`、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings` 通过；`pnpm test`、`pnpm build` 通过。
-- **建议提交**：
-  1. `refactor(rust): share the known-platform list`
-  2. `style(web): wrap statements in detail actions`
 
 #### P4-9 阅读器路由编排可测化（conditional）
 
-- **状态**：conditional（未开始；P4 主线已完成，先评估收益再决定是否抽取）
+- **状态**：conditional（未开始；先评估收益再决定是否抽取）
 - **证据**：`ComicReaderView.vue` 约 463 行，包含缓存/在途页源选择、manhuagui 无章节深链解析首章、`?page=last`、URL query 同步、历史记录去抖 gate、body overflow；这些逻辑没有单测。
 - **做法**：抽出 `useReaderChapterSource`（或等价 composable）负责“路由参数 → 章节数据/页码/URL/历史”的编排，视图只做渲染；用 mock 的 router + api 测。若评估认为抽取会破坏既定阅读器行为，保持现状并在任务卡记录理由，不要强行拆。
 - **验收**：抽取后 `pnpm test`、`pnpm build` 通过；若环境可用，E2E 行为不变。
@@ -180,7 +163,8 @@ P4 只按自动化门禁验收；真实窗口冒烟（`pnpm tauri dev`）建议�
 
 - [x] P4-1~P4-7（测试补强主线）完成；`pnpm test` 35 files / 229 tests、`pnpm build` 通过。
 - [x] BUG-13（下载 pending 泄漏）已修复并有回归测试。
-- [ ] P4-8 低优先、P4-9 条件项按需推进。
+- [x] P4-8（`KNOWN_PLATFORMS` 共享）完成；`cargo test` 170 passed / 10 ignored。
+- [ ] P4-9 条件项按需推进。
 - [ ] P3-1 只在 wire 变化时按需推进；P3-3 有 benchmark 证据再做。
 - [x] 下一次新增列表页/平台/下载能力可以复用现有 composable、trait 和契约测试。
 
