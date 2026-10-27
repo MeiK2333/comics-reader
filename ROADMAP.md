@@ -23,4 +23,4 @@
 ## 说明
 
 - 这里是方向性计划，不承诺版本与时间；实际顺序取决于平台接口稳定性、登录/地区限制与抓取许可。
-- 新平台按 `AGENTS.md` 的“新平台”入口实现，保持 `Platform` trait、判别联合与缓存版本约定。
+- 新平台按 [`src/platforms/README.md`](src/platforms/README.md) 与 [`src-tauri/src/platforms/README.md`](src-tauri/src/platforms/README.md) 的两目录流程实现，保持 `ImageProfile`/`Catalog` trait、判别联合与缓存版本约定。
