@@ -1,6 +1,6 @@
 # 重构与修复计划
 
-> **状态**：P1 + P2-1 + P2-2 已完成；P2-3 模块拆分完成（ensure_cover 解耦仍可单独做）；P2-4~P3 待执行
+> **状态**：P1 + P2-1 + P2-2 已完成；P2-3 模块拆分完成；P2-4a 镜像健康已修；P2-4b trait 拆分与 P3 待执行
 > **基线**：2026-10-27，当前 master 工作区
 > **适用对象**：后续接手本仓库的编码智能体
 > **配套文档**：[AGENTS.md](AGENTS.md)（契约、命令、易错点）、[ROADMAP.md](ROADMAP.md)（功能方向）
@@ -123,7 +123,7 @@ Windows 下若 `cargo test` 以 `STATUS_ENTRYPOINT_NOT_FOUND (0xc0000139)` 退�
 | BUG-1 | JM 进程内第一条搜索/详情/阅读可能用旧版本签名失败 | `prepare` 在构建请求之后调用：`image/mod.rs:234-236`、`280-282`、`337-339`；JM 在 `search_request` 里读 `app_version` 签名：`jm.rs:83`、`jm_api.rs:127-129` | P1-5 |
 | BUG-2 | 暂停 → 删除 → 重新下载后，旧 worker 可能写新记录/新目录 | `run_id` 是运行时字段（`downloads.rs:139-142`），删除后新记录从 0→1 复用旧值；`is_current` 只比对 `run_id + Downloading`（`downloads.rs:559-565`） | P1-6 |
 | BUG-3 | 断电/异常后零字节缓存被永久命中；JM 解码算法变更不失效 | `find_cached` 只判 `is_file`（`cache.rs:31-43`）；`write_atomically` 无 `sync_all`（`cache.rs:61-74`）；解码键固定 `?decoded`（`image/mod.rs:110-112`） | P1-7 |
-| BUG-4 | 200 挑战页会把坏镜像钉为 JM 首选 | `note_request_outcome` 在 HTTP 2xx 非空时就算成功（`http.rs:642-646`），解析失败在其后 | P2-4 |
+| BUG-4 | 200 挑战页会把坏镜像钉为 JM 首选 | `note_request_outcome` 在 HTTP 2xx 非空时就算成功（`http.rs:642-646`），解析失败在其后 | P2-4（已修） |
 | BUG-5 | 空章节错误文案分叉 | manhuagui 返回 `Unexpected`（`manhuagui.rs:226-230`），JM/nhentai 返回 `NotFound`（`jm.rs:401-405`、`nhentai.rs:117-121`） | P1-8 |
 | BUG-6 | 边界滑动切章前画面保持错位 | `trackOffset` 在边界路径未 `snapBack`：`ComicViewer.vue:610-611`、`661-666` | P2-2 |
 | BUG-7 | 动画期间指针仍可写 `trackOffset` | `onStagePointerMove` 无 `trackAnimating` 检查：`ComicViewer.vue:552-613`；动画写同一变量：`198-221` | P2-2 |
@@ -524,7 +524,7 @@ src-tauri/src/downloads/
 
 #### P2-4 Platform 能力拆分 + 镜像健康语义（refactor/fix，BUG-4）
 
-- **状态**：todo
+- **状态**：in progress（2026-10-27：P2-4a 镜像健康已改为解析成功；trait 能力拆分待做）
 - **依赖**：P1-5
 - **证据**：`platform/mod.rs:93-185` 有 15 个方法，`generic` 只实现 `id/configure`，其余能力默认返回 `invalidInput`；`note_request_outcome` 在 HTTP 2xx 时就算成功（`http.rs:642-646`）。
 - **目标**：把“图片请求 profile”和“可搜索/详情/阅读的 catalog”分开；镜像健康以“解析成功”为准。
@@ -543,7 +543,7 @@ src-tauri/src/downloads/
 - **验收**：
   - [ ] `generic` 不需要实现搜索/详情/阅读的空方法。
   - [ ] 新增平台只实现 `ImageProfile` 也能抓图；实现 `Catalog` 才具备搜索/详情/阅读。
-  - [ ] JM 首选镜像不会因 200 挑战页被钉死。
+  - [x] JM 首选镜像不会因 200 挑战页被钉死。
   - [ ] 现有 platform 测试、搜索/详情/阅读手动冒烟通过。
 - **风险**：会触碰所有平台文件；建议放在 P2-3 之后，避免与 downloads 拆分冲突。
 
@@ -849,3 +849,4 @@ refactor(reader): add pure page-boundary helpers
 - 2026-10-27 / P2-3b（部分）/ 新增 `local.rs`（112 行）：`read_local_chapter` 从 store impl 移到 free function，store 保留同名薄包装；manifest → ReaderChapter 的读取/校验逻辑不变。`downloads/mod.rs` 从 1684 行降到 1589 行。验证：`cargo test` 158 passed。剩余：model/index/store 拆分（model DTO 需要 `pub(super)` 字段调整，单独一轮做）。
 - 2026-10-27 / P2-3b / 新增 `model.rs`（245 行）与 `index.rs`（30 行）：DTO/状态/输入/记录/sanitize 与 index+manifest 文档迁出；model 字段提升为 `pub(super)`，index 结构体 `pub(crate)` 由 mod re-export；`mod.rs` 从 1589 行降到 1330 行。纯移动，wire 字段、serde 形状和校验逻辑未变。验证：`cargo test` 158 passed、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`。剩余：store 本体拆分 + `ensure_cover` 与 store 解耦。
 - 2026-10-27 / P2-3c / 新增 `store.rs`（688 行）：`DownloadsStore`/`DownloadsData` 及 impl 从 mod.rs 迁出，方法/字段提升为 `pub(super)`，`DownloadsData` 仅在 test 构建 re-export；`mod.rs` 从 1330 行降到 673 行。最终结构：mod 673 + store 688 + worker 437 + model 246 + commands 159 + local 112 + index 30；`downloads.rs` 已消失，命令签名/索引格式/run id 均未变。`ensure_cover` 现在接收 `&DownloadsStore`，worker 不再通过 `app.state` 反查。验证：`cargo test` 158 passed、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`。
+- 2026-10-27 / P2-4a / 镜像健康改为解析成功：`fetch_document` 返回 `FetchedDocument { url, body }` 且不再记 success；`image/mod.rs` 的 `parse_document` 在 `parse_search/detail/reader_chapter` 后统一 `note_request_outcome(url, result.is_ok())`；JM 的 `/setting` 与 `scramble_id` 请求同样在解析后记录。新增 `mirror_health_waits_for_a_successful_parse` 单测。验证：`cargo test` 159 passed、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`。P2-4 剩余：`Platform` 拆成 `ImageProfile` + `Catalog`。

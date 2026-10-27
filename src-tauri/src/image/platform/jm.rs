@@ -441,8 +441,19 @@ async fn sync_app_version(client: &HttpClient, platform: &dyn Platform) -> Resul
         .with_headers(jm_api::document_headers(ts))
         .with_fallbacks(fallbacks);
 
-    let body = http::fetch_document(client, platform, &spec).await?;
-    let Some(setting) = jm_api::decode::<jm_api::Setting>(&body, ts)? else {
+    let fetched = http::fetch_document(client, platform, &spec).await?;
+    let decoded = jm_api::decode::<jm_api::Setting>(&fetched.body, ts);
+    let setting = match decoded {
+        Ok(setting) => {
+            platform.note_request_outcome(&fetched.url, true);
+            setting
+        }
+        Err(error) => {
+            platform.note_request_outcome(&fetched.url, false);
+            return Err(error);
+        }
+    };
+    let Some(setting) = setting else {
         return Ok(());
     };
     let Some(version) = setting
@@ -487,8 +498,10 @@ pub(crate) async fn scramble_id(
         .with_headers(jm_api::scramble_headers(ts))
         .with_fallbacks(fallbacks);
 
-    let body = http::fetch_document(client, platform, &spec).await?;
-    let value = match jm_api::parse_scramble_id(&body) {
+    let fetched = http::fetch_document(client, platform, &spec).await?;
+    let parsed = jm_api::parse_scramble_id(&fetched.body);
+    platform.note_request_outcome(&fetched.url, parsed.is_some());
+    let value = match parsed {
         Some(value) => value,
         None => {
             // Falling back keeps pages readable, but a missing variable means
@@ -497,7 +510,7 @@ pub(crate) async fn scramble_id(
                 "jm",
                 format!(
                     "scramble_id missing in a {}-byte response; using {}",
-                    body.len(),
+                    fetched.body.len(),
                     jm_api::DEFAULT_SCRAMBLE_ID
                 ),
             );

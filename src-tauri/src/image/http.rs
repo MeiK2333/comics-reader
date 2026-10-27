@@ -626,6 +626,14 @@ pub(super) async fn download_image(
     Ok(Download { bytes, format })
 }
 
+/// A document that reached us from a mirror, before platform parsing. The
+/// caller records mirror health after parsing: an HTTP 200 with an unparseable
+/// body is not a healthy mirror.
+pub(super) struct FetchedDocument {
+    pub(super) url: Url,
+    pub(super) body: Vec<u8>,
+}
+
 /// Fetch an HTML or JSON document for a platform search/detail request.
 ///
 /// Mirrors are tried only for errors that another host can plausibly fix: a
@@ -635,14 +643,16 @@ pub(super) async fn fetch_document(
     http: &HttpClient,
     platform: &dyn Platform,
     spec: &RequestSpec,
-) -> Result<Vec<u8>> {
+) -> Result<FetchedDocument> {
     let mut last_error = None;
 
     for url in spec.urls() {
         match fetch_document_once(http, platform, spec, url).await {
             Ok(body) => {
-                platform.note_request_outcome(url, true);
-                return Ok(body);
+                return Ok(FetchedDocument {
+                    url: url.clone(),
+                    body,
+                });
             }
             Err(error) if is_mirror_error(&error) => {
                 platform.note_request_outcome(url, false);
@@ -979,13 +989,13 @@ mod tests {
         let platform = super::super::platform::find("nhentai").unwrap();
 
         let spec = platform.search_request("love", 1).unwrap();
-        let body = fetch_document(&http, platform, &spec).await.unwrap();
-        let search = platform.parse_search("love", 1, &body).unwrap();
+        let fetched = fetch_document(&http, platform, &spec).await.unwrap();
+        let search = platform.parse_search("love", 1, &fetched.body).unwrap();
         let item = search.result.first().expect("nhentai returned no results");
 
         let spec = platform.detail_request(&item.id).unwrap();
-        let body = fetch_document(&http, platform, &spec).await.unwrap();
-        let detail = platform.parse_detail(&item.id, &body).unwrap();
+        let fetched = fetch_document(&http, platform, &spec).await.unwrap();
+        let detail = platform.parse_detail(&item.id, &fetched.body).unwrap();
         assert!(!detail.title.is_empty());
 
         let thumb = Url::parse(&detail.thumb).unwrap();

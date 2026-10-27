@@ -114,9 +114,11 @@ pub(crate) trait Platform: Send + Sync {
         url.to_string()
     }
 
-    /// Called after a document request to one mirror succeeds or fails. A
-    /// platform with interchangeable origins can remember which one works;
-    /// single-origin platforms keep the default no-op.
+    /// Called after the platform parses a document from one mirror, or after
+    /// the fetch fails. A platform with interchangeable origins can remember
+    /// which one works; single-origin platforms keep the default no-op. HTTP
+    /// success alone is not enough: an unparseable body is not a healthy
+    /// mirror.
     fn note_request_outcome(&self, _url: &Url, _success: bool) {}
 
     /// Optional async work before a command serves its request. JM uses it to

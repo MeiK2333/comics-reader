@@ -230,6 +230,17 @@ async fn prepared_spec(
     build()
 }
 
+/// Record mirror health only after the platform parser accepts the body.
+fn parse_document<T>(
+    platform: &dyn Platform,
+    fetched: &http::FetchedDocument,
+    parse: impl FnOnce(&[u8]) -> Result<T>,
+) -> Result<T> {
+    let result = parse(&fetched.body);
+    platform.note_request_outcome(&fetched.url, result.is_ok());
+    result
+}
+
 async fn search_comics_inner(
     client: &HttpClient,
     platform: &str,
@@ -253,8 +264,10 @@ async fn search_comics_inner(
     }
 
     let spec = prepared_spec(client, platform, || platform.search_request(query, page)).await?;
-    let body = http::fetch_document(client, platform, &spec).await?;
-    platform.parse_search(query, page, &body)
+    let fetched = http::fetch_document(client, platform, &spec).await?;
+    parse_document(platform, &fetched, |body| {
+        platform.parse_search(query, page, body)
+    })
 }
 
 /// Fetch exact comic metadata by platform id.
@@ -298,8 +311,8 @@ async fn get_comic_inner(client: &HttpClient, platform: &str, id: &str) -> Resul
     }
 
     let spec = prepared_spec(client, platform, || platform.detail_request(id)).await?;
-    let body = http::fetch_document(client, platform, &spec).await?;
-    platform.parse_detail(id, &body)
+    let fetched = http::fetch_document(client, platform, &spec).await?;
+    parse_document(platform, &fetched, |body| platform.parse_detail(id, body))
 }
 
 /// Fetch the page list for one chapter. Platforms with a single implicit
@@ -357,8 +370,10 @@ pub(crate) async fn get_reader_chapter_inner(
         platform.reader_chapter_request(id, chapter_id)
     })
     .await?;
-    let body = http::fetch_document(client, platform, &spec).await?;
-    platform.parse_reader_chapter(id, chapter_id, &body)
+    let fetched = http::fetch_document(client, platform, &spec).await?;
+    parse_document(platform, &fetched, |body| {
+        platform.parse_reader_chapter(id, chapter_id, body)
+    })
 }
 
 /// Apply or clear the user's HTTP proxy for every subsequent request.
@@ -437,6 +452,49 @@ mod tests {
             .unwrap();
 
         assert_eq!(spec.url.as_str(), "https://example.com/");
+    }
+
+    struct HealthPlatform {
+        healthy: AtomicBool,
+    }
+
+    impl Platform for HealthPlatform {
+        fn id(&self) -> &'static str {
+            "health"
+        }
+
+        fn configure(&self, request: RequestBuilder, _url: &Url) -> RequestBuilder {
+            request
+        }
+
+        fn note_request_outcome(&self, _url: &Url, success: bool) {
+            self.healthy.store(success, Ordering::SeqCst);
+        }
+    }
+
+    #[test]
+    fn mirror_health_waits_for_a_successful_parse() {
+        let platform = HealthPlatform {
+            healthy: AtomicBool::new(false),
+        };
+        let fetched = http::FetchedDocument {
+            url: Url::parse("https://example.com/").unwrap(),
+            body: b"ok".to_vec(),
+        };
+
+        parse_document(&platform, &fetched, |body| {
+            assert_eq!(body, b"ok");
+            Ok(())
+        })
+        .unwrap();
+        assert!(platform.healthy.load(Ordering::SeqCst));
+
+        let error = parse_document::<()>(&platform, &fetched, |_| {
+            Err(AppError::Unexpected("bad body".into()))
+        })
+        .unwrap_err();
+        assert_eq!(error.code().as_str(), "unexpected");
+        assert!(!platform.healthy.load(Ordering::SeqCst));
     }
 
     #[test]
