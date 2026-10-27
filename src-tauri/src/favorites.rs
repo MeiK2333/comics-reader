@@ -9,9 +9,6 @@
 //! first command. A malformed document is logged and treated as empty; the next
 //! write backs the unreadable file up to `favorites.json.bak` before replacing
 //! it, so a broken file cannot be overwritten silently.
-//!
-//! Version 2 added groups. Version 1 entries have no `groupId`; they migrate to
-//! the built-in default group on load.
 
 use std::collections::HashMap;
 use std::fs;
@@ -30,7 +27,7 @@ use crate::storage::{
 };
 
 const FAVORITES_FILE_NAME: &str = "favorites.json";
-const DOCUMENT_VERSION: u32 = 2;
+const DOCUMENT_VERSION: u32 = 1;
 const DEFAULT_GROUP_ID: &str = "default";
 const MAX_ID_CHARS: usize = 256;
 const MAX_TITLE_CHARS: usize = 2_000;
@@ -54,7 +51,6 @@ pub(crate) struct FavoriteEntry {
     title: String,
     thumb: Option<String>,
     added_at: u64,
-    #[serde(default = "default_group_id")]
     group_id: String,
 }
 
@@ -217,13 +213,12 @@ pub(crate) struct FavoritePage {
     entries: Vec<FavoriteEntry>,
 }
 
-/// The on-disk shape. Keeping a version lets a future release migrate the file
-/// explicitly instead of guessing from the entries.
+/// The on-disk shape. Only the current version is accepted; an older or newer
+/// file is treated as unsupported.
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct FavoritesDocument {
     version: u32,
-    #[serde(default)]
     groups: Vec<FavoriteGroup>,
     entries: Vec<FavoriteEntry>,
 }
@@ -294,7 +289,7 @@ impl FavoritesData {
             }
         };
 
-        if document.version != 1 && document.version != DOCUMENT_VERSION {
+        if document.version != DOCUMENT_VERSION {
             return Err(AppError::Unexpected(format!(
                 "unsupported favorites document version {}",
                 document.version
@@ -310,54 +305,52 @@ impl FavoritesData {
             .insert(DEFAULT_GROUP_ID.to_owned(), FavoriteGroup::default_group());
         self.entries.clear();
 
-        let mut needs_save = document.version == 1 || !has_default_group;
+        let mut needs_repair = !has_default_group;
 
-        if document.version == DOCUMENT_VERSION {
-            for group in document.groups {
-                if group.id.trim() == DEFAULT_GROUP_ID {
-                    if !group.name.trim().is_empty() {
-                        needs_save = true;
-                    }
-                    continue;
+        for group in document.groups {
+            if group.id.trim() == DEFAULT_GROUP_ID {
+                if !group.name.trim().is_empty() {
+                    needs_repair = true;
                 }
-
-                let Some(group) = group.sanitized() else {
-                    needs_save = true;
-                    logging::warn("favorites", "skipping an invalid favorite group");
-                    continue;
-                };
-                if self.groups.contains_key(&group.id) {
-                    needs_save = true;
-                    logging::warn("favorites", "skipping a duplicate favorite group");
-                    continue;
-                }
-                if group_name_taken(&self.groups, &group.name, None) {
-                    needs_save = true;
-                    logging::warn("favorites", "skipping a duplicate group name");
-                    continue;
-                }
-                self.groups.insert(group.id.clone(), group);
+                continue;
             }
+
+            let Some(group) = group.sanitized() else {
+                needs_repair = true;
+                logging::warn("favorites", "skipping an invalid favorite group");
+                continue;
+            };
+            if self.groups.contains_key(&group.id) {
+                needs_repair = true;
+                logging::warn("favorites", "skipping a duplicate favorite group");
+                continue;
+            }
+            if group_name_taken(&self.groups, &group.name, None) {
+                needs_repair = true;
+                logging::warn("favorites", "skipping a duplicate group name");
+                continue;
+            }
+            self.groups.insert(group.id.clone(), group);
         }
 
         for entry in document.entries {
             let Some(mut entry) = entry.sanitized() else {
-                needs_save = true;
+                needs_repair = true;
                 logging::warn("favorites", "skipping an invalid favorite entry");
                 continue;
             };
             if !self.groups.contains_key(&entry.group_id) {
                 entry.group_id = default_group_id();
-                needs_save = true;
+                needs_repair = true;
             }
             let key = entry.key();
             if self.entries.insert(key, entry).is_some() {
-                needs_save = true;
+                needs_repair = true;
             }
         }
 
-        if needs_save && let Err(error) = self.save(path) {
-            logging::warn("favorites", format!("failed to migrate favorites: {error}"));
+        if needs_repair && let Err(error) = self.save(path) {
+            logging::warn("favorites", format!("failed to repair favorites: {error}"));
         }
         Ok(())
     }
@@ -881,41 +874,6 @@ mod tests {
     }
 
     #[test]
-    fn migrates_version_one_entries_to_the_default_group() {
-        let path = temp_path("migrate");
-        let version_one = serde_json::json!({
-            "version": 1,
-            "entries": [{
-                "platform": "nhentai",
-                "id": "42",
-                "title": "Gallery 42",
-                "thumb": null,
-                "addedAt": 1_700_000_000_000_u64,
-            }]
-        });
-        fs::write(&path, serde_json::to_vec(&version_one).unwrap()).unwrap();
-
-        let mut data = FavoritesData::default();
-        data.load(&path).unwrap();
-
-        assert_eq!(data.entries.len(), 1);
-        let stored = data
-            .entries
-            .get(&("nhentai".into(), "42".into()))
-            .expect("entry should migrate");
-        assert_eq!(stored.group_id, DEFAULT_GROUP_ID);
-        assert!(data.groups.contains_key(DEFAULT_GROUP_ID));
-
-        let saved: serde_json::Value =
-            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
-        assert_eq!(saved["version"], DOCUMENT_VERSION);
-        assert_eq!(saved["entries"][0]["groupId"], DEFAULT_GROUP_ID);
-        assert_eq!(saved["groups"][0]["id"], DEFAULT_GROUP_ID);
-
-        cleanup(&path);
-    }
-
-    #[test]
     fn adds_lists_and_filters_by_group() {
         let path = temp_path("groups");
         let mut data = FavoritesData::default();
@@ -1044,10 +1002,10 @@ mod tests {
     }
 
     #[test]
-    fn loads_version_two_and_maps_unknown_groups_to_default() {
-        let path = temp_path("v2-unknown-group");
+    fn maps_unknown_groups_to_default() {
+        let path = temp_path("unknown-group-map");
         let document = serde_json::json!({
-            "version": 2,
+            "version": DOCUMENT_VERSION,
             "groups": [{ "id": "default", "name": "", "createdAt": 0 }],
             "entries": [{
                 "platform": "nhentai",

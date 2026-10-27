@@ -1,9 +1,9 @@
-//! Reading history persisted as an append-only JSONL event log.
+//! Reading history persisted as an append-only JSONL log.
 //!
 //! The file lives in the app data directory and holds at most
-//! [`MAX_ENTRIES`] works. Saving progress appends one small line instead of
+//! [`MAX_ENTRIES`] works. Saving progress appends one small entry instead of
 //! rewriting the whole list, which matters when the list approaches the cap.
-//! The log is compacted into one record per work when it grows past twice the
+//! The log is compacted into one entry per work when it grows past twice the
 //! cap; loading replays the remaining lines into an in-memory index so paging
 //! and upserts stay cheap.
 //!
@@ -127,16 +127,6 @@ impl HistoryInput {
     }
 }
 
-/// One line of the event log. Record events carry the whole entry, so replay
-/// does not need to consult any other state. Remove events are only read for
-/// files written by older versions, and keep previously deleted works deleted.
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(tag = "type", rename_all = "lowercase")]
-enum HistoryEvent {
-    Record { entry: HistoryEntry },
-    Remove { platform: String, id: String },
-}
-
 /// One page of history plus the total number of works, so the UI can paginate
 /// without loading all entries over IPC.
 #[derive(Debug, Serialize)]
@@ -197,8 +187,12 @@ impl HistoryData {
                 continue;
             }
             self.events += 1;
-            match serde_json::from_str::<HistoryEvent>(line) {
-                Ok(event) => self.apply(event),
+            match serde_json::from_str::<HistoryEntry>(line) {
+                Ok(entry) => {
+                    if let Some(entry) = entry.sanitized() {
+                        self.entries.insert(entry.key(), entry);
+                    }
+                }
                 Err(error) => logging::warn(
                     "history",
                     format!("skipping malformed history line: {error}"),
@@ -215,27 +209,9 @@ impl HistoryData {
         Ok(())
     }
 
-    fn apply(&mut self, event: HistoryEvent) {
-        match event {
-            HistoryEvent::Record { entry } => {
-                if let Some(entry) = entry.sanitized() {
-                    self.entries.insert(entry.key(), entry);
-                }
-            }
-            HistoryEvent::Remove { platform, id } => {
-                self.entries.remove(&(platform, id));
-            }
-        }
-    }
-
     fn record(&mut self, path: &Path, input: HistoryInput) -> Result<()> {
         let entry = input.into_entry(now_millis())?;
-        append_event(
-            path,
-            &HistoryEvent::Record {
-                entry: entry.clone(),
-            },
-        )?;
+        append_entry(path, &entry)?;
         self.events += 1;
         self.entries.insert(entry.key(), entry);
         // Evicted entries are not tombstoned: replaying the stale record adds
@@ -314,8 +290,7 @@ impl HistoryData {
             let file = File::create(&temporary)?;
             let mut writer = BufWriter::new(file);
             for entry in entries {
-                let event = HistoryEvent::Record { entry };
-                serde_json::to_writer(&mut writer, &event)?;
+                serde_json::to_writer(&mut writer, &entry)?;
                 writer.write_all(b"\n")?;
             }
             writer.flush()?;
@@ -334,11 +309,11 @@ impl HistoryData {
     }
 }
 
-fn append_event(path: &Path, event: &HistoryEvent) -> Result<()> {
+fn append_entry(path: &Path, entry: &HistoryEntry) -> Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
-    let line = serde_json::to_string(event)?;
+    let line = serde_json::to_string(entry)?;
     let mut file = OpenOptions::new().create(true).append(true).open(path)?;
     file.write_all(line.as_bytes())?;
     file.write_all(b"\n")?;
@@ -476,28 +451,15 @@ mod tests {
     }
 
     #[test]
-    fn serializes_entries_and_events_with_camel_case() {
-        let value = serde_json::to_value(HistoryEvent::Record {
-            entry: entry("42", 1_700_000_000_000),
-        })
-        .unwrap();
+    fn serializes_entries_with_camel_case() {
+        let value = serde_json::to_value(entry("42", 1_700_000_000_000)).unwrap();
 
-        assert_eq!(value["type"], "record");
-        assert_eq!(value["entry"]["platform"], "nhentai");
-        assert_eq!(value["entry"]["totalPages"], 30);
-        assert_eq!(value["entry"]["updatedAt"], 1_700_000_000_000_u64);
-        assert_eq!(value["entry"]["chapterId"], serde_json::Value::Null);
-        assert!(value["entry"].get("total_pages").is_none());
-
-        let remove = serde_json::to_value(HistoryEvent::Remove {
-            platform: "nhentai".into(),
-            id: "42".into(),
-        })
-        .unwrap();
-        assert_eq!(
-            remove,
-            serde_json::json!({ "type": "remove", "platform": "nhentai", "id": "42" })
-        );
+        assert_eq!(value["platform"], "nhentai");
+        assert_eq!(value["totalPages"], 30);
+        assert_eq!(value["updatedAt"], 1_700_000_000_000_u64);
+        assert_eq!(value["chapterId"], serde_json::Value::Null);
+        assert!(value.get("total_pages").is_none());
+        assert!(value.get("type").is_none());
     }
 
     #[test]
@@ -529,34 +491,9 @@ mod tests {
     }
 
     #[test]
-    fn replays_remove_events_written_by_older_versions() {
-        let path = temp_path("legacy-remove");
-        let record = serde_json::to_string(&HistoryEvent::Record {
-            entry: entry("1", 1_700_000_000_000),
-        })
-        .unwrap();
-        let remove = serde_json::json!({
-            "type": "remove",
-            "platform": "nhentai",
-            "id": "1",
-        });
-        fs::write(&path, format!("{record}\n{remove}\n")).unwrap();
-
-        let mut data = HistoryData::default();
-        data.load(&path).unwrap();
-
-        assert!(data.entries.is_empty());
-
-        cleanup(&path);
-    }
-
-    #[test]
     fn replays_the_log_and_skips_malformed_lines() {
         let path = temp_path("replay");
-        let valid = serde_json::to_string(&HistoryEvent::Record {
-            entry: entry("1", 1_700_000_000_000),
-        })
-        .unwrap();
+        let valid = serde_json::to_string(&entry("1", 1_700_000_000_000)).unwrap();
         fs::write(
             &path,
             format!("not json\n{valid}\n{{\"type\":\"record\"}}\n"),
@@ -583,10 +520,11 @@ mod tests {
 
         let contents = fs::read_to_string(&path).unwrap();
         assert_eq!(contents.lines().count(), 2);
-        assert!(contents.lines().all(|line| {
-            serde_json::from_str::<HistoryEvent>(line)
-                .is_ok_and(|event| matches!(event, HistoryEvent::Record { .. }))
-        }));
+        assert!(
+            contents
+                .lines()
+                .all(|line| serde_json::from_str::<HistoryEntry>(line).is_ok())
+        );
 
         let mut reloaded = HistoryData::default();
         reloaded.load(&path).unwrap();

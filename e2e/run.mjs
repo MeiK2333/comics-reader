@@ -119,7 +119,7 @@ async function seed() {
     path.join(appData, "favorites.json"),
     JSON.stringify(
       {
-        version: 2,
+        version: 1,
         groups: [
           { id: "default", name: "", createdAt: 0 },
           { id: "g1", name: "E2E Group", createdAt: 1_700_000_000_000 },
