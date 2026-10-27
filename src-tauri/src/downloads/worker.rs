@@ -2,7 +2,7 @@
 
 use tokio::io::AsyncWriteExt;
 
-use crate::image::{HttpClient, fetch_image_inner, get_reader_chapter_inner};
+use crate::image::{HttpClient, ImageCache, fetch_image_inner, get_reader_chapter_inner};
 
 use super::*;
 
@@ -101,6 +101,7 @@ fn extension_of(path: &str) -> Result<&str> {
 
 async fn ensure_cover(
     store: &DownloadsStore,
+    cache: &ImageCache,
     app: &AppHandle,
     path: &Path,
     root: &Path,
@@ -122,7 +123,7 @@ async fn ensure_cover(
 
     let http = app.state::<HttpClient>();
     let cached =
-        match fetch_image_inner(app, http.inner(), thumb, Some(record.platform.clone())).await {
+        match fetch_image_inner(http.inner(), cache, thumb, Some(record.platform.clone())).await {
             Ok(image) => image,
             Err(error) => {
                 logging::warn(
@@ -157,6 +158,7 @@ async fn ensure_cover(
 
 async fn download_work(app: &AppHandle, key: &DownloadKey, run_id: u64) -> Result<()> {
     let store = app.state::<DownloadsStore>();
+    let cache = app.state::<ImageCache>();
     let path = downloads_index_path(app)?;
     let root = downloads_root(app)?;
     let Some(record) = store.record_snapshot(&path, key)? else {
@@ -165,7 +167,7 @@ async fn download_work(app: &AppHandle, key: &DownloadKey, run_id: u64) -> Resul
 
     let directory = work_dir(&root, &record);
     tokio::fs::create_dir_all(&directory).await?;
-    ensure_cover(store.inner(), app, &path, &root, key, run_id).await?;
+    ensure_cover(store.inner(), cache.inner(), app, &path, &root, key, run_id).await?;
 
     let http = app.state::<HttpClient>();
     let chapter_count = record.chapters.len() as u32;
@@ -266,8 +268,8 @@ async fn download_work(app: &AppHandle, key: &DownloadKey, run_id: u64) -> Resul
             }
 
             let cached = match fetch_image_inner(
-                app,
                 http.inner(),
+                cache.inner(),
                 page.url.clone(),
                 Some(record.platform.clone()),
             )

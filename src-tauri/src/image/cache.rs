@@ -12,6 +12,42 @@ use crate::error::{AppError, Result};
 
 use super::CACHE_VERSION;
 
+/// `ImageCache` owns the cache root so the app resolves `app_cache_dir()` once
+/// at startup instead of on every image request.
+pub(crate) struct ImageCache {
+    base: PathBuf,
+}
+
+impl ImageCache {
+    pub(crate) fn new(app_cache_dir: PathBuf) -> Self {
+        Self {
+            base: app_cache_dir.join(super::CACHE_SUBDIR),
+        }
+    }
+
+    fn platform_dir(&self, platform_id: &str) -> PathBuf {
+        self.base.join(platform_id)
+    }
+
+    pub(super) async fn lookup(&self, platform_id: &str, key: &str) -> Result<Option<PathBuf>> {
+        find_cached(&self.platform_dir(platform_id), key).await
+    }
+
+    pub(super) async fn write(
+        &self,
+        platform_id: &str,
+        key: &str,
+        format: ImageFormat,
+        bytes: &[u8],
+    ) -> Result<PathBuf> {
+        let directory = self.platform_dir(platform_id);
+        tokio::fs::create_dir_all(&directory).await?;
+        let path = directory.join(format!("{key}.{}", format.extension()));
+        write_atomically(&directory, &path, key, bytes).await?;
+        Ok(path)
+    }
+}
+
 /// Cache key scoped by platform and profile version. The same URL fetched with
 /// a different `Referer` can return different bytes, so it must not share a
 /// cache entry with another platform.
@@ -313,6 +349,32 @@ mod tests {
                 Some(format)
             );
         }
+    }
+
+    #[tokio::test]
+    async fn image_cache_lookup_and_write_round_trip() {
+        let root = std::env::temp_dir().join(format!(
+            "comics-reader-image-cache-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let cache = ImageCache::new(root.clone());
+
+        let path = cache
+            .write("generic", "key", ImageFormat::Png, b"\x89PNG\r\n\x1a\n")
+            .await
+            .unwrap();
+        assert_eq!(path, root.join("images").join("generic").join("key.png"));
+        assert_eq!(
+            cache.lookup("generic", "key").await.unwrap(),
+            Some(path.clone())
+        );
+        assert_eq!(cache.lookup("generic", "other").await.unwrap(), None);
+
+        let _ = tokio::fs::remove_dir_all(&root).await;
     }
 
     #[tokio::test]

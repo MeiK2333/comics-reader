@@ -7,6 +7,8 @@ mod image;
 mod logging;
 mod storage;
 
+use tauri::Manager;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // rustls has both ring (reqwest/hickory) and aws-lc-rs (ECH HPKE) enabled.
@@ -23,6 +25,8 @@ pub fn run() {
             if let Err(error) = logging::init(app.handle()) {
                 eprintln!("failed to initialize the application log: {error}");
             }
+            let cache_dir = app.path().app_cache_dir()?;
+            app.manage(image::ImageCache::new(cache_dir));
             Ok(())
         })
         .manage(image::HttpClient::default())

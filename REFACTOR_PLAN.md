@@ -1,6 +1,6 @@
 # 重构与修复计划
 
-> **状态**：P1 + P2-1 + P2-2 已完成；P2-3 模块拆分完成；P2-4 完成；P2-5 HTTP 模块拆分完成、ImageCache 待做；P2-6~P3 待执行
+> **状态**：P1 + P2-1 + P2-2 已完成；P2-3 模块拆分完成；P2-4 完成；P2-5 HTTP/ImageCache 完成（read_limited/模块环可选）；P2-6~P3 待执行
 > **基线**：2026-10-27，当前 master 工作区
 > **适用对象**：后续接手本仓库的编码智能体
 > **配套文档**：[AGENTS.md](AGENTS.md)（契约、命令、易错点）、[ROADMAP.md](ROADMAP.md)（功能方向）
@@ -549,7 +549,7 @@ src-tauri/src/downloads/
 
 #### P2-5 `http.rs` 拆分 + ImageCache（refactor）
 
-- **状态**：in progress（2026-10-27：`http/` 已拆为 mod/client/ech/fetch/tests；ImageCache 待做）
+- **状态**：done（2026-10-27：`http/` 已拆为 mod/client/ech/fetch/tests；`ImageCache` 已注入；`read_limited` 去重与模块环未做）
 - **依赖**：P2-4（接口稳定后）
 - **目标**：把代理、client、ECH、抓取、镜像策略分开；缓存从自由函数变成可注入的对象。
 - **目标结构**：
@@ -566,7 +566,7 @@ src-tauri/src/downloads/
 - **验收**：
   - [x] `http.rs` 降到 400 行以内，职责单一。
   - [ ] `http` 与 `ech` 不再互相 `use` 成环（或明确单向依赖）。
-  - [ ] 缓存行为、缓存键、扩展名、版本语义不变（P1-7 的改动除外）。
+  - [x] 缓存行为、缓存键、扩展名、版本语义不变（P1-7 的改动除外）。
   - [ ] ECH/代理互斥、启动门禁、plain fallback 手动回归。
   - [ ] Rust 三门禁通过。
 
@@ -853,3 +853,4 @@ refactor(reader): add pure page-boundary helpers
 - 2026-10-27 / P2-4b / `Platform` 拆为 `ImageProfile`（图片/cache/matches/configure）与 `Catalog: ImageProfile`（prepare/note/search/detail/reader）：`PROFILES`/`CATALOGS`、`find_profile`/`find_catalog`/`catalog`；`generic` 只实现 profile，`manhuagui`/`jm`/`nhentai` 双 impl；`download_image` 用 `ImageProfile`，`fetch_document` 用 `Catalog`；搜索/详情/阅读走 catalog，generic 仍返回原 “does not support” 文案、未知平台仍 `unknown`；JM 图片解码通过 catalog 取 `scramble_id`。验证：`cargo test` 160 passed、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`。
 - 2026-10-27 / P2-5a / `image/http.rs` 改为 `image/http/{mod,fetch,tests}.rs`：`fetch.rs`（198 行）承载 `Download`、`FetchedDocument`、`download_image`、`fetch_document`、`is_mirror_error`；`tests.rs`（303 行）独立；`mod.rs` 550 行保留 `HttpClient`/代理/ECH。`fetch` 的类型/函数提升为 `pub(crate)` 并由 mod re-export，`MAX_DOCUMENT_BYTES` 从父模块读取。纯移动，下载/文档/镜像行为未变。验证：`cargo test` 160 passed、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`。剩余：client/ECH 拆分、`read_limited` 去重、`ImageCache` 注入。
 - 2026-10-27 / P2-5b / `http/` 继续拆为 `mod.rs`（100 行，`HttpClient`/`ClientState`/`get`/`set_proxy`）、`client.rs`（243 行，代理校验、builder、`send`、lock、transport 错误）、`ech.rs`（232 行，`EchRuntime`、refresh/fallback/控制代）、`fetch.rs`（198 行）与 `tests.rs`（309 行）；`eprintln` 改为只走 `logging`。验证：`cargo test` 160 passed、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`。剩余：`ImageCache` 注入、`read_limited` 去重；`ech` 命令仍通过 `HttpClient` 调用，模块级 use 环未完全消除。
+- 2026-10-27 / P2-5c / 新增 `ImageCache { base }`（`image/cache.rs`）：`new` 在 setup 解析一次 `app_cache_dir()/images`，`lookup/write` 封装现有 `find_cached`/`write_atomically`；`lib.rs` setup `app.manage(ImageCache)`，`fetch_image` 命令改为 `State<ImageCache>`，`fetch_image_inner` 接收 `&ImageCache`；下载 worker 从 `app.state` 取同一 cache，封面与页图复用。缓存键/布局/扩展名/零字节清理未变，新增 round-trip 单测。验证：`cargo test` 161 passed、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`。剩余可选：`read_limited` 去重、`ech` ↔ `http` 模块环。

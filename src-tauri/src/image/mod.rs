@@ -12,11 +12,12 @@ mod platform;
 use std::path::PathBuf;
 
 use serde::Serialize;
-use tauri::{AppHandle, Manager, State};
+use tauri::State;
 
 use crate::error::{AppError, Result};
 use crate::logging;
 
+pub(crate) use cache::ImageCache;
 use cache::ImageFormat;
 pub(crate) use http::HttpClient;
 use http::HttpProxyConfig;
@@ -61,13 +62,13 @@ pub(crate) struct CachedImage {
 /// pass it explicitly, which also selects its cache namespace.
 #[tauri::command]
 pub(crate) async fn fetch_image(
-    app: AppHandle,
     client: State<'_, HttpClient>,
+    cache: State<'_, ImageCache>,
     url: String,
     platform: Option<String>,
 ) -> Result<CachedImage> {
     let requested_platform = platform.clone();
-    let result = fetch_image_inner(&app, client.inner(), url.clone(), platform).await;
+    let result = fetch_image_inner(client.inner(), cache.inner(), url.clone(), platform).await;
 
     match &result {
         // Cache hits are intentionally not logged: a single results page would
@@ -95,19 +96,13 @@ pub(crate) async fn fetch_image(
 }
 
 pub(crate) async fn fetch_image_inner(
-    app: &AppHandle,
     client: &HttpClient,
+    cache: &ImageCache,
     url: String,
     platform: Option<String>,
 ) -> Result<CachedImage> {
     let url = cache::normalize_url(&url)?;
     let platform = resolve_platform(platform.as_deref(), &url)?;
-    let cache_dir = app
-        .path()
-        .app_cache_dir()?
-        .join(CACHE_SUBDIR)
-        .join(platform.id());
-    tokio::fs::create_dir_all(&cache_dir).await?;
 
     // Decoded bytes differ from the download, so they get a distinct key. The
     // suffix is constant, which also lets a cached page load without asking JM
@@ -119,7 +114,7 @@ pub(crate) async fn fetch_image_inner(
     }
 
     let key = cache::cache_key(platform.id(), platform.cache_version(), &key_url);
-    if let Some(path) = cache::find_cached(&cache_dir, &key).await? {
+    if let Some(path) = cache.lookup(platform.id(), &key).await? {
         return cached_image(path, platform.id(), true).await;
     }
 
@@ -163,8 +158,9 @@ pub(crate) async fn fetch_image_inner(
         }
     }
 
-    let path = cache_dir.join(format!("{key}.{}", download.format.extension()));
-    cache::write_atomically(&cache_dir, &path, &key, &download.bytes).await?;
+    let path = cache
+        .write(platform.id(), &key, download.format, &download.bytes)
+        .await?;
 
     cached_image(path, platform.id(), false).await
 }
