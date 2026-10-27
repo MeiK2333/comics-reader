@@ -214,7 +214,7 @@
 - 收藏可取消；不要照搬历史的不可删除约束。收藏列表项进详情，不直接进阅读器；不要为每条收藏请求远程详情。
 - 一个作品只属于一个分组；默认分组 id 固定 `default`，不可删除/改名。收藏 v1 文件必须迁移到 v2，不要只改 version。
 - 详情页收藏按钮是短按 toggle + 长按分组；长按必须抑制随后的 click，否则会误取消。右键 / `Shift+Enter` 也要能打开选择器。
-- 从收藏/历史/下载进详情，返回来源用 `previousPath()` 判断，收藏/历史/下载优先于 `search.active`。
+- 从收藏/历史/下载/搜索结果进详情时写 `state.from`；详情优先读它，`previousPath()` 只兜底旧入口，最后才看 `search.active`。
 - 历史行、收藏行、下载行都进详情，不直接进阅读器；详情“继续阅读”用 `get_history_entry` 的 `chapterId`/`page`，JM 章节失效时回退第一章。断网时详情用下载索引回退，开始/继续阅读只走本地章节。
 - 返回按钮不要用 `router.push`：用 `useBackNavigation` 在上一页等于目标时 pop，否则 replace；push 会把当前页留在历史栈，系统返回会重新进入刚离开的页面（搜索 → 漫画 → 返回 → 漫画）。阅读器切章同样用 `router.replace`。
 - 首页/结果页用 View Transition；不要用延迟 `router.push` 等动画；不支持时直接导航。
