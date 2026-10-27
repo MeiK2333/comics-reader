@@ -8,7 +8,7 @@
 - 已有：manhuagui/JM/nhentai 搜索与详情；nhentai、JM 与 manhuagui 单页阅读器；阅读历史；收藏；按作品下载与离线阅读；设置（主题、语言、阅读方向、HTTP 代理、ECH、日志）；日志页。
 - 尚无：漫画库、通用章节列表、数据库、按章下载/导出。下载页不是占位页，不要按未实现处理。
 - README 是上游模板，不可信。以本文件、`package.json`、`src-tauri/Cargo.toml`、`tauri.conf.json` 和代码为准。
-- 重构与缺陷修复任务见 [`REFACTOR_PLAN.md`](REFACTOR_PLAN.md)；执行大规模改动前先读任务卡、验收与禁止事项。
+- 重构任务已清空；历史计划见 git log。执行大规模改动前先读本文件、[`ROADMAP.md`](ROADMAP.md) 与相关测试。
 
 ## 环境与命令
 
