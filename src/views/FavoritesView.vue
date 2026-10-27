@@ -85,11 +85,7 @@ const defaultGroupCount = computed(
   () =>
     groups.value.find((group) => group.id === DEFAULT_GROUP_ID)?.count ?? 0,
 );
-const emptyDescription = computed(() =>
-  selectedGroupId.value === null
-    ? t("favorites.emptyDescription")
-    : t("favorites.group.emptyDescription"),
-);
+
 const groupDialogTitle = computed(() =>
   groupDialogMode.value === "create"
     ? t("favorites.group.createTitle")
@@ -449,7 +445,12 @@ onMounted(() => {
       <NEmpty
         v-else-if="!entries.length && !loadError"
         class="favorites-empty"
-        :description="emptyDescription"
+        :show-description="selectedGroupId !== null"
+        :description="
+          selectedGroupId !== null
+            ? t('favorites.group.emptyDescription')
+            : undefined
+        "
       />
 
       <div v-else-if="entries.length" class="favorites-list">

@@ -92,8 +92,11 @@ onMounted(() => {
         <NSpin size="medium" />
       </div>
 
-      <NEmpty v-else-if="!entries.length && !loadError" class="history-empty"
-        :description="t('history.emptyDescription')" />
+      <NEmpty
+        v-else-if="!entries.length && !loadError"
+        class="history-empty"
+        :show-description="false"
+      />
 
       <div v-else-if="entries.length" class="history-list">
         <div v-for="entry in entries" :key="entryKey(entry)" class="history-entry">

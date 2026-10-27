@@ -130,8 +130,7 @@
     "offline": {
       "tag": "Downloaded",
       "summary": "Downloaded {done} / {total} chapters",
-      "notice": "This detail page only shows chapters stored on this device.",
-      "chapters": "Downloaded chapters"
+        "chapters": "Downloaded chapters"
     }
   },
   "reader": {
@@ -246,7 +245,6 @@
     "title": "Reading history",
     "back": "Back to home",
     "count": "{count} works",
-    "emptyDescription": "Works you open in the reader appear here with your progress.",
     "loadFailed": "Could not load your reading history.",
     "retry": "Retry",
     "progress": "Page {page} / {total}",
@@ -256,7 +254,6 @@
     "title": "Favorites",
     "back": "Back to home",
     "count": "{count} works",
-    "emptyDescription": "Comics you favorite on their details page appear here.",
     "loadFailed": "Could not load your favorites.",
     "retry": "Retry",
     "addedAt": "Added {date}",
@@ -300,7 +297,6 @@
     "title": "Downloads",
     "back": "Back to home",
     "count": "{count} works",
-    "emptyDescription": "Comics you download appear here for offline reading.",
     "loadFailed": "Could not load your downloads.",
     "retry": "Retry",
     "pause": "Pause",

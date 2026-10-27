@@ -285,7 +285,7 @@ onBeforeUnmount(() => {
       <NEmpty
         v-else-if="!entries.length && !loadError"
         class="downloads-empty"
-        :description="t('downloads.emptyDescription')"
+        :show-description="false"
       />
 
       <div v-else-if="entries.length" class="downloads-list">

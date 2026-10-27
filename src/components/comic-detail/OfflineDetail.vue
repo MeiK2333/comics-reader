@@ -64,7 +64,6 @@ function chapterLabel(chapter: OfflineChapter) {
           }}
         </span>
       </div>
-      <p class="offline-notice">{{ t("detail.offline.notice") }}</p>
     </template>
 
     <DetailSection
@@ -100,13 +99,6 @@ function chapterLabel(chapter: OfflineChapter) {
 .offline-summary__count {
   font-size: 0.82rem;
   opacity: 0.72;
-}
-
-.offline-notice {
-  margin: 0.6rem 0 0;
-  font-size: 0.85rem;
-  line-height: 1.55;
-  opacity: 0.68;
 }
 
 .chapter-grid {

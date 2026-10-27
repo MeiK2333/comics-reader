@@ -130,8 +130,7 @@
     "offline": {
       "tag": "已下载",
       "summary": "已下载 {done} / {total} 章",
-      "notice": "此详情页仅显示已下载到本机的章节。",
-      "chapters": "已下载章节"
+        "chapters": "已下载章节"
     }
   },
   "reader": {
@@ -246,7 +245,6 @@
     "title": "阅读历史",
     "back": "返回首页",
     "count": "共 {count} 部作品",
-    "emptyDescription": "打开漫画阅读后，会在这里记录进度。",
     "loadFailed": "无法读取阅读历史。",
     "retry": "重试",
     "progress": "第 {page} / {total} 页",
@@ -256,7 +254,6 @@
     "title": "收藏",
     "back": "返回首页",
     "count": "共 {count} 部作品",
-    "emptyDescription": "在漫画详情页收藏后，会出现在这里。",
     "loadFailed": "无法读取收藏。",
     "retry": "重试",
     "addedAt": "收藏于 {date}",
@@ -300,7 +297,6 @@
     "title": "下载",
     "back": "返回首页",
     "count": "{count} 部作品",
-    "emptyDescription": "下载的漫画会出现在这里，可离线阅读。",
     "loadFailed": "无法加载下载列表。",
     "retry": "重试",
     "pause": "暂停",
