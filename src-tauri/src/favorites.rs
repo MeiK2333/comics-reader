@@ -1202,4 +1202,57 @@ mod tests {
             ErrorCode::InvalidInput
         );
     }
+    #[test]
+    fn serializes_the_favorite_page_contract() {
+        let page = FavoritePage {
+            total: 2,
+            entries: vec![
+                FavoriteEntry {
+                    platform: "nhentai".into(),
+                    id: "123".into(),
+                    title: "Work A".into(),
+                    thumb: Some("https://t.nhentai.net/galleries/123/cover.jpg".into()),
+                    added_at: 1_700_000_000_000,
+                    group_id: DEFAULT_GROUP_ID.into(),
+                },
+                FavoriteEntry {
+                    platform: "manhuagui".into(),
+                    id: "456".into(),
+                    title: "Work B".into(),
+                    thumb: None,
+                    added_at: 1_700_000_001_000,
+                    group_id: "group-1".into(),
+                },
+            ],
+        };
+
+        let expected: serde_json::Value =
+            serde_json::from_str(include_str!("../../contracts/favorites-page.json")).unwrap();
+        assert_eq!(serde_json::to_value(page).unwrap(), expected);
+    }
+
+    #[test]
+    fn serializes_the_favorite_groups_contract() {
+        let groups = FavoriteGroupList {
+            total: 2,
+            groups: vec![
+                FavoriteGroupSummary {
+                    id: DEFAULT_GROUP_ID.into(),
+                    name: String::new(),
+                    created_at: 0,
+                    count: 1,
+                },
+                FavoriteGroupSummary {
+                    id: "group-1".into(),
+                    name: "Reading".into(),
+                    created_at: 1_700_000_000_000,
+                    count: 1,
+                },
+            ],
+        };
+
+        let expected: serde_json::Value =
+            serde_json::from_str(include_str!("../../contracts/favorite-groups.json")).unwrap();
+        assert_eq!(serde_json::to_value(groups).unwrap(), expected);
+    }
 }

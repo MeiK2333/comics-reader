@@ -1,0 +1,18 @@
+{
+  "enabled": true,
+  "entries": [
+    {
+      "timestamp": 1700000000000,
+      "level": "info",
+      "target": "image",
+      "message": "loaded"
+    },
+    {
+      "timestamp": 1700000001000,
+      "level": "error",
+      "target": "downloads",
+      "message": "failed"
+    }
+  ],
+  "truncated": true
+}

@@ -426,4 +426,148 @@ mod tests {
         assert!(value["next"].is_null());
         assert!(value.get("chapter_id").is_none());
     }
+    #[test]
+    fn search_and_detail_match_the_shared_wire_contract() {
+        let manhuagui = ManhuaguiExtra {
+            original_title: Some("Original".into()),
+            authors: vec!["Author A".into()],
+            status: Some("连载中".into()),
+            latest_chapter: Some("第3话".into()),
+            updated_at: Some("2024-01-01".into()),
+            year: Some("2023".into()),
+            region: Some("日本".into()),
+            categories: vec!["喜剧".into()],
+            aliases: vec!["Alias".into()],
+            description: Some("Desc".into()),
+            score: Some(9.5),
+            rating_count: Some(42),
+            chapter_groups: Vec::new(),
+        };
+        let jm_search = JmExtra {
+            tags: vec!["tag".into()],
+            author: Some("JM Author".into()),
+            category: Some("同人".into()),
+        };
+        let nhentai_search = NhentaiSearchExtra {
+            media_id: "300".into(),
+            japanese_title: Some("日本語".into()),
+            thumbnail_width: Some(240),
+            thumbnail_height: Some(320),
+            num_pages: Some(20),
+            num_favorites: Some(5),
+            tag_ids: vec![1, 2],
+            blacklisted: Some(false),
+        };
+
+        let search = SearchResponse {
+            total: 3,
+            page_size: 25,
+            result: vec![
+                SearchItem::new(
+                    "100",
+                    "Manhua Work",
+                    "https://cf.mhgui.com/cpic/h/100.jpg",
+                    SearchExtra::Manhuagui(manhuagui),
+                ),
+                SearchItem::new(
+                    "200",
+                    "JM Work",
+                    "https://cdn.example/jm/200.jpg",
+                    SearchExtra::Jm(jm_search),
+                ),
+                SearchItem::new(
+                    "300",
+                    "Nhentai Work",
+                    "https://t.nhentai.net/galleries/300/cover.jpg",
+                    SearchExtra::Nhentai(nhentai_search),
+                ),
+            ],
+        };
+
+        let manhuagui_detail = ManhuaguiExtra {
+            original_title: Some("Original".into()),
+            authors: vec!["Author A".into()],
+            status: Some("连载中".into()),
+            latest_chapter: Some("第3话".into()),
+            updated_at: Some("2024-01-01".into()),
+            year: Some("2023".into()),
+            region: Some("日本".into()),
+            categories: vec!["喜剧".into()],
+            aliases: vec!["Alias".into()],
+            description: Some("Desc".into()),
+            score: Some(9.5),
+            rating_count: Some(42),
+            chapter_groups: vec![ManhuaguiChapterGroup {
+                title: String::new(),
+                chapters: vec![ManhuaguiChapterRef {
+                    id: "ch-1".into(),
+                    title: "第1话".into(),
+                }],
+            }],
+        };
+        let jm_detail = JmDetailExtra {
+            authors: vec!["JM Author".into()],
+            tags: vec!["tag".into()],
+            works: vec!["Work".into()],
+            actors: vec!["Actor".into()],
+            page_count: Some(20),
+            pub_date: Some("2024-01-01".into()),
+            update_date: Some("2024-01-02".into()),
+            likes: Some("10".into()),
+            views: Some("100".into()),
+            comment_count: Some(2),
+            chapters: vec![JmChapterRef {
+                id: "c1".into(),
+                title: "Chapter 1".into(),
+                sort: 1,
+            }],
+        };
+        let nhentai_detail = NhentaiDetailExtra {
+            media_id: "300".into(),
+            japanese_title: Some("日本語".into()),
+            pretty_title: Some("Pretty".into()),
+            num_pages: Some(20),
+            num_favorites: Some(5),
+            scanlator: Some("scan".into()),
+            upload_date: Some(1_700_000_000),
+            cover: Some("cover.jpg".into()),
+            cover_width: Some(800),
+            cover_height: Some(1200),
+            tags: vec![NhentaiTag {
+                id: 1,
+                kind: "tag".into(),
+                name: "Tag".into(),
+                slug: "tag".into(),
+                count: Some(3),
+            }],
+        };
+
+        let details = vec![
+            ComicDetail::new(
+                "Manhua Work",
+                "https://cf.mhgui.com/cpic/h/100.jpg",
+                DetailExtra::Manhuagui(manhuagui_detail),
+            ),
+            ComicDetail::new(
+                "JM Work",
+                "https://cdn.example/jm/200.jpg",
+                DetailExtra::Jm(jm_detail),
+            ),
+            ComicDetail::new(
+                "Nhentai Work",
+                "https://t.nhentai.net/galleries/300/cover.jpg",
+                DetailExtra::Nhentai(nhentai_detail),
+            ),
+        ];
+
+        let search_json = serde_json::to_value(&search).unwrap();
+        let expected_search: serde_json::Value =
+            serde_json::from_str(include_str!("../../../contracts/search-page.json")).unwrap();
+        assert_eq!(search_json, expected_search);
+
+        let detail_json = serde_json::to_value(&details).unwrap();
+        let expected_details: serde_json::Value =
+            serde_json::from_str(include_str!("../../../contracts/comic-details.json")).unwrap();
+        assert_eq!(detail_json, expected_details);
+    }
 }

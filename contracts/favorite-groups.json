@@ -1,0 +1,17 @@
+{
+  "total": 2,
+  "groups": [
+    {
+      "id": "default",
+      "name": "",
+      "createdAt": 0,
+      "count": 1
+    },
+    {
+      "id": "group-1",
+      "name": "Reading",
+      "createdAt": 1700000000000,
+      "count": 1
+    }
+  ]
+}

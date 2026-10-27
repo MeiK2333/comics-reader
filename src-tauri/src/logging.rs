@@ -395,4 +395,29 @@ mod tests {
         assert!(missing.0.is_empty());
         assert!(!missing.1);
     }
+    #[test]
+    fn serializes_the_log_snapshot_contract() {
+        let snapshot = LogSnapshot {
+            enabled: true,
+            entries: vec![
+                LogEntry {
+                    timestamp: 1_700_000_000_000,
+                    level: LogLevel::Info,
+                    target: "image".into(),
+                    message: "loaded".into(),
+                },
+                LogEntry {
+                    timestamp: 1_700_000_001_000,
+                    level: LogLevel::Error,
+                    target: "downloads".into(),
+                    message: "failed".into(),
+                },
+            ],
+            truncated: true,
+        };
+
+        let expected: serde_json::Value =
+            serde_json::from_str(include_str!("../../contracts/log-snapshot.json")).unwrap();
+        assert_eq!(serde_json::to_value(snapshot).unwrap(), expected);
+    }
 }

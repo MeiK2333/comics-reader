@@ -1,0 +1,21 @@
+{
+  "total": 2,
+  "entries": [
+    {
+      "platform": "nhentai",
+      "id": "123",
+      "title": "Work A",
+      "thumb": "https://t.nhentai.net/galleries/123/cover.jpg",
+      "addedAt": 1700000000000,
+      "groupId": "default"
+    },
+    {
+      "platform": "manhuagui",
+      "id": "456",
+      "title": "Work B",
+      "thumb": null,
+      "addedAt": 1700000001000,
+      "groupId": "group-1"
+    }
+  ]
+}
