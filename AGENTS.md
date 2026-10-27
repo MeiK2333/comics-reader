@@ -90,7 +90,7 @@
 - ECH 内部细节（`cloudflare-ech.com` 配置、Cloudflare DoH、TTL、fallback 缓存）以 `image/http/`、`ech/` 和测试为准。必须保留的约束：代理与 ECH 互斥；启动初始化要等待；非 Cloudflare 站点 plain TLS 回退是预期。
 - 平台集中在 `image/platform/`：`ImageProfile` 负责图片抓取（`id`/`matches`/`configure`/`cache`/fallback/decode），`Catalog: ImageProfile` 负责搜索/详情/阅读（`prepare`/`note_request_outcome`/request+parse）。当前 `generic` 只有 profile，`manhuagui`/`jm`/`nhentai` 是 catalog。`platform` 参数可省略时按 host 识别；已知平台显式传，JM 尤其。JM 在首个搜索/详情/阅读命令前通过 `prepare` 请求 `/setting` 同步 `jm3_version`（进程一次，失败下次重试），`tokenparam` 使用运行时版本。镜像健康只在平台解析成功后记为成功；HTTP 2xx 的挑战页不算。
 - 搜索会话由 `search` store 管理；`/search` 不携带 query，刷新/深链会被守卫送回首页；首页图标固定回首页。
-- 详情 `/comic/:platform/:id` 不依赖搜索会话，直接 `get_comic`，刷新/深链可用；在线详情失败、或等待约 1.5s 仍未返回而本地有已完成章节的下载时，先用 `get_download`（返回 `DownloadDetail`：列表摘要 + `chapters`）渲染离线详情（在线详情随后返回则替换为完整详情），封面用 `coverPath`，开始阅读取首个已下载章节，继续阅读优先历史章节/页码，章节不可用时回退首个已下载章节第 1 页。返回目标是上一页为 `/favorites`、`/history` 或 `/downloads` 时回对应页面，否则搜索会话有效时 `/search`，否则首页，但必须走 `useBackNavigation`：上一页就是目标时 `router.back()`，否则 `router.replace`。
+- 详情 `/comic/:platform/:id` 不依赖搜索会话，直接 `get_comic`，刷新/深链可用；在线详情失败、或等待约 1.5s 仍未返回而本地有已完成章节的下载时，先用 `get_download`（返回 `DownloadDetail`：列表摘要 + `chapters`）渲染离线详情（在线详情随后返回则替换为完整详情），封面用 `coverPath`，开始阅读取首个已下载章节，继续阅读优先历史章节/页码，章节不可用时回退首个已下载章节第 1 页。返回目标优先读导航 `state.from`（收藏/历史/下载/搜索/首页），缺失时才回退上一页判断，最后看搜索会话；但必须走 `useBackNavigation`：上一页就是目标时 `router.back()`，否则 `router.replace`。
 - 搜索返回 `{ total, page_size, result: [{ id, title, thumb, platform, extra }] }`，详情 `{ platform, title, thumb, extra }`；`platform` 判别，`extra` 强类型（Rust `SearchExtra`/`DetailExtra`，前端判别联合）。不要退回 `Record<string, unknown>` 或 JSON 兜底。
 - 阅读页源 `get_reader_chapter(platform, id, chapterId?)`；nhentai、JM、manhuagui 均已实现。页图片仍逐页 `fetch_image`，不新增缓存目录。JM 页图在缓存前由 Rust 按 `scramble_id` 还原并重编码为 JPEG（缓存键带 `?decoded=v1`，算法变更必须提升 `IMAGE_DECODE_VERSION`；`scramble_id` 每章节请求一次并缓存）。空页统一返回 `notFound`。
 - manhuagui 详情优先解 `#__VIEWSTATE`（R18/隐藏列表，LZString），失败再读 `.chapter-list`；`h4` 与 `.chapter-list` 配对成 `ManhuaguiExtra.chapterGroups`，每个 `ul` 内的 `li` 逆序得到阅读顺序；无标题分组传空标题由前端本地化。搜索结果 `chapterGroups` 为空。阅读页地址 `/comic/{id}/{chapterId}.html`，`chapterId` 必需；详情“开始阅读”取分组扁平化后的首章，`ComicReaderView` 对无章节深链先取详情首章并 `router.replace`。
@@ -134,7 +134,7 @@
 - 收藏页支持“全部 / 默认分组 / 自定义分组”筛选、计数、创建/重命名/删除分组；列表按 `addedAt` 倒序，点击条目进详情，取消收藏不弹确认；缩略图仍走 `ComicThumb`，不要为每条收藏请求远程详情。
 - 详情页收藏按钮：短按 toggle（未收藏进默认分组，已收藏取消收藏）；长按（或右键 / `Shift+Enter`）打开分组选择器，未收藏时选择后加入，已收藏时移动。长按 500ms，移动/取消/离开要取消，长按后的 click 必须抑制，否则会误取消收藏；选择器含新建分组并提示长按用法。
 - 详情页先 `get_favorite` 取当前分组；查询失败按未收藏处理，`add` 的幂等语义保证不会误移分组。请求带 token，切换作品丢弃旧结果。
-- 从收藏页、历史页或下载页进详情，分别返回对应页面；`previousPath()` 优先于 `search.active`。收藏页自身返回首页。
+- 从收藏页、历史页、下载页或搜索结果进详情时写导航 `state.from`；详情优先用 `state.from`，`previousPath()` 只兜底旧入口，最后才看 `search.active`。收藏页自身返回首页。
 - 文件损坏按空列表并备份 `.bak`；更高 `version` 返回 `unexpected` 并拒绝写入。收藏不用新增错误码，复用 `invalidInput`/`io`/`json`/`tauri`/`unexpected`。
 
 ### 下载

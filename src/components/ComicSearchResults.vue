@@ -76,6 +76,7 @@ function changePage(next: number) {
               :to="{
                 name: 'comic-detail',
                 params: { platform: item.platform, id: item.id },
+                state: { from: 'search' },
               }"
             >
               <ComicResultCard :item="item" />

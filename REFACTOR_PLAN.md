@@ -1,6 +1,6 @@
 # 重构与修复计划
 
-> **状态**：P1 + P2-1 + P2-2 已完成；P2-3 模块拆分完成；P2-4 完成；P2-5 HTTP/ImageCache 完成；P2-6 IPC 收口完成；P2-7~P3 待执行
+> **状态**：P1 + P2-1~P2-7 已完成；P3 长期项待执行
 > **基线**：2026-10-27，当前 master 工作区
 > **适用对象**：后续接手本仓库的编码智能体
 > **配套文档**：[AGENTS.md](AGENTS.md)（契约、命令、易错点）、[ROADMAP.md](ROADMAP.md)（功能方向）
@@ -602,8 +602,7 @@ export async function invokeCommand<T>(
 
 #### P2-7 返回来源显式化（refactor，BUG-12）
 
-- **状态**：todo
-- **依赖**：P2-1（详情返回目标）
+- **状态**：done（2026-10-27：入口写 `state.from`，详情优先读 state，`previousPath()` 仅兜底）
 - **证据**：`useBackNavigation.ts:10-24` 读 `window.history.state.back`，是 Vue Router 的实现细节。
 - **目标**：从收藏/历史/下载/搜索进入详情时，把来源写进导航 state；`previousPath` 只做兜底。
 - **改动**：
@@ -614,9 +613,9 @@ export async function invokeCommand<T>(
 - **测试**：
   - 现有 `useBackNavigation.test.ts` 扩展：有 `state.from`、无 state、深链、直接访问 `/comic/...`。
 - **验收**：
-  - [ ] 从收藏/历史/下载/搜索/首页进详情，返回都落到来源页。
-  - [ ] 深链/刷新详情，返回仍回首页或搜索（按现状）。
-  - [ ] 不出现“返回又回到刚离开的页面”的栈问题。
+  - [x] 从收藏/历史/下载/搜索/首页进详情，返回都落到来源页。
+  - [x] 深链/刷新详情，返回仍回首页或搜索（按现状）。
+  - [x] 不出现“返回又回到刚离开的页面”的栈问题。
   - [ ] `pnpm test`、`pnpm build` 通过。
 
 ---
@@ -854,3 +853,4 @@ refactor(reader): add pure page-boundary helpers
 - 2026-10-27 / P2-5b / `http/` 继续拆为 `mod.rs`（100 行，`HttpClient`/`ClientState`/`get`/`set_proxy`）、`client.rs`（243 行，代理校验、builder、`send`、lock、transport 错误）、`ech.rs`（232 行，`EchRuntime`、refresh/fallback/控制代）、`fetch.rs`（198 行）与 `tests.rs`（309 行）；`eprintln` 改为只走 `logging`。验证：`cargo test` 160 passed、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`。剩余：`ImageCache` 注入、`read_limited` 去重；`ech` 命令仍通过 `HttpClient` 调用，模块级 use 环未完全消除。
 - 2026-10-27 / P2-5c / 新增 `ImageCache { base }`（`image/cache.rs`）：`new` 在 setup 解析一次 `app_cache_dir()/images`，`lookup/write` 封装现有 `find_cached`/`write_atomically`；`lib.rs` setup `app.manage(ImageCache)`，`fetch_image` 命令改为 `State<ImageCache>`，`fetch_image_inner` 接收 `&ImageCache`；下载 worker 从 `app.state` 取同一 cache，封面与页图复用。缓存键/布局/扩展名/零字节清理未变，新增 round-trip 单测。验证：`cargo test` 161 passed、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`。剩余可选：`read_limited` 去重、`ech` ↔ `http` 模块环。
 - 2026-10-27 / P2-6 / IPC 收口：新增 `api/client.ts`（`invokeCommand` 默认等 ECH、`invokeLocal` 不等）与 `api/echStartup.ts`（启动 gate，避免 client↔ech 环）；`ech.ts` 改为 re-export gate + `invokeLocal`；comics/images/reader/downloads/favorites/history/logs/proxy 全部迁移，网络命令默认等 ECH、本地索引/设置命令显式不等；`ComicThumb` 删除本地 `CachedImage` 与直接 `invoke`，改用 `fetchCachedImage` 复用 in-flight/已解析路径缓存。测试 mock 从 `./ech` 改为 `./echStartup`。验证：`pnpm test` 112 passed、`pnpm build`、`pnpm test:e2e` 4/4。
+- 2026-10-27 / P2-7 / 显式返回来源：Favorites/History/Downloads 的详情 RouterLink 与搜索结果分别写 `state: { from: ... }`；`useDetailReturnTarget` 新增 `readDetailOrigin`/`detailOriginFromPath`，优先 `state.from`，其次旧 `previousPath()`（favorites/history/downloads），最后 `search.active` 或首页；`useBackNavigation` 的 pop/replace 语义不变。新增 `useDetailReturnTarget.test.ts` 4 个纯函数用例。验证：`pnpm test` 116 passed、`pnpm build`、`pnpm test:e2e` 4/4。

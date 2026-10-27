@@ -299,6 +299,7 @@ onBeforeUnmount(() => {
             :to="{
               name: 'comic-detail',
               params: { platform: entry.platform, id: entry.id },
+              state: { from: 'downloads' },
             }"
           >
             <div class="download-entry__cover">
