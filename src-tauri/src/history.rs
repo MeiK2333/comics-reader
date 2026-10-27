@@ -23,6 +23,7 @@ use tauri::{AppHandle, Manager};
 
 use crate::error::{AppError, Result};
 use crate::logging;
+use crate::platforms::is_known_platform;
 use crate::storage::{now_millis, page_window};
 
 const HISTORY_FILE_NAME: &str = "history.jsonl";
@@ -30,7 +31,6 @@ pub(crate) const MAX_ENTRIES: usize = 10_000;
 /// Compact once the log has this many lines. At the cap this bounds the file
 /// to roughly twice the size of a compacted checkpoint.
 const COMPACT_AFTER_EVENTS: usize = MAX_ENTRIES * 2;
-const KNOWN_PLATFORMS: [&str; 3] = ["manhuagui", "jm", "nhentai"];
 
 type HistoryKey = (String, String);
 
@@ -57,7 +57,7 @@ impl HistoryEntry {
 
     /// Drop junk that a hand-edited or partially written file could contain.
     fn sanitized(mut self) -> Option<Self> {
-        if !KNOWN_PLATFORMS.contains(&self.platform.as_str()) {
+        if !is_known_platform(&self.platform) {
             return None;
         }
 
@@ -92,7 +92,7 @@ pub(crate) struct HistoryInput {
 impl HistoryInput {
     fn into_entry(self, updated_at: u64) -> Result<HistoryEntry> {
         let platform = self.platform.trim();
-        if !KNOWN_PLATFORMS.contains(&platform) {
+        if !is_known_platform(platform) {
             return Err(invalid("platform", "must be a supported platform"));
         }
 
@@ -369,7 +369,7 @@ fn invalid(field: &'static str, reason: &str) -> AppError {
 
 fn history_key(platform: &str, id: &str) -> Result<HistoryKey> {
     let platform = platform.trim();
-    if !KNOWN_PLATFORMS.contains(&platform) {
+    if !is_known_platform(platform) {
         return Err(invalid("platform", "must be a supported platform"));
     }
 

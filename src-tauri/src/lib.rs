@@ -5,6 +5,7 @@ mod favorites;
 mod history;
 mod image;
 mod logging;
+mod platforms;
 mod storage;
 
 use tauri::Manager;

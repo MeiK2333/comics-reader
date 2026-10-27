@@ -24,6 +24,7 @@ use tauri::{AppHandle, Manager};
 
 use crate::error::{AppError, Result};
 use crate::logging;
+use crate::platforms::is_known_platform;
 use crate::storage::{
     atomic_write_json, backup_corrupt as move_corrupt_file, now_millis, page_window,
 };
@@ -36,7 +37,6 @@ const MAX_TITLE_CHARS: usize = 2_000;
 const MAX_THUMB_CHARS: usize = 4_096;
 const MAX_GROUP_ID_CHARS: usize = 64;
 const MAX_GROUP_NAME_CHARS: usize = 40;
-const KNOWN_PLATFORMS: [&str; 3] = ["manhuagui", "jm", "nhentai"];
 
 type FavoriteKey = (String, String);
 
@@ -65,7 +65,7 @@ impl FavoriteEntry {
 
     /// Drop junk that a hand-edited or partially written file could contain.
     fn sanitized(mut self) -> Option<Self> {
-        if !KNOWN_PLATFORMS.contains(&self.platform.as_str()) {
+        if !is_known_platform(&self.platform) {
             return None;
         }
 
@@ -650,7 +650,7 @@ fn next_group_id(groups: &HashMap<String, FavoriteGroup>) -> String {
 /// Validate the pair used as the stable identity of a work.
 fn favorite_key(platform: &str, id: &str) -> Result<FavoriteKey> {
     let platform = platform.trim();
-    if !KNOWN_PLATFORMS.contains(&platform) {
+    if !is_known_platform(platform) {
         return Err(invalid("platform", "must be a supported platform"));
     }
 

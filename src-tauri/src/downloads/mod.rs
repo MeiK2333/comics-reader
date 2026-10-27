@@ -24,6 +24,7 @@ use tokio::sync::Semaphore;
 use crate::error::{AppError, Result};
 use crate::image::{ChapterRef, ReaderChapter, ReaderPage};
 use crate::logging;
+use crate::platforms::is_known_platform;
 use crate::storage::{
     atomic_write_json, backup_corrupt as move_corrupt_file, now_millis, page_window,
 };
@@ -51,7 +52,6 @@ const MAX_CHAPTERS: usize = 5_000;
 const MAX_ID_CHARS: usize = 64;
 const MAX_TITLE_CHARS: usize = 2_000;
 const MAX_THUMB_CHARS: usize = 4_096;
-const KNOWN_PLATFORMS: [&str; 3] = ["manhuagui", "jm", "nhentai"];
 
 type DownloadKey = (String, String);
 
@@ -155,7 +155,7 @@ fn normalize_input_chapters(
 
 fn download_key(platform: &str, id: &str) -> Result<DownloadKey> {
     let platform = platform.trim();
-    if !KNOWN_PLATFORMS.contains(&platform) {
+    if !is_known_platform(platform) {
         return Err(AppError::InvalidInput {
             field: "platform",
             reason: "must be a supported platform".into(),
