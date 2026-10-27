@@ -1,10 +1,8 @@
 import { computed, ref } from "vue";
 import { defineStore } from "pinia";
-import {
-  searchComics,
-  type ComicPlatform,
-  type ComicSearchResult,
-} from "../api/comics";
+import { searchComics } from "../api/comics";
+import type { ComicPlatform, ComicSearchResult } from "../platforms";
+import { DEFAULT_PLATFORM } from "../platforms";
 import type { AppError } from "../errors";
 import { toAppError } from "../errors";
 
@@ -16,7 +14,7 @@ import { toAppError } from "../errors";
  * and the route guard sends `/search` back to the home page.
  */
 export const useSearchStore = defineStore("search", () => {
-  const platform = ref<ComicPlatform>("manhuagui");
+  const platform = ref<ComicPlatform>(DEFAULT_PLATFORM);
   const query = ref("");
   const page = ref(1);
   const loading = ref(false);

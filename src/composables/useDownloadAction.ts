@@ -2,7 +2,7 @@ import { computed, onScopeDispose, ref, watch } from "vue";
 import type { ComputedRef, Ref } from "vue";
 import { useRouter } from "vue-router";
 import { useMessage } from "naive-ui";
-import type { ComicDetail, ComicPlatform } from "../api/comics";
+import type { ComicDetail, ComicPlatform } from "../platforms";
 import {
   isDownloadActive,
   startDownload,

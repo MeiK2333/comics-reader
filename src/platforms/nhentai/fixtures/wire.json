@@ -1,0 +1,50 @@
+{
+  "search": {
+    "id": "300",
+    "title": "Nhentai Work",
+    "thumb": "https://t.nhentai.net/galleries/300/cover.jpg",
+    "platform": "nhentai",
+    "extra": {
+      "mediaId": "300",
+      "japaneseTitle": "日本語",
+      "thumbnailWidth": 240,
+      "thumbnailHeight": 320,
+      "numPages": 20,
+      "numFavorites": 5,
+      "tagIds": [1, 2],
+      "blacklisted": false
+    }
+  },
+  "detail": {
+    "title": "Nhentai Work",
+    "thumb": "https://t.nhentai.net/galleries/300/cover.jpg",
+    "platform": "nhentai",
+    "chapters": [
+      {
+        "id": null,
+        "title": null
+      }
+    ],
+    "extra": {
+      "mediaId": "300",
+      "japaneseTitle": "日本語",
+      "prettyTitle": "Pretty",
+      "numPages": 20,
+      "numFavorites": 5,
+      "scanlator": "scan",
+      "uploadDate": 1700000000,
+      "cover": "cover.jpg",
+      "coverWidth": 800,
+      "coverHeight": 1200,
+      "tags": [
+        {
+          "id": 1,
+          "type": "tag",
+          "name": "Tag",
+          "slug": "tag",
+          "count": 3
+        }
+      ]
+    }
+  }
+}

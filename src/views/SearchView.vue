@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { storeToRefs } from "pinia";
-import type { ComicPlatform } from "../api/comics";
+import type { ComicPlatform } from "../platforms";
 import ComicSearchBar from "../components/ComicSearchBar.vue";
 import ComicSearchResults from "../components/ComicSearchResults.vue";
 import HomeIcon from "../components/HomeIcon.vue";

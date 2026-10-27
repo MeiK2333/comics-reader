@@ -95,6 +95,6 @@ mod fetch;
 #[cfg(test)]
 mod tests;
 
-pub(super) use fetch::{FetchedDocument, download_image, fetch_document, is_mirror_error};
+pub(crate) use fetch::{FetchedDocument, download_image, fetch_document, is_mirror_error};
 
 pub(crate) use client::HttpProxyConfig;

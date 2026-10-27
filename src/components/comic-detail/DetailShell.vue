@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import type { ComicPlatform } from "../../api/comics";
-import { useAppI18n } from "../../i18n";
-import { platformLabelKey } from "../../i18n/platform";
+import type { ComicPlatform } from "../../platforms";
+
+import { platformLabel } from "../../platforms";
 import ComicThumb from "../ComicThumb.vue";
 
 const props = defineProps<{
@@ -14,9 +14,9 @@ const props = defineProps<{
   localPath?: string;
 }>();
 
-const { t } = useAppI18n();
 
-const platformLabel = computed(() => t(platformLabelKey(props.platform)));
+
+const label = computed(() => platformLabel(props.platform));
 </script>
 
 <template>
@@ -38,7 +38,7 @@ const platformLabel = computed(() => t(platformLabelKey(props.platform)));
           :bordered="false"
           type="info"
         >
-          {{ platformLabel }}
+          {{ label }}
         </NTag>
         <h1 class="detail-title">{{ title }}</h1>
         <p v-if="subtitle" class="detail-subtitle">{{ subtitle }}</p>

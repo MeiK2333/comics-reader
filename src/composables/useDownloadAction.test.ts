@@ -2,7 +2,7 @@ import { enableAutoUnmount, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { computed, defineComponent, h, nextTick, ref } from "vue";
 import { NMessageProvider } from "naive-ui";
-import type { ComicDetail, ComicPlatform } from "../api/comics";
+import type { ComicDetail, ComicPlatform } from "../platforms";
 import type {
   DownloadDetail,
   DownloadStatus,
@@ -31,6 +31,7 @@ const detail: ComicDetail = {
   platform: "nhentai",
   title: "Test work",
   thumb: "https://example.com/thumb.jpg",
+  chapters: [{ id: null, title: null }],
   extra: {
     mediaId: "1",
     japaneseTitle: null,

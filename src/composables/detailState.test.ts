@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ComicDetail } from "../api/comics";
+import type { ComicDetail } from "../platforms";
 import { AppError } from "../errors";
 import { resolveDetailState } from "./detailState";
 

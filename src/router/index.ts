@@ -2,6 +2,7 @@ import { createRouter, createWebHashHistory } from "vue-router";
 import type { RouteMeta } from "vue-router";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { translate } from "../i18n";
+import { PLATFORM_ROUTE_PATTERN } from "../platforms";
 import pinia from "../stores";
 import { useSearchStore } from "../stores/search";
 import HomeView from "../views/HomeView.vue";
@@ -59,7 +60,7 @@ const router = createRouter({
       meta: { titleKey: "meta.downloads" },
     },
     {
-      path: "/downloads/:platform(manhuagui|jm|nhentai)/:id",
+      path: `/downloads/:platform(${PLATFORM_ROUTE_PATTERN})/:id`,
       name: "download-detail",
       component: () => import("../views/DownloadedComicDetailView.vue"),
       meta: {
@@ -99,7 +100,7 @@ const router = createRouter({
       meta: { titleKey: "meta.logs" },
     },
     {
-      path: "/comic/:platform(manhuagui|jm|nhentai)/:id",
+      path: `/comic/:platform(${PLATFORM_ROUTE_PATTERN})/:id`,
       name: "comic-detail",
       component: () => import("../views/ComicDetailView.vue"),
       meta: {

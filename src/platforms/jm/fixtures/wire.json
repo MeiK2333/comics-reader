@@ -1,0 +1,43 @@
+{
+  "search": {
+    "id": "200",
+    "title": "JM Work",
+    "thumb": "https://cdn.example/jm/200.jpg",
+    "platform": "jm",
+    "extra": {
+      "tags": ["tag"],
+      "author": "JM Author",
+      "category": "同人"
+    }
+  },
+  "detail": {
+    "title": "JM Work",
+    "thumb": "https://cdn.example/jm/200.jpg",
+    "platform": "jm",
+    "chapters": [
+      {
+        "id": "c1",
+        "title": "Chapter 1"
+      }
+    ],
+    "extra": {
+      "authors": ["JM Author"],
+      "tags": ["tag"],
+      "works": ["Work"],
+      "actors": ["Actor"],
+      "pageCount": 20,
+      "pubDate": "2024-01-01",
+      "updateDate": "2024-01-02",
+      "likes": "10",
+      "views": "100",
+      "commentCount": 2,
+      "chapters": [
+        {
+          "id": "c1",
+          "title": "Chapter 1",
+          "sort": 1
+        }
+      ]
+    }
+  }
+}

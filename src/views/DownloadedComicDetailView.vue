@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, watch } from "vue";
 import { RouterView, useRoute, useRouter } from "vue-router";
-import type { ComicPlatform } from "../api/comics";
-import { isComicPlatform } from "../api/comics";
+import type { ComicPlatform } from "../platforms";
+import { isComicPlatform } from "../platforms";
 import FavoriteGroupPicker from "../components/favorites/FavoriteGroupPicker.vue";
 import ComicDetailSkeleton from "../components/comic-detail/ComicDetailSkeleton.vue";
 import DetailActions from "../components/comic-detail/DetailActions.vue";

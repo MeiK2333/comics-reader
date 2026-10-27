@@ -12,7 +12,6 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     ComicDetailSkeleton: typeof import('./components/comic-detail/ComicDetailSkeleton.vue')['default']
-    ComicResultCard: typeof import('./components/ComicResultCard.vue')['default']
     ComicSearchBar: typeof import('./components/ComicSearchBar.vue')['default']
     ComicSearchResults: typeof import('./components/ComicSearchResults.vue')['default']
     ComicThumb: typeof import('./components/ComicThumb.vue')['default']
@@ -26,11 +25,7 @@ declare module 'vue' {
     FavoriteIcon: typeof import('./components/FavoriteIcon.vue')['default']
     HomeIcon: typeof import('./components/HomeIcon.vue')['default']
     HomeShortcuts: typeof import('./components/HomeShortcuts.vue')['default']
-    JmDetail: typeof import('./components/comic-detail/JmDetail.vue')['default']
-    JmResultCard: typeof import('./components/result-cards/JmResultCard.vue')['default']
     LogActionIcon: typeof import('./components/LogActionIcon.vue')['default']
-    ManhuaguiDetail: typeof import('./components/comic-detail/ManhuaguiDetail.vue')['default']
-    ManhuaguiResultCard: typeof import('./components/result-cards/ManhuaguiResultCard.vue')['default']
     NAlert: typeof import('naive-ui')['NAlert']
     NButton: typeof import('naive-ui')['NButton']
     NCard: typeof import('naive-ui')['NCard']
@@ -42,8 +37,6 @@ declare module 'vue' {
     NDivider: typeof import('naive-ui')['NDivider']
     NDropdown: typeof import('naive-ui')['NDropdown']
     NEmpty: typeof import('naive-ui')['NEmpty']
-    NhentaiDetail: typeof import('./components/comic-detail/NhentaiDetail.vue')['default']
-    NhentaiResultCard: typeof import('./components/result-cards/NhentaiResultCard.vue')['default']
     NInput: typeof import('naive-ui')['NInput']
     NInputNumber: typeof import('naive-ui')['NInputNumber']
     NMessageProvider: typeof import('naive-ui')['NMessageProvider']

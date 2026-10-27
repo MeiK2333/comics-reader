@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import type { ComicPlatform } from "../api/comics";
-import { getComic, isComicPlatform } from "../api/comics";
+import type { ComicPlatform } from "../platforms";
+import { isComicPlatform, platformFor } from "../platforms";
+import { getComic } from "../api/comics";
 import type { ReaderChapter } from "../api/reader";
 import {
   getCachedReaderChapter,
@@ -268,7 +269,7 @@ async function load() {
 
   try {
     const loadChapterId = currentChapterId;
-    if (currentPlatform === "manhuagui" && !loadChapterId) {
+    if (!loadChapterId && !platformFor(currentPlatform).singleChapter) {
       // A deep link without a chapter still has a valid work id. Resolve the
       // first chapter from the detail page, then replace the URL so history and
       // sharing keep the chapter id.
@@ -276,29 +277,28 @@ async function load() {
       if (!latest.isCurrent(currentRequest)) {
         return;
       }
-      const first =
-        detail.platform === "manhuagui"
-          ? detail.extra.chapterGroups.flatMap((group) => group.chapters)[0]
-          : undefined;
+      const first = detail.chapters[0];
       if (!first) {
         error.value = new AppError(
           "notFound",
-          "manhuagui work has no readable chapters",
+          "work has no readable chapters",
           {},
         );
         loading.value = false;
         return;
       }
-      await router.replace({
-        name: readerRoute.value,
-        params: {
-          platform: currentPlatform,
-          id: currentId,
-          chapterId: first.id,
-        },
-        query: route.query,
-      });
-      return;
+      if (first.id) {
+        await router.replace({
+          name: readerRoute.value,
+          params: {
+            platform: currentPlatform,
+            id: currentId,
+            chapterId: first.id,
+          },
+          query: route.query,
+        });
+        return;
+      }
     }
 
     const result = pending

@@ -2,7 +2,7 @@ import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { computed, defineComponent, h, nextTick, ref } from "vue";
 import { NMessageProvider } from "naive-ui";
-import type { ComicPlatform } from "../api/comics";
+import type { ComicPlatform } from "../platforms";
 import type { FavoriteEntry } from "../api/favorites";
 import type { FavoriteSnapshot } from "./useFavoriteAction";
 

@@ -1,20 +1,22 @@
 //! Per-platform request profiles and page parsers.
 //!
 //! Adding an image-only platform means implementing [`ImageProfile`] and
-//! registering it in [`PROFILES`]. Search/detail/reading additionally require
-//! [`Catalog`], registered in [`CATALOGS`]. The shared fetching pipeline in the
-//! parent module stays unchanged; the platform only builds request URLs and
-//! parses the returned bytes.
+//! registering it in `registry`. Search/detail/reading additionally require
+//! [`Catalog`]. The shared fetching pipeline in `image` stays unchanged; the
+//! platform only builds request URLs and parses the returned bytes.
 
 mod generic;
 mod jm;
 mod jm_api;
 mod jm_image;
 mod manhuagui;
+pub(crate) mod model;
 mod nhentai;
+mod registry;
 
-pub(crate) use jm::scramble_id;
-pub(crate) use jm_image::{descramble, segment_count};
+pub(crate) use registry::{catalog, find_catalog, is_known_platform, resolve};
+#[cfg(test)]
+pub(crate) use registry::{detect, find_profile};
 
 use std::future::Future;
 use std::pin::Pin;
@@ -25,12 +27,12 @@ use url::Url;
 
 use crate::error::{AppError, Result};
 use crate::image::HttpClient;
-use crate::image::model::{ComicDetail, ReaderChapter, SearchResponse};
 
-use generic::Generic;
-use jm::Jm;
-use manhuagui::Manhuagui;
-use nhentai::Nhentai;
+use model::{ComicDetail, ReaderChapter, SearchResponse};
+
+/// Future returned by [`ImageProfile::preprocess`].
+pub(crate) type PreprocessFuture<'a> =
+    Pin<Box<dyn Future<Output = Result<Option<Vec<u8>>>> + Send + 'a>>;
 
 const HTML_ACCEPT: &str = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8";
 
@@ -82,14 +84,6 @@ impl RequestSpec {
     }
 }
 
-/// Post-download work a platform needs before the bytes are cached.
-#[derive(Debug, Clone)]
-pub(crate) enum ImageDecode {
-    /// JM permutes the horizontal bands of every page image. The band count
-    /// depends on the photo id, the file name and the album's scramble id.
-    JmScramble { photo_id: String, filename: String },
-}
-
 /// Everything the image pipeline needs to know about one platform.
 pub(crate) trait ImageProfile: Send + Sync {
     /// Stable id used by command arguments, cache namespaces and the UI.
@@ -121,9 +115,21 @@ pub(crate) trait ImageProfile: Send + Sync {
         Vec::new()
     }
 
-    /// Whether the downloaded bytes need decoding before they are cached.
-    fn image_decode(&self, _url: &Url) -> Option<ImageDecode> {
+    /// Cache-key suffix for platforms whose cached bytes differ from the
+    /// downloaded bytes. Returning `None` keeps the plain URL key.
+    fn decode_key(&self, _url: &Url) -> Option<String> {
         None
+    }
+
+    /// Transform downloaded bytes before they are cached. `None` keeps the
+    /// downloaded bytes; `Some(bytes)` replaces them.
+    fn preprocess<'a>(
+        &'a self,
+        _client: &'a HttpClient,
+        _url: &'a Url,
+        _bytes: &'a [u8],
+    ) -> PreprocessFuture<'a> {
+        Box::pin(async move { Ok(None) })
     }
 }
 
@@ -131,6 +137,18 @@ pub(crate) trait ImageProfile: Send + Sync {
 /// Platforms without a catalog stay image-only and do not need to implement
 /// empty parser methods.
 pub(crate) trait Catalog: ImageProfile {
+    /// Whether the work has one implicit chapter (nhentai). Downloads and the
+    /// reader ignore chapter ids for such a platform.
+    fn single_chapter(&self) -> bool {
+        false
+    }
+
+    /// Normalize a work id before it becomes a persisted key. Most platforms
+    /// only accept digits; JM also accepts its `JM` prefix.
+    fn normalize_work_id(&self, id: &str) -> Result<String> {
+        numeric_id(id, self.id())
+    }
+
     /// Called after the platform parses a document from one mirror, or after
     /// the fetch fails. A platform with interchangeable origins can remember
     /// which one works; single-origin platforms keep the default no-op. HTTP
@@ -191,68 +209,6 @@ pub(crate) trait Catalog: ImageProfile {
             reason: format!("platform `{}` does not support {operation}", self.id()),
         }
     }
-}
-
-static GENERIC: Generic = Generic;
-static MANHUAGUI: Manhuagui = Manhuagui;
-static JM: Jm = Jm::new();
-static NHENTAI: Nhentai = Nhentai;
-
-static PROFILES: [&dyn ImageProfile; 4] = [&GENERIC, &MANHUAGUI, &JM, &NHENTAI];
-static CATALOGS: [&dyn Catalog; 3] = [&MANHUAGUI, &JM, &NHENTAI];
-
-/// Resolve an explicit image profile id, or detect one from the image URL.
-pub(crate) fn resolve(explicit: Option<&str>, url: &Url) -> Result<&'static dyn ImageProfile> {
-    match explicit {
-        Some(id) => find_profile(id).ok_or_else(|| unknown_platform(id)),
-        None => Ok(detect(url)),
-    }
-}
-
-/// Look up an image profile by its stable command id.
-pub(crate) fn find_profile(id: &str) -> Option<&'static dyn ImageProfile> {
-    PROFILES
-        .iter()
-        .copied()
-        .find(|platform| platform.id() == id)
-}
-
-/// Look up a catalog by its stable command id.
-pub(crate) fn find_catalog(id: &str) -> Option<&'static dyn Catalog> {
-    CATALOGS
-        .iter()
-        .copied()
-        .find(|platform| platform.id() == id)
-}
-
-/// Resolve a catalog, preserving the old "platform does not support ..."
-/// error for image-only platforms while unknown ids stay unknown.
-pub(crate) fn catalog(id: &str, operation: &str) -> Result<&'static dyn Catalog> {
-    find_catalog(id).ok_or_else(|| {
-        if find_profile(id).is_some() {
-            AppError::InvalidInput {
-                field: "platform",
-                reason: format!("platform `{id}` does not support {operation}"),
-            }
-        } else {
-            unknown_platform(id)
-        }
-    })
-}
-
-pub(crate) fn unknown_platform(id: &str) -> AppError {
-    AppError::InvalidInput {
-        field: "platform",
-        reason: format!("unknown platform `{id}`"),
-    }
-}
-
-fn detect(url: &Url) -> &'static dyn ImageProfile {
-    PROFILES
-        .iter()
-        .copied()
-        .find(|platform| platform.matches(url))
-        .unwrap_or(&GENERIC)
 }
 
 /// Match an exact host or one of its subdomains without treating

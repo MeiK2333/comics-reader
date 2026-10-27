@@ -1,0 +1,59 @@
+{
+  "search": {
+    "id": "100",
+    "title": "Manhua Work",
+    "thumb": "https://cf.mhgui.com/cpic/h/100.jpg",
+    "platform": "manhuagui",
+    "extra": {
+      "originalTitle": "Original",
+      "authors": ["Author A"],
+      "status": "连载中",
+      "latestChapter": "第3话",
+      "updatedAt": "2024-01-01",
+      "year": "2023",
+      "region": "日本",
+      "categories": ["喜剧"],
+      "aliases": ["Alias"],
+      "description": "Desc",
+      "score": 9.5,
+      "ratingCount": 42,
+      "chapterGroups": []
+    }
+  },
+  "detail": {
+    "title": "Manhua Work",
+    "thumb": "https://cf.mhgui.com/cpic/h/100.jpg",
+    "platform": "manhuagui",
+    "chapters": [
+      {
+        "id": "ch-1",
+        "title": "第1话"
+      }
+    ],
+    "extra": {
+      "originalTitle": "Original",
+      "authors": ["Author A"],
+      "status": "连载中",
+      "latestChapter": "第3话",
+      "updatedAt": "2024-01-01",
+      "year": "2023",
+      "region": "日本",
+      "categories": ["喜剧"],
+      "aliases": ["Alias"],
+      "description": "Desc",
+      "score": 9.5,
+      "ratingCount": 42,
+      "chapterGroups": [
+        {
+          "title": "",
+          "chapters": [
+            {
+              "id": "ch-1",
+              "title": "第1话"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

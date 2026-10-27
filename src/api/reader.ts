@@ -1,5 +1,5 @@
 import { invokeCommand } from "./client";
-import type { ComicPlatform } from "./comics";
+import type { ComicPlatform } from "../platforms";
 import { getDownloadedChapter } from "./downloads";
 
 export interface ReaderPage {

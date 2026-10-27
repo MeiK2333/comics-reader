@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { CSSProperties } from "vue";
-import type { ComicPlatform } from "../../api/comics";
+import type { ComicPlatform } from "../../platforms";
 import type { ReaderPage } from "../../api/reader";
 import { usePageTurn, TURN_DURATION_MS } from "../../composables/usePageTurn";
 import { useReaderGestures } from "../../composables/useReaderGestures";

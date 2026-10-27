@@ -8,7 +8,7 @@ import type {
   JmDetail,
   ManhuaguiDetail,
   NhentaiDetail,
-} from "../api/comics";
+} from "../platforms";
 import type { DownloadDetail } from "../api/downloads";
 import type { HistoryEntry } from "../api/history";
 import { AppError } from "../errors";
@@ -39,6 +39,7 @@ function nhentaiDetail(title = "Work"): NhentaiDetail {
     platform: "nhentai",
     title,
     thumb: "thumb.jpg",
+    chapters: [{ id: null, title: null }],
     extra: {
       mediaId: "1",
       japaneseTitle: null,
@@ -60,6 +61,10 @@ function manhuaguiDetail(): ManhuaguiDetail {
     platform: "manhuagui",
     title: "Manhua",
     thumb: "cover.jpg",
+    chapters: [
+      { id: "c1", title: "Chapter 1" },
+      { id: "c2", title: "Chapter 2" },
+    ],
     extra: {
       originalTitle: null,
       authors: [],
@@ -91,6 +96,10 @@ function jmDetail(chapters: JmDetail["extra"]["chapters"]): JmDetail {
     platform: "jm",
     title: "JM work",
     thumb: "jm.jpg",
+    chapters: chapters.map((chapter) => ({
+      id: chapter.id,
+      title: chapter.title,
+    })),
     extra: {
       authors: [],
       tags: [],

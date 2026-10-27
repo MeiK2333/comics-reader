@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { CSSProperties } from "vue";
-import type { ComicPlatform } from "../../api/comics";
+import type { ComicPlatform } from "../../platforms";
 import type { ReaderPage } from "../../api/reader";
 import type { ReaderImageSize } from "../../composables/useReaderZoom";
 import type { ReaderDirection } from "../../stores/settings";

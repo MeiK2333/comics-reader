@@ -25,7 +25,7 @@ import { useErrorMessage } from "../composables/useErrorMessage";
 import { useLatestRequest } from "../composables/useLatestRequest";
 import { usePagedResource } from "../composables/usePagedResource";
 import { useDateTimeFormatter } from "../i18n/format";
-import { platformLabelKey } from "../i18n/platform";
+import { platformLabel } from "../platforms";
 import { useAppI18n } from "../i18n";
 import { toAppError, type AppError } from "../errors";
 
@@ -474,7 +474,7 @@ onMounted(() => {
               </span>
               <span class="favorite-entry__meta">
                 <NTag size="tiny" :bordered="false">
-                  {{ t(platformLabelKey(entry.platform)) }}
+                  {{ platformLabel(entry.platform) }}
                 </NTag>
                 <NTag size="tiny" :bordered="false">
                   {{ groupLabelById(entry.groupId) }}

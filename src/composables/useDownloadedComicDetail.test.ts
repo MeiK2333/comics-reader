@@ -2,7 +2,7 @@ import { flushPromises } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { computed, effectScope, nextTick, ref } from "vue";
 import type { EffectScope } from "vue";
-import type { ComicPlatform } from "../api/comics";
+import type { ComicPlatform } from "../platforms";
 import type { DownloadDetail } from "../api/downloads";
 import type { HistoryEntry } from "../api/history";
 

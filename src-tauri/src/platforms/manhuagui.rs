@@ -4,13 +4,12 @@ use regex::Regex;
 use reqwest::RequestBuilder;
 use reqwest::header::{ACCEPT_LANGUAGE, REFERER};
 use scraper::{ElementRef, Html, Selector};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::error::{AppError, Result};
-use crate::image::model::{
-    ChapterRef, ComicDetail, DetailExtra, ManhuaguiChapterGroup, ManhuaguiChapterRef,
-    ManhuaguiExtra, ReaderChapter, ReaderPage, SearchExtra, SearchItem, SearchResponse,
+use crate::platforms::model::{
+    ChapterRef, ComicDetail, DetailChapter, ReaderChapter, ReaderPage, SearchItem, SearchResponse,
 };
 
 use super::{
@@ -37,17 +36,52 @@ static DECRYPTION_RE: LazyLock<Regex> = LazyLock::new(|| {
 static WORD_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\b\w+\b").expect("valid word regex"));
 
+/// Fields both search and detail return for manhuagui. Search results leave
+/// `chapter_groups` empty; the detail page fills it from the chapter list.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ManhuaguiExtra {
+    original_title: Option<String>,
+    authors: Vec<String>,
+    status: Option<String>,
+    latest_chapter: Option<String>,
+    updated_at: Option<String>,
+    year: Option<String>,
+    region: Option<String>,
+    categories: Vec<String>,
+    aliases: Vec<String>,
+    description: Option<String>,
+    score: Option<f32>,
+    rating_count: Option<u64>,
+    chapter_groups: Vec<ManhuaguiChapterGroup>,
+}
+
+/// A site chapter group such as a volume or one-shot collection. `title` is
+/// empty when the page did not label the group; the frontend localizes it.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ManhuaguiChapterGroup {
+    title: String,
+    chapters: Vec<ManhuaguiChapterRef>,
+}
+
+/// One chapter of a manhuagui work, in reading order.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ManhuaguiChapterRef {
+    id: String,
+    title: String,
+}
+
 pub(super) struct Manhuagui;
+
+impl Manhuagui {
+    pub(super) const ID: &'static str = "manhuagui";
+}
 
 impl ImageProfile for Manhuagui {
     fn id(&self) -> &'static str {
-        "manhuagui"
-    }
-
-    /// Chapter image URLs are normalized (the `.webp` suffix is removed), so
-    /// old cache entries must not be reused for the new URLs.
-    fn cache_version(&self) -> u32 {
-        3
+        Self::ID
     }
 
     fn matches(&self, url: &Url) -> bool {
@@ -181,11 +215,17 @@ impl Catalog for Manhuagui {
             chapter_groups: parse_chapter_groups(root, id),
         };
 
-        Ok(ComicDetail::new(
-            title,
-            thumb,
-            DetailExtra::Manhuagui(extra),
-        ))
+        let chapters = extra
+            .chapter_groups
+            .iter()
+            .flat_map(|group| group.chapters.iter())
+            .map(|chapter| DetailChapter {
+                id: Some(chapter.id.clone()),
+                title: Some(chapter.title.clone()),
+            })
+            .collect();
+
+        ComicDetail::new(Manhuagui::ID, title, thumb, chapters, extra)
     }
 
     fn reader_chapter_request(&self, id: &str, chapter_id: Option<&str>) -> Result<RequestSpec> {
@@ -757,12 +797,7 @@ fn parse_search_item(item: ElementRef<'_>) -> Option<SearchItem> {
         chapter_groups: Vec::new(),
     };
 
-    Some(SearchItem::new(
-        id,
-        title,
-        thumb,
-        SearchExtra::Manhuagui(extra),
-    ))
+    SearchItem::new(Manhuagui::ID, id, title, thumb, extra).ok()
 }
 
 fn parse_status(
@@ -839,7 +874,6 @@ fn labeled_links(scope: ElementRef<'_>, label: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::image::model::SearchPlatform;
 
     const SEARCH_HTML: &str = r#"
 <div class="result-count">搜索“<strong>火影</strong>”共查找到 <strong>2</strong> 部漫画</div>
@@ -944,14 +978,12 @@ mod tests {
         assert_eq!(response.result.len(), 2);
 
         let first = &response.result[0];
-        assert_eq!(first.platform, SearchPlatform::Manhuagui);
+        assert_eq!(first.platform, "manhuagui");
         assert_eq!(first.id, "1");
         assert_eq!(first.title, "示例漫画");
         assert_eq!(first.thumb, "https://cf.mhgui.com/cpic/b/1.jpg");
 
-        let SearchExtra::Manhuagui(extra) = &first.extra else {
-            panic!("expected manhuagui search extra");
-        };
+        let extra: ManhuaguiExtra = serde_json::from_value(first.extra.clone()).unwrap();
         assert_eq!(extra.authors, ["作者A"]);
         assert_eq!(extra.status.as_deref(), Some("连载中"));
         assert_eq!(extra.latest_chapter.as_deref(), Some("第12话"));
@@ -966,13 +998,32 @@ mod tests {
     #[test]
     fn parses_detail() {
         let detail = Manhuagui.parse_detail("1", DETAIL_HTML.as_bytes()).unwrap();
-        assert_eq!(detail.platform, SearchPlatform::Manhuagui);
+        assert_eq!(detail.platform, "manhuagui");
         assert_eq!(detail.title, "示例漫画");
         assert_eq!(detail.thumb, "https://cf.mhgui.com/cpic/h/1.jpg");
 
-        let DetailExtra::Manhuagui(extra) = detail.extra else {
-            panic!("expected manhuagui detail extra");
-        };
+        let extra: ManhuaguiExtra = serde_json::from_value(detail.extra.clone()).unwrap();
+        assert_eq!(
+            detail.chapters,
+            vec![
+                DetailChapter {
+                    id: Some("101".into()),
+                    title: Some("第1话".into()),
+                },
+                DetailChapter {
+                    id: Some("102".into()),
+                    title: Some("第2话".into()),
+                },
+                DetailChapter {
+                    id: Some("201".into()),
+                    title: Some("第1卷".into()),
+                },
+                DetailChapter {
+                    id: Some("202".into()),
+                    title: Some("第2卷".into()),
+                },
+            ]
+        );
         assert_eq!(extra.original_title.as_deref(), Some("Original Title"));
         assert_eq!(extra.authors, ["作者A"]);
         assert_eq!(extra.status.as_deref(), Some("已完结"));
@@ -1088,5 +1139,59 @@ mod tests {
 
         let plain = Url::parse("https://cf.mhgui.com/cpic/h/1.jpg").unwrap();
         assert_eq!(Manhuagui.cache_key_url(&plain), plain.as_str());
+    }
+    fn contract_extra(chapter_groups: Vec<ManhuaguiChapterGroup>) -> ManhuaguiExtra {
+        ManhuaguiExtra {
+            original_title: Some("Original".into()),
+            authors: vec!["Author A".into()],
+            status: Some("连载中".into()),
+            latest_chapter: Some("第3话".into()),
+            updated_at: Some("2024-01-01".into()),
+            year: Some("2023".into()),
+            region: Some("日本".into()),
+            categories: vec!["喜剧".into()],
+            aliases: vec!["Alias".into()],
+            description: Some("Desc".into()),
+            score: Some(9.5),
+            rating_count: Some(42),
+            chapter_groups,
+        }
+    }
+
+    #[test]
+    fn matches_the_platform_wire_fixture() {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../src/platforms/manhuagui/fixtures/wire.json"
+        ))
+        .unwrap();
+
+        let search = SearchItem::new(
+            Manhuagui::ID,
+            "100",
+            "Manhua Work",
+            "https://cf.mhgui.com/cpic/h/100.jpg",
+            contract_extra(Vec::new()),
+        )
+        .unwrap();
+        assert_eq!(serde_json::to_value(search).unwrap(), fixture["search"]);
+
+        let detail = ComicDetail::new(
+            Manhuagui::ID,
+            "Manhua Work",
+            "https://cf.mhgui.com/cpic/h/100.jpg",
+            vec![DetailChapter {
+                id: Some("ch-1".into()),
+                title: Some("第1话".into()),
+            }],
+            contract_extra(vec![ManhuaguiChapterGroup {
+                title: String::new(),
+                chapters: vec![ManhuaguiChapterRef {
+                    id: "ch-1".into(),
+                    title: "第1话".into(),
+                }],
+            }]),
+        )
+        .unwrap();
+        assert_eq!(serde_json::to_value(detail).unwrap(), fixture["detail"]);
     }
 }

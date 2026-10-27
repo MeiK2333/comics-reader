@@ -12,18 +12,19 @@ use std::sync::{LazyLock, Mutex};
 
 use reqwest::RequestBuilder;
 use reqwest::header::{ACCEPT_LANGUAGE, REFERER, USER_AGENT};
+use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::error::{AppError, Result};
 use crate::image::http::{self, HttpClient};
-use crate::image::model::{
-    ChapterRef, ComicDetail, DetailExtra, JmChapterRef, JmDetailExtra, JmExtra, ReaderChapter,
-    ReaderPage, SearchExtra, SearchItem, SearchResponse,
-};
 use crate::logging;
+use crate::platforms::model::{
+    ChapterRef, ComicDetail, DetailChapter, ReaderChapter, ReaderPage, SearchItem, SearchResponse,
+};
 
 use super::jm_api::{self, Album, Chapter, SearchPage};
-use super::{Catalog, ImageDecode, ImageProfile, RequestSpec, host_matches, jm_id};
+use super::jm_image::{descramble, segment_count};
+use super::{Catalog, ImageProfile, PreprocessFuture, RequestSpec, host_matches, jm_id};
 
 /// Hosts JM serves the APP API, the image CDN and the legacy HTML site from.
 /// Images are fetched with an explicit platform, but keeping every host here
@@ -49,6 +50,45 @@ const HOST_SUFFIXES: &[&str] = &[
 ];
 
 const PAGE_SIZE: u32 = 80;
+/// Bump when the descrambler or its output changes without a URL change.
+const IMAGE_DECODE_VERSION: u32 = 1;
+
+/// Search results only expose the fields the APP search payload carries: it
+/// has no tags, so author and category replace them on the result card.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct JmExtra {
+    tags: Vec<String>,
+    author: Option<String>,
+    category: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct JmDetailExtra {
+    authors: Vec<String>,
+    tags: Vec<String>,
+    works: Vec<String>,
+    actors: Vec<String>,
+    page_count: Option<u32>,
+    pub_date: Option<String>,
+    update_date: Option<String>,
+    likes: Option<String>,
+    views: Option<String>,
+    comment_count: Option<u64>,
+    /// Chapters in reading order. A single-chapter album still has one entry,
+    /// so the reader entry point never needs a special case.
+    chapters: Vec<JmChapterRef>,
+}
+
+/// One chapter of a jm album. `sort` is JM's 1-based chapter number.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct JmChapterRef {
+    id: String,
+    title: String,
+    sort: u32,
+}
 
 pub(super) struct Jm {
     /// Index into `jm_api::API_DOMAINS` of the last host that answered. It
@@ -57,6 +97,8 @@ pub(super) struct Jm {
 }
 
 impl Jm {
+    pub(super) const ID: &'static str = "jm";
+
     pub(super) const fn new() -> Self {
         Self {
             preferred: AtomicUsize::new(0),
@@ -87,13 +129,7 @@ impl Jm {
 
 impl ImageProfile for Jm {
     fn id(&self) -> &'static str {
-        "jm"
-    }
-
-    /// Bumped when the profile moved from the HTML site to the APP API: same
-    /// URL shape, but different headers and image hosts.
-    fn cache_version(&self) -> u32 {
-        3
+        Self::ID
     }
 
     fn matches(&self, url: &Url) -> bool {
@@ -119,9 +155,27 @@ impl ImageProfile for Jm {
         jm_api::image_alternates(url)
     }
 
-    fn image_decode(&self, url: &Url) -> Option<ImageDecode> {
-        jm_api::page_image(url)
-            .map(|(photo_id, filename)| ImageDecode::JmScramble { photo_id, filename })
+    fn decode_key(&self, url: &Url) -> Option<String> {
+        jm_api::page_image(url).map(|_| format!("?decoded=v{IMAGE_DECODE_VERSION}"))
+    }
+
+    fn preprocess<'a>(
+        &'a self,
+        client: &'a HttpClient,
+        url: &'a Url,
+        bytes: &'a [u8],
+    ) -> PreprocessFuture<'a> {
+        Box::pin(async move {
+            let Some((photo_id, filename)) = jm_api::page_image(url) else {
+                return Ok(None);
+            };
+            let scramble_id = scramble_id(client, self, &photo_id).await?;
+            let segments = segment_count(scramble_id, &photo_id, &filename);
+            if segments == 0 {
+                return Ok(None);
+            }
+            Ok(Some(descramble(bytes, segments)?))
+        })
     }
 
     /// Photo and cover images are served from interchangeable CDNs and the
@@ -139,6 +193,10 @@ impl ImageProfile for Jm {
 }
 
 impl Catalog for Jm {
+    fn normalize_work_id(&self, id: &str) -> Result<String> {
+        jm_id(id)
+    }
+
     fn note_request_outcome(&self, url: &Url, success: bool) {
         let Some(position) = url.host_str().and_then(|host| {
             jm_api::API_DOMAINS
@@ -209,7 +267,7 @@ impl Catalog for Jm {
             };
             let thumb = jm_api::cover_url(&id);
 
-            result.push(SearchItem::new(id, title, thumb, SearchExtra::Jm(extra)));
+            result.push(SearchItem::new(Jm::ID, id, title, thumb, extra)?);
         }
 
         let total = page
@@ -285,6 +343,14 @@ impl Catalog for Jm {
         }
         chapters.sort_by_key(|chapter| chapter.sort);
 
+        let core_chapters = chapters
+            .iter()
+            .map(|chapter| DetailChapter {
+                id: Some(chapter.id.clone()),
+                title: Some(chapter.title.clone()),
+            })
+            .collect();
+
         let extra = JmDetailExtra {
             authors: clean(author),
             tags: clean(tags),
@@ -304,11 +370,7 @@ impl Catalog for Jm {
             chapters,
         };
 
-        Ok(ComicDetail::new(
-            title,
-            jm_api::cover_url(&id),
-            DetailExtra::Jm(extra),
-        ))
+        ComicDetail::new(Jm::ID, title, jm_api::cover_url(&id), core_chapters, extra)
     }
 
     fn reader_chapter_request(&self, id: &str, chapter_id: Option<&str>) -> Result<RequestSpec> {
@@ -474,11 +536,7 @@ async fn sync_app_version(client: &HttpClient, platform: &dyn Catalog) -> Result
 
 /// Look up the album's scramble threshold, caching it for the process. One
 /// extra request per chapter is enough: pages in a chapter share the album.
-pub(crate) async fn scramble_id(
-    client: &HttpClient,
-    platform: &dyn Catalog,
-    photo_id: &str,
-) -> Result<i64> {
+async fn scramble_id(client: &HttpClient, platform: &dyn Catalog, photo_id: &str) -> Result<i64> {
     if let Some(value) = SCRAMBLE_IDS
         .lock()
         .ok()
@@ -568,7 +626,6 @@ fn album_not_found(id: &str) -> AppError {
 mod tests {
     use super::*;
     use crate::error::ErrorCode;
-    use crate::image::model::SearchPlatform;
 
     const SEARCH_JSON: &str = r#"
 {
@@ -723,7 +780,7 @@ mod tests {
         assert_eq!(response.result.len(), 2);
 
         let first = &response.result[0];
-        assert_eq!(first.platform, SearchPlatform::Jm);
+        assert_eq!(first.platform, "jm");
         assert_eq!(first.id, "1480638");
         assert_eq!(first.title, "TURING TEST");
         assert_eq!(
@@ -731,9 +788,7 @@ mod tests {
             "https://cdn-msp.jmapiproxy1.cc/media/albums/1480638_3x4.jpg"
         );
 
-        let SearchExtra::Jm(extra) = &first.extra else {
-            panic!("expected jm search extra");
-        };
+        let extra: JmExtra = serde_json::from_value(first.extra.clone()).unwrap();
         assert_eq!(extra.author.as_deref(), Some("SGNF"));
         assert_eq!(extra.category.as_deref(), Some("同人"));
         assert!(extra.tags.is_empty());
@@ -741,9 +796,7 @@ mod tests {
         let second = &response.result[1];
         assert_eq!(second.id, "350234");
         assert_eq!(second.title, "JM350234");
-        let SearchExtra::Jm(extra) = &second.extra else {
-            panic!("expected jm search extra");
-        };
+        let extra: JmExtra = serde_json::from_value(second.extra.clone()).unwrap();
         assert!(extra.author.is_none());
         assert!(extra.category.is_none());
     }
@@ -753,16 +806,17 @@ mod tests {
         let detail = Jm::new()
             .parse_detail("350234", &envelope(DETAIL_JSON))
             .unwrap();
-        assert_eq!(detail.platform, SearchPlatform::Jm);
+        assert_eq!(detail.platform, "jm");
         assert_eq!(detail.title, "董卓 上+下");
         assert_eq!(
             detail.thumb,
             "https://cdn-msp.jmapiproxy1.cc/media/albums/350234_3x4.jpg"
         );
 
-        let DetailExtra::Jm(extra) = detail.extra else {
-            panic!("expected jm detail extra");
-        };
+        let extra: JmDetailExtra = serde_json::from_value(detail.extra.clone()).unwrap();
+        assert_eq!(detail.chapters.len(), 2);
+        assert_eq!(detail.chapters[0].id.as_deref(), Some("350234"));
+        assert_eq!(detail.chapters[1].id.as_deref(), Some("350235"));
         assert_eq!(extra.authors, ["N/A", "孫笑川"]);
         assert_eq!(extra.tags, ["中文"]);
         assert_eq!(extra.works, ["三國"]);
@@ -785,9 +839,10 @@ mod tests {
         let body =
             envelope(r#"{"id": 1480638, "name": "TURING TEST", "total_photos": 22, "series": []}"#);
         let detail = Jm::new().parse_detail("1480638", &body).unwrap();
-        let DetailExtra::Jm(extra) = detail.extra else {
-            panic!("expected jm detail extra");
-        };
+        let extra: JmDetailExtra = serde_json::from_value(detail.extra.clone()).unwrap();
+        assert_eq!(detail.chapters.len(), 1);
+        assert_eq!(detail.chapters[0].id.as_deref(), Some("1480638"));
+        assert_eq!(detail.chapters[0].title.as_deref(), Some("TURING TEST"));
         assert_eq!(extra.chapters.len(), 1);
         assert_eq!(extra.chapters[0].id, "1480638");
         assert_eq!(extra.chapters[0].title, "TURING TEST");
@@ -908,19 +963,15 @@ mod tests {
     }
 
     #[test]
-    fn page_images_are_marked_for_descrambling() {
+    fn page_images_carry_the_decode_version() {
         let jm = Jm::new();
         let page =
             Url::parse("https://cdn-msp.jmapiproxy1.cc/media/photos/350235/00001.webp").unwrap();
-        let Some(ImageDecode::JmScramble { photo_id, filename }) = jm.image_decode(&page) else {
-            panic!("expected a scramble recipe");
-        };
-        assert_eq!(photo_id, "350235");
-        assert_eq!(filename, "00001");
+        assert_eq!(jm.decode_key(&page).as_deref(), Some("?decoded=v1"));
 
         let cover =
             Url::parse("https://cdn-msp.jmapiproxy1.cc/media/albums/350234_3x4.jpg").unwrap();
-        assert!(jm.image_decode(&cover).is_none());
+        assert!(jm.decode_key(&cover).is_none());
     }
 
     #[test]
@@ -946,5 +997,54 @@ mod tests {
             Jm::new().cache_key_url(&other),
             "https://www.cdnhjk.net/a.jpg"
         );
+    }
+    #[test]
+    fn matches_the_platform_wire_fixture() {
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../../../src/platforms/jm/fixtures/wire.json"))
+                .unwrap();
+
+        let search = SearchItem::new(
+            Jm::ID,
+            "200",
+            "JM Work",
+            "https://cdn.example/jm/200.jpg",
+            JmExtra {
+                tags: vec!["tag".into()],
+                author: Some("JM Author".into()),
+                category: Some("同人".into()),
+            },
+        )
+        .unwrap();
+        assert_eq!(serde_json::to_value(search).unwrap(), fixture["search"]);
+
+        let detail = ComicDetail::new(
+            Jm::ID,
+            "JM Work",
+            "https://cdn.example/jm/200.jpg",
+            vec![DetailChapter {
+                id: Some("c1".into()),
+                title: Some("Chapter 1".into()),
+            }],
+            JmDetailExtra {
+                authors: vec!["JM Author".into()],
+                tags: vec!["tag".into()],
+                works: vec!["Work".into()],
+                actors: vec!["Actor".into()],
+                page_count: Some(20),
+                pub_date: Some("2024-01-01".into()),
+                update_date: Some("2024-01-02".into()),
+                likes: Some("10".into()),
+                views: Some("100".into()),
+                comment_count: Some(2),
+                chapters: vec![JmChapterRef {
+                    id: "c1".into(),
+                    title: "Chapter 1".into(),
+                    sort: 1,
+                }],
+            },
+        )
+        .unwrap();
+        assert_eq!(serde_json::to_value(detail).unwrap(), fixture["detail"]);
     }
 }

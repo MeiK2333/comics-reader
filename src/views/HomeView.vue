@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from "vue";
-import type { ComicPlatform } from "../api/comics";
+import type { ComicPlatform } from "../platforms";
 import ComicSearchBar from "../components/ComicSearchBar.vue";
 import HomeShortcuts from "../components/HomeShortcuts.vue";
 import { useRouteTransition } from "../composables/useRouteTransition";

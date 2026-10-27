@@ -39,24 +39,8 @@
     "search": {
       "submit": "搜索",
       "platform": "平台",
-      "platforms": {
-        "manhuagui": "漫画柜",
-        "jm": "JM",
-        "nhentai": "nhentai"
-      },
       "total": "共 {total} 个结果",
-      "empty": "没有找到漫画，换个关键词试试。",
-      "pages": "页数：{count}",
-      "favorites": "收藏：{count}",
-      "authors": "作者：{names}",
-      "latestChapter": "更新至 {chapter}",
-      "updatedAt": "更新于 {date}",
-      "statusOngoing": "连载中",
-      "statusCompleted": "已完结",
-      "score": "★ {score}",
-      "ratings": "{count} 人评分",
-      "noTags": "暂无标签",
-      "moreTags": "+{count}"
+      "empty": "没有找到漫画，换个关键词试试。"
     }
   },
   "search": {
@@ -87,50 +71,16 @@
     "sections": {
       "info": "作品信息",
       "chapters": "章节",
-      "description": "简介",
-      "tags": "标签",
-      "works": "作品",
-      "actors": "角色",
-      "categories": "分类",
-      "aliases": "别名"
-    },
-    "chapterGroups": {
-      "all": "全部章节",
-      "other": "其他 {index}",
-      "count": "{count} 章",
-      "expandAll": "展开全部",
-      "collapseAll": "收起全部"
+      "description": "简介"
     },
     "fields": {
       "authors": "作者",
-      "latestChapter": "最新话",
-      "updatedAt": "更新时间",
-      "year": "年份",
-      "region": "地区",
-      "pages": "页数",
-      "favorites": "收藏",
-      "likes": "点赞",
-      "views": "观看",
-      "comments": "评论",
-      "publishedAt": "上架日期",
-      "updatedOn": "更新日期",
-      "scanlator": "汉化组",
-      "uploadedAt": "上传日期"
-    },
-    "tagGroups": {
-      "language": "语言",
-      "artist": "画师",
-      "tag": "标签",
-      "parody": "原作",
-      "character": "角色",
-      "group": "社团",
-      "category": "分类",
-      "other": "其他"
+      "pages": "页数"
     },
     "offline": {
       "tag": "已下载",
       "summary": "已下载 {done} / {total} 章",
-        "chapters": "已下载章节"
+      "chapters": "已下载章节"
     }
   },
   "reader": {

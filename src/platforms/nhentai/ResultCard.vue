@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import type { NhentaiSearchItem } from "../../api/comics";
-import { useAppI18n } from "../../i18n";
-import ResultCardShell from "./ResultCardShell.vue";
+import type { NhentaiSearchItem } from "./types";
+
+import { usePlatformText } from "../../platforms/messages";
+import ResultCardShell from "../../components/result-cards/ResultCardShell.vue";
+import { nhentaiMessages } from "./messages";
 
 const props = defineProps<{
   item: NhentaiSearchItem;
 }>();
 
-const { t } = useAppI18n();
+const text = usePlatformText(nhentaiMessages);
 
 const extra = computed(() => props.item.extra);
 
@@ -21,10 +23,10 @@ const statsLine = computed(() =>
   [
     extra.value.numPages === null
       ? ""
-      : t("home.search.pages", { count: extra.value.numPages }),
+      : text("searchPages", { count: extra.value.numPages }),
     extra.value.numFavorites === null
       ? ""
-      : t("home.search.favorites", { count: extra.value.numFavorites }),
+      : text("searchFavorites", { count: extra.value.numFavorites }),
   ]
     .filter(Boolean)
     .join(" · "),

@@ -7,8 +7,8 @@ use crate::error::{AppError, Result};
 use crate::logging;
 
 use super::super::cache::ImageFormat;
-use super::super::platform::{Catalog, ImageProfile, RequestSpec};
 use super::{HttpClient, MAX_DOCUMENT_BYTES};
+use crate::platforms::{Catalog, ImageProfile, RequestSpec};
 
 const MAX_IMAGE_BYTES: u64 = 32 * 1024 * 1024;
 

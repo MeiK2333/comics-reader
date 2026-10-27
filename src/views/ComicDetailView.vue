@@ -1,21 +1,14 @@
 <script setup lang="ts">
 import { computed, watch } from "vue";
 import { RouterView, useRoute, useRouter } from "vue-router";
-import type {
-  ComicDetail,
-  ComicPlatform,
-  JmDetail as JmDetailData,
-  ManhuaguiDetail as ManhuaguiDetailData,
-  NhentaiDetail as NhentaiDetailData,
-} from "../api/comics";
-import { isComicPlatform } from "../api/comics";
+import type { ComicDetail, ComicPlatform } from "../platforms";
+import { isComicPlatform } from "../platforms";
+import PlatformDetail from "../platforms/PlatformDetail.vue";
 import FavoriteGroupPicker from "../components/favorites/FavoriteGroupPicker.vue";
 import ComicDetailSkeleton from "../components/comic-detail/ComicDetailSkeleton.vue";
 import DetailActions from "../components/comic-detail/DetailActions.vue";
 import DetailTopbar from "../components/comic-detail/DetailTopbar.vue";
-import JmDetail from "../components/comic-detail/JmDetail.vue";
-import ManhuaguiDetail from "../components/comic-detail/ManhuaguiDetail.vue";
-import NhentaiDetail from "../components/comic-detail/NhentaiDetail.vue";
+
 import { useBackNavigation } from "../composables/useBackNavigation";
 import { useComicDetail } from "../composables/useComicDetail";
 import { useDetailReturnTarget } from "../composables/useDetailReturnTarget";
@@ -51,7 +44,6 @@ const {
   download,
   loading,
   state,
-  manhuaguiChapters,
   downloadChapters,
   canRead,
   canResume,
@@ -134,15 +126,6 @@ const errorText = computed(() => {
     : formatError(current);
 });
 
-const manhuaguiDetail = computed<ManhuaguiDetailData | null>(() =>
-  detail.value?.platform === "manhuagui" ? detail.value : null,
-);
-const jmDetail = computed<JmDetailData | null>(() =>
-  detail.value?.platform === "jm" ? detail.value : null,
-);
-const nhentaiDetail = computed<NhentaiDetailData | null>(() =>
-  detail.value?.platform === "nhentai" ? detail.value : null,
-);
 
 /**
  * The detail component stays mounted while the nested reader is open, so the
@@ -193,20 +176,12 @@ function openReader() {
     return;
   }
 
-  // Chaptered platforms start at the first chapter and let the reader navigate
-  // from there.
-  if (current.platform === "jm") {
-    const first = current.extra.chapters[0];
-    if (first) {
-      openChapter(first.id);
-    }
+  const first = current.chapters[0];
+  if (!first) {
     return;
   }
-  if (current.platform === "manhuagui") {
-    const first = manhuaguiChapters.value[0];
-    if (first) {
-      openChapter(first.id);
-    }
+  if (first.id) {
+    openChapter(first.id);
     return;
   }
 
@@ -309,18 +284,12 @@ function openResume() {
       </template>
     </NResult>
 
-    <ManhuaguiDetail
-      v-else-if="manhuaguiDetail"
-      :detail="manhuaguiDetail"
+    <PlatformDetail
+      v-else-if="onlineDetail"
+      :detail="onlineDetail"
       :resume-chapter-id="resumeChapterId"
       @open-chapter="openChapter"
     />
-    <JmDetail
-      v-else-if="jmDetail"
-      :detail="jmDetail"
-      @open-chapter="openChapter"
-    />
-    <NhentaiDetail v-else-if="nhentaiDetail" :detail="nhentaiDetail" />
 
     <NResult
       v-else

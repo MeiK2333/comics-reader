@@ -2,7 +2,7 @@ import { flushPromises } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { effectScope, nextTick, ref } from "vue";
 import type { EffectScope } from "vue";
-import type { ComicPlatform } from "../api/comics";
+import type { ComicPlatform } from "../platforms";
 import type { CachedImage } from "../api/images";
 
 const fetchMock = vi.hoisted(() => vi.fn());

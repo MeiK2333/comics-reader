@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import type { JmDetail } from "../../api/comics";
+import type { JmDetail } from "./types";
 import { useAppI18n } from "../../i18n";
-import DetailSection from "./DetailSection.vue";
-import DetailShell from "./DetailShell.vue";
-import DetailTagGroup from "./DetailTagGroup.vue";
+import { usePlatformText } from "../../platforms/messages";
+import { jmMessages } from "./messages";
+import DetailSection from "../../components/comic-detail/DetailSection.vue";
+import DetailShell from "../../components/comic-detail/DetailShell.vue";
+import DetailTagGroup from "../../components/comic-detail/DetailTagGroup.vue";
 
 const props = defineProps<{
   detail: JmDetail;
@@ -15,6 +17,7 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useAppI18n();
+const text = usePlatformText(jmMessages);
 
 const extra = computed(() => props.detail.extra);
 const chapters = computed(() => extra.value.chapters);
@@ -37,11 +40,11 @@ const infoItems = computed(() =>
       value: extra.value.pageCount?.toString() ?? "",
     },
     {
-      label: t("detail.fields.publishedAt"),
+      label: text("fieldsPublishedAt"),
       value: extra.value.pubDate ?? "",
     },
     {
-      label: t("detail.fields.updatedOn"),
+      label: text("fieldsUpdatedOn"),
       value: extra.value.updateDate ?? "",
     },
   ].filter((item) => item.value.trim().length > 0),
@@ -49,10 +52,10 @@ const infoItems = computed(() =>
 
 const stats = computed(() =>
   [
-    { label: t("detail.fields.likes"), value: extra.value.likes ?? "" },
-    { label: t("detail.fields.views"), value: extra.value.views ?? "" },
+    { label: text("fieldsLikes"), value: extra.value.likes ?? "" },
+    { label: text("fieldsViews"), value: extra.value.views ?? "" },
     {
-      label: t("detail.fields.comments"),
+      label: text("fieldsComments"),
       value: extra.value.commentCount?.toString() ?? "",
     },
   ].filter((item) => item.value.trim().length > 0),
@@ -105,9 +108,9 @@ const stats = computed(() =>
       </div>
     </DetailSection>
 
-    <DetailTagGroup :title="t('detail.sections.works')" :tags="extra.works" />
-    <DetailTagGroup :title="t('detail.sections.actors')" :tags="extra.actors" />
-    <DetailTagGroup :title="t('detail.sections.tags')" :tags="extra.tags" />
+    <DetailTagGroup :title="text('sectionsWorks')" :tags="extra.works" />
+    <DetailTagGroup :title="text('sectionsActors')" :tags="extra.actors" />
+    <DetailTagGroup :title="text('sectionsTags')" :tags="extra.tags" />
   </DetailShell>
 </template>
 

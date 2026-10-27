@@ -1,6 +1,6 @@
 import { computed, ref, watch } from "vue";
 import type { ComputedRef } from "vue";
-import type { ComicPlatform } from "../api/comics";
+import type { ComicPlatform } from "../platforms";
 import { getDownload, type DownloadDetail } from "../api/downloads";
 import { getHistoryEntry, type HistoryEntry } from "../api/history";
 import { AppError, toAppError } from "../errors";

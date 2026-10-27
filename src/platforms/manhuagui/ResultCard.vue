@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import type { ManhuaguiSearchItem } from "../../api/comics";
-import { useAppI18n } from "../../i18n";
-import ResultCardShell from "./ResultCardShell.vue";
+import type { ManhuaguiSearchItem } from "./types";
+
+import { usePlatformText } from "../../platforms/messages";
+import ResultCardShell from "../../components/result-cards/ResultCardShell.vue";
+import { manhuaguiMessages } from "./messages";
 
 const props = defineProps<{
   item: ManhuaguiSearchItem;
 }>();
 
-const { t } = useAppI18n();
+const text = usePlatformText(manhuaguiMessages);
 
 const extra = computed(() => props.item.extra);
 
@@ -17,10 +19,10 @@ const authors = computed(() => extra.value.authors.join(", "));
 const status = computed(() => {
   const raw = extra.value.status;
   if (raw === "连载中") {
-    return t("home.search.statusOngoing");
+    return text("statusOngoing");
   }
   if (raw === "已完结") {
-    return t("home.search.statusCompleted");
+    return text("statusCompleted");
   }
   return raw;
 });
@@ -35,20 +37,20 @@ const scoreLine = computed(() => {
     return "";
   }
 
-  const formatted = t("home.search.score", { score: score.toFixed(1) });
+  const formatted = text("score", { score: score.toFixed(1) });
   const count = extra.value.ratingCount;
   return count === null
     ? formatted
-    : `${formatted} · ${t("home.search.ratings", { count })}`;
+    : `${formatted} · ${text("ratings", { count })}`;
 });
 
 const chapterLine = computed(() => {
   const { latestChapter, updatedAt } = extra.value;
   const latest = latestChapter
-    ? t("home.search.latestChapter", { chapter: latestChapter })
+    ? text("latestChapter", { chapter: latestChapter })
     : "";
   const updated = updatedAt
-    ? t("home.search.updatedAt", { date: updatedAt })
+    ? text("updatedAt", { date: updatedAt })
     : "";
   return [latest, updated].filter(Boolean).join(" · ");
 });
@@ -69,7 +71,7 @@ const categories = computed(() => extra.value.categories.slice(0, 3));
     :title="item.title"
   >
     <p v-if="authors" class="meta-line" :title="authors">
-      {{ t("home.search.authors", { names: authors }) }}
+      {{ text("authors", { names: authors }) }}
     </p>
 
     <div v-if="status || scoreLine" class="summary-row">

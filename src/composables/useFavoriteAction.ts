@@ -1,7 +1,7 @@
 import { computed, ref, watch } from "vue";
 import type { ComputedRef, Ref } from "vue";
 import { useMessage } from "naive-ui";
-import type { ComicPlatform } from "../api/comics";
+import type { ComicPlatform } from "../platforms";
 import {
   addFavorite,
   getFavorite,

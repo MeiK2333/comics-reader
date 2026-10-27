@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import type { CSSProperties } from "vue";
-import type { ComicPlatform } from "../../api/comics";
+import type { ComicPlatform } from "../../platforms";
 import type { ReaderPage } from "../../api/reader";
 import { useCachedImage } from "../../composables/useCachedImage";
 import type { ReaderImageSize } from "../../composables/useReaderZoom";

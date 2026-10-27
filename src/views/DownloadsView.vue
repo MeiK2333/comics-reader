@@ -18,7 +18,7 @@ import { useErrorMessage } from "../composables/useErrorMessage";
 import { useLatestRequest } from "../composables/useLatestRequest";
 import { usePagedResource } from "../composables/usePagedResource";
 import { useByteFormatter, useDateTimeFormatter } from "../i18n/format";
-import { platformLabelKey } from "../i18n/platform";
+import { platformLabel } from "../platforms";
 import { useAppI18n, type MessageKey } from "../i18n";
 
 const POLL_MS = 1_000;
@@ -318,7 +318,7 @@ onBeforeUnmount(() => {
 
               <span class="download-entry__meta">
                 <NTag size="tiny" :bordered="false">
-                  {{ t(platformLabelKey(entry.platform)) }}
+                  {{ platformLabel(entry.platform) }}
                 </NTag>
                 <NTag
                   size="tiny"

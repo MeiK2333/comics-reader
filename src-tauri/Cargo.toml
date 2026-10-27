@@ -58,11 +58,11 @@ scraper = "0.29"
 regex = "1"
 html-escape = "0.3"
 # JM's APP API derives its request token and response key from MD5, then
-# decrypts the payload with AES-256-ECB (`image/platform/jm_api.rs`).
+# decrypts the payload with AES-256-ECB (`platforms/jm_api.rs`).
 aes = "0.8"
 md-5 = "0.10"
 # JM stores page images with their horizontal bands permuted. Decoding and
-# re-encoding them needs a codec (`image/platform/jm_image.rs`); only the
+# re-encoding them needs a codec (`platforms/jm_image.rs`); only the
 # formats JM actually serves are enabled to limit binary size.
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 # Manhuagui packs the chapter's image manifest as base64 LZString data inside

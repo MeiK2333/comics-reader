@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ComicPlatform } from "../../api/comics";
+import type { ComicPlatform } from "../../platforms";
 import ComicThumb from "../ComicThumb.vue";
 
 defineProps<{

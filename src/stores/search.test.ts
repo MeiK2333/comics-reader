@@ -1,7 +1,7 @@
 import { flushPromises } from "@vue/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "vue";
-import type { ComicSearchResult } from "../api/comics";
+import type { ComicSearchResult } from "../platforms";
 import { AppError } from "../errors";
 
 const searchComicsMock = vi.hoisted(() => vi.fn());

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { useMessage } from "naive-ui";
-import type { ComicPlatform } from "../../api/comics";
+import type { ComicPlatform } from "../../platforms";
 import {
   DEFAULT_GROUP_ID,
   addFavorite,

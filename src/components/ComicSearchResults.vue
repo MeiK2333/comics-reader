@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { RouterLink } from "vue-router";
-import type { ComicSearchResult } from "../api/comics";
+import type { ComicSearchResult } from "../platforms";
 import { useErrorMessage } from "../composables/useErrorMessage";
 import type { AppError } from "../errors";
 import { useAppI18n } from "../i18n";
-import ComicResultCard from "./ComicResultCard.vue";
+import PlatformCard from "../platforms/PlatformCard.vue";
 
 const props = defineProps<{
   loading: boolean;
@@ -79,7 +79,7 @@ function changePage(next: number) {
                 state: { from: 'search' },
               }"
             >
-              <ComicResultCard :item="item" />
+              <PlatformCard :item="item" />
             </RouterLink>
           </div>
 

@@ -153,8 +153,10 @@ impl DownloadRecord {
             .filter(|name| is_safe_file_name(name))
             .and_then(non_empty);
 
+        let single_chapter = crate::platforms::find_catalog(&self.platform)
+            .is_some_and(|catalog| catalog.single_chapter());
         self.chapters.retain_mut(|chapter| {
-            if self.platform == "nhentai" {
+            if single_chapter {
                 chapter.id = None;
             } else {
                 let Some(id) = chapter.id.as_deref() else {

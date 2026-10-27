@@ -1,5 +1,5 @@
 import { invokeCommand } from "./client";
-import type { ComicPlatform } from "./comics";
+import type { ComicPlatform } from "../platforms";
 
 export interface CachedImage {
   /** Absolute path inside the app cache directory. */

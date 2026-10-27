@@ -22,9 +22,9 @@ use tauri::{AppHandle, Manager};
 use tokio::sync::Semaphore;
 
 use crate::error::{AppError, Result};
-use crate::image::{ChapterRef, ReaderChapter, ReaderPage};
 use crate::logging;
-use crate::platforms::is_known_platform;
+use crate::platforms::find_catalog;
+use crate::platforms::model::{ChapterRef, ReaderChapter, ReaderPage};
 use crate::storage::{
     atomic_write_json, backup_corrupt as move_corrupt_file, now_millis, page_window,
 };
@@ -99,7 +99,7 @@ fn normalize_input_chapters(
     platform: &str,
     chapters: Vec<DownloadChapterInput>,
 ) -> Result<Vec<DownloadChapter>> {
-    if platform == "nhentai" {
+    if find_catalog(platform).is_some_and(|catalog| catalog.single_chapter()) {
         return Ok(vec![DownloadChapter {
             id: None,
             title: None,
@@ -155,22 +155,14 @@ fn normalize_input_chapters(
 
 fn download_key(platform: &str, id: &str) -> Result<DownloadKey> {
     let platform = platform.trim();
-    if !is_known_platform(platform) {
+    let Some(catalog) = find_catalog(platform) else {
         return Err(AppError::InvalidInput {
             field: "platform",
             reason: "must be a supported platform".into(),
         });
-    }
-
-    let id = id.trim();
-    let digits = if platform == "jm" {
-        id.strip_prefix("JM")
-            .or_else(|| id.strip_prefix("jm"))
-            .unwrap_or(id)
-    } else {
-        id
     };
-    let id = numeric_id(digits, "id")?;
+
+    let id = catalog.normalize_work_id(id)?;
     Ok((platform.to_owned(), id))
 }
 

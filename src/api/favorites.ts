@@ -1,5 +1,5 @@
 import { invokeLocal } from "./client";
-import type { ComicPlatform } from "./comics";
+import type { ComicPlatform } from "../platforms";
 
 /** Built-in group for short-press favorites. Mirrors `favorites::DEFAULT_GROUP_ID`. */
 export const DEFAULT_GROUP_ID = "default";

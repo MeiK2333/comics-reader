@@ -1,6 +1,6 @@
 import { invokeCommand } from "./client";
 import type { ErrorPayload } from "../errors";
-import type { ComicPlatform } from "./comics";
+import type { ComicPlatform } from "../platforms";
 import type { ReaderChapter } from "./reader";
 
 export type DownloadStatus =

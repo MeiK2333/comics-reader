@@ -1,6 +1,6 @@
 import { computed, ref, watch } from "vue";
 import type { ComputedRef } from "vue";
-import type { ComicDetail, ComicPlatform } from "../api/comics";
+import type { ComicDetail, ComicPlatform } from "../platforms";
 import { getComic } from "../api/comics";
 import {
   getDownload,
@@ -35,46 +35,22 @@ export function useComicDetail(options: UseComicDetailOptions) {
   const error = ref<AppError | null>(null);
   const downloadLoading = ref(false);
 
-  const manhuaguiChapters = computed(() => {
-    const current = detail.value;
-    return current?.platform === "manhuagui"
-      ? current.extra.chapterGroups.flatMap((group) => group.chapters)
-      : [];
-  });
+  const chapters = computed(() => detail.value?.chapters ?? []);
 
-  const downloadChapters = computed<DownloadChapterInput[]>(() => {
-    const current = detail.value;
-    if (!current) {
-      return [];
-    }
-    if (current.platform === "manhuagui") {
-      return manhuaguiChapters.value.map((chapter) => ({
-        id: chapter.id,
-        title: chapter.title,
-      }));
-    }
-    if (current.platform === "jm") {
-      return current.extra.chapters.map((chapter) => ({
-        id: chapter.id,
-        title: chapter.title,
-      }));
-    }
-    return [];
-  });
+  const downloadChapters = computed<DownloadChapterInput[]>(() =>
+    chapters.value.flatMap((chapter) =>
+      chapter.id === null
+        ? []
+        : [{ id: chapter.id, title: chapter.title }],
+    ),
+  );
 
-  const canRead = computed(() => {
-    const current = detail.value;
-    if (!current || options.platform.value === null) {
-      return false;
-    }
-    if (current.platform === "nhentai") {
-      return true;
-    }
-    if (current.platform === "manhuagui") {
-      return manhuaguiChapters.value.length > 0;
-    }
-    return current.platform === "jm" && current.extra.chapters.length > 0;
-  });
+  const canRead = computed(
+    () =>
+      detail.value !== null &&
+      options.platform.value !== null &&
+      chapters.value.length > 0,
+  );
 
   const canResume = computed(
     () => canRead.value && historyEntry.value !== null,
@@ -82,53 +58,31 @@ export function useComicDetail(options: UseComicDetailOptions) {
 
   const resumeChapterId = computed<string | null>(() => {
     const entry = historyEntry.value;
-    const current = detail.value;
-    if (!entry || !current) {
+    if (!entry) {
       return null;
     }
-
-    if (current.platform === "jm") {
-      const chapters = current.extra.chapters;
-      if (
-        entry.chapterId &&
-        chapters.some((chapter) => chapter.id === entry.chapterId)
-      ) {
-        return entry.chapterId;
-      }
-      return chapters[0]?.id ?? null;
+    if (
+      entry.chapterId &&
+      chapters.value.some((chapter) => chapter.id === entry.chapterId)
+    ) {
+      return entry.chapterId;
     }
-    if (current.platform === "manhuagui") {
-      const chapters = manhuaguiChapters.value;
-      if (
-        entry.chapterId &&
-        chapters.some((chapter) => chapter.id === entry.chapterId)
-      ) {
-        return entry.chapterId;
-      }
-      return chapters[0]?.id ?? null;
-    }
-    return entry.chapterId;
+    return chapters.value[0]?.id ?? null;
   });
 
   const resumePage = computed(() => {
     const entry = historyEntry.value;
-    const current = detail.value;
-    if (!entry || !current) {
+    if (!entry) {
       return 1;
     }
 
     // A removed chapter cannot continue its old page; start the fallback
     // chapter at page one instead of showing an out-of-range page.
-    const chaptered =
-      current.platform === "jm" || current.platform === "manhuagui";
-    if (chaptered && entry.chapterId) {
-      const chapters =
-        current.platform === "jm"
-          ? current.extra.chapters
-          : manhuaguiChapters.value;
-      if (!chapters.some((chapter) => chapter.id === entry.chapterId)) {
-        return 1;
-      }
+    if (
+      entry.chapterId &&
+      !chapters.value.some((chapter) => chapter.id === entry.chapterId)
+    ) {
+      return 1;
     }
     return entry.page;
   });
@@ -271,7 +225,7 @@ export function useComicDetail(options: UseComicDetailOptions) {
     error,
     downloadLoading,
     state,
-    manhuaguiChapters,
+    chapters,
     downloadChapters,
     canRead,
     canResume,

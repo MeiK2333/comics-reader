@@ -1,4 +1,4 @@
-import type { ComicDetail } from "../api/comics";
+import type { ComicDetail } from "../platforms";
 import type { AppError } from "../errors";
 
 /**

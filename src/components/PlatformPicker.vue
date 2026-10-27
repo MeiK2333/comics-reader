@@ -1,32 +1,9 @@
 <script setup lang="ts">
 import { computed, h } from "vue";
 import type { DropdownOption } from "naive-ui";
-import type { ComicPlatform } from "../api/comics";
-import manhuaguiIcon from "../assets/platforms/manhuagui.svg";
-import jmIcon from "../assets/platforms/jm.png";
-import nhentaiIcon from "../assets/platforms/nhentai.svg";
+import type { ComicPlatform } from "../platforms";
+import { platformLabel, platformList } from "../platforms";
 import { useAppI18n } from "../i18n";
-import type { MessageKey } from "../i18n";
-
-interface PlatformOption {
-  icon: string;
-  nameKey: MessageKey;
-  id: ComicPlatform;
-}
-
-const platforms: ReadonlyArray<PlatformOption> = [
-  {
-    icon: manhuaguiIcon,
-    nameKey: "home.search.platforms.manhuagui",
-    id: "manhuagui",
-  },
-  { icon: jmIcon, nameKey: "home.search.platforms.jm", id: "jm" },
-  {
-    icon: nhentaiIcon,
-    nameKey: "home.search.platforms.nhentai",
-    id: "nhentai",
-  },
-];
 
 const props = defineProps<{
   platform: ComicPlatform;
@@ -39,11 +16,11 @@ const emit = defineEmits<{
 const { t } = useAppI18n();
 
 const platformOptions = computed<DropdownOption[]>(() =>
-  platforms.map((option) => ({
+  platformList.map((option) => ({
     key: option.id,
-    label: t(option.nameKey),
+    label: platformLabel(option.id),
     icon: () => {
-      const nhentai = option.id === "nhentai";
+      const chip = option.iconStyle === "dark-chip";
       return h("img", {
         src: option.icon,
         alt: "",
@@ -53,8 +30,8 @@ const platformOptions = computed<DropdownOption[]>(() =>
           borderRadius: "4px",
           objectFit: "contain",
           boxSizing: "border-box",
-          background: nhentai ? "#0c0c0c" : "transparent",
-          padding: nhentai ? "3px 2px" : "0",
+          background: chip ? "#0c0c0c" : "transparent",
+          padding: chip ? "3px 2px" : "0",
         },
       });
     },
@@ -63,15 +40,16 @@ const platformOptions = computed<DropdownOption[]>(() =>
 
 const selectedPlatform = computed(
   () =>
-    platforms.find((option) => option.id === props.platform) ?? platforms[0],
+    platformList.find((option) => option.id === props.platform) ??
+    platformList[0],
 );
 
 const triggerLabel = computed(
-  () => `${t("home.search.platform")}: ${t(selectedPlatform.value.nameKey)}`,
+  () => `${t("home.search.platform")}: ${platformLabel(props.platform)}`,
 );
 
 function selectPlatform(key: string | number) {
-  const next = platforms.find((option) => option.id === String(key));
+  const next = platformList.find((option) => option.id === String(key));
   if (next && next.id !== props.platform) {
     emit("select", next.id);
   }
@@ -97,7 +75,8 @@ function selectPlatform(key: string | number) {
         <img
           class="platform-trigger-icon"
           :class="{
-            'platform-trigger-icon--nhentai': selectedPlatform.id === 'nhentai',
+            'platform-trigger-icon--dark-chip':
+              selectedPlatform.iconStyle === 'dark-chip',
           }"
           :src="selectedPlatform.icon"
           alt=""
@@ -121,7 +100,7 @@ function selectPlatform(key: string | number) {
   object-fit: contain;
 }
 
-.platform-trigger-icon--nhentai {
+.platform-trigger-icon--dark-chip {
   padding: 3px 2px;
   border-radius: 50%;
   background: #0c0c0c;

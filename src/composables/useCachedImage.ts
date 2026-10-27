@@ -1,7 +1,7 @@
 import { onScopeDispose, ref, watch } from "vue";
 import type { Ref } from "vue";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import type { ComicPlatform } from "../api/comics";
+import type { ComicPlatform } from "../platforms";
 import {
   fetchCachedImage,
   forgetCachedImage,

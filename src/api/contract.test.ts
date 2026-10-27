@@ -6,18 +6,19 @@ import favoritesFixture from "../../contracts/favorites-page.json";
 import historyFixture from "../../contracts/history-page.json";
 import logsFixture from "../../contracts/log-snapshot.json";
 import fixture from "../../contracts/reader-chapter.json";
-import searchFixture from "../../contracts/search-page.json";
-import comicDetailsFixture from "../../contracts/comic-details.json";
+import jmWire from "../platforms/jm/fixtures/wire.json";
+import manhuaguiWire from "../platforms/manhuagui/fixtures/wire.json";
+import nhentaiWire from "../platforms/nhentai/fixtures/wire.json";
 import type {
   ComicDetail,
-  ComicSearchItem,
   ComicSearchResult,
-  JmDetailExtra,
-  JmExtra,
-  ManhuaguiExtra,
-  NhentaiDetailExtra,
-  NhentaiExtra,
-} from "./comics";
+  JmDetail,
+  JmSearchItem,
+  ManhuaguiDetail,
+  ManhuaguiSearchItem,
+  NhentaiDetail,
+  NhentaiSearchItem,
+} from "../platforms";
 import type { DownloadDetail } from "./downloads";
 import type { FavoriteGroupList, FavoritePage } from "./favorites";
 import type { HistoryPage } from "./history";
@@ -55,45 +56,23 @@ const logs: LogSnapshot = {
     level: entry.level === "error" ? "error" : "info",
   })),
 };
+
+// The per-platform fixtures live next to the platform code. Rust serializes
+// the same files, so a shape change must be made on both sides at once.
 const search: ComicSearchResult = {
-  ...searchFixture,
-  result: searchFixture.result.map((item): ComicSearchItem => {
-    if (item.platform === "manhuagui") {
-      return {
-        ...item,
-        platform: "manhuagui",
-        extra: item.extra as ManhuaguiExtra,
-      };
-    }
-    if (item.platform === "jm") {
-      return { ...item, platform: "jm", extra: item.extra as JmExtra };
-    }
-    return {
-      ...item,
-      platform: "nhentai",
-      extra: item.extra as NhentaiExtra,
-    };
-  }),
+  total: 3,
+  page_size: 25,
+  result: [
+    manhuaguiWire.search as ManhuaguiSearchItem,
+    jmWire.search as JmSearchItem,
+    nhentaiWire.search as NhentaiSearchItem,
+  ],
 };
-const comicDetails: ComicDetail[] = comicDetailsFixture.map(
-  (detail): ComicDetail => {
-    if (detail.platform === "manhuagui") {
-      return {
-        ...detail,
-        platform: "manhuagui",
-        extra: detail.extra as ManhuaguiExtra,
-      };
-    }
-    if (detail.platform === "jm") {
-      return { ...detail, platform: "jm", extra: detail.extra as JmDetailExtra };
-    }
-    return {
-      ...detail,
-      platform: "nhentai",
-      extra: detail.extra as NhentaiDetailExtra,
-    };
-  },
-);
+const comicDetails: ComicDetail[] = [
+  manhuaguiWire.detail as ManhuaguiDetail,
+  jmWire.detail as JmDetail,
+  nhentaiWire.detail as NhentaiDetail,
+];
 
 describe("ReaderChapter wire contract", () => {
   it("keeps the expected top-level fields", () => {
@@ -206,7 +185,7 @@ describe("SearchPage wire contract", () => {
 });
 
 describe("ComicDetail wire contract", () => {
-  it("keeps one typed detail per platform", () => {
+  it("keeps one typed detail per platform with core chapters", () => {
     expect(comicDetails.map((detail) => detail.platform)).toEqual([
       "manhuagui",
       "jm",
@@ -216,8 +195,12 @@ describe("ComicDetail wire contract", () => {
       "title",
       "thumb",
       "platform",
+      "chapters",
       "extra",
     ]);
+    expect(comicDetails[0].chapters).toEqual([{ id: "ch-1", title: "第1话" }]);
+    expect(comicDetails[1].chapters).toEqual([{ id: "c1", title: "Chapter 1" }]);
+    expect(comicDetails[2].chapters).toEqual([{ id: null, title: null }]);
     expect(comicDetails[0].extra).toHaveProperty("chapterGroups");
     expect(comicDetails[1].extra).toHaveProperty("chapters");
     expect(comicDetails[2].extra).toHaveProperty("tags");

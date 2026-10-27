@@ -39,24 +39,8 @@
     "search": {
       "submit": "Search",
       "platform": "Platform",
-      "platforms": {
-        "manhuagui": "Manhuagui",
-        "jm": "JM",
-        "nhentai": "nhentai"
-      },
       "total": "Results: {total}",
-      "empty": "No comics found. Try another keyword.",
-      "pages": "Pages: {count}",
-      "favorites": "Favorites: {count}",
-      "authors": "Authors: {names}",
-      "latestChapter": "Latest: {chapter}",
-      "updatedAt": "Updated: {date}",
-      "statusOngoing": "Ongoing",
-      "statusCompleted": "Completed",
-      "score": "★ {score}",
-      "ratings": "{count} ratings",
-      "noTags": "No tags",
-      "moreTags": "+{count}"
+      "empty": "No comics found. Try another keyword."
     }
   },
   "search": {
@@ -87,50 +71,16 @@
     "sections": {
       "info": "Details",
       "chapters": "Chapters",
-      "description": "Description",
-      "tags": "Tags",
-      "works": "Works",
-      "actors": "Characters",
-      "categories": "Categories",
-      "aliases": "Also known as"
-    },
-    "chapterGroups": {
-      "all": "All chapters",
-      "other": "Other {index}",
-      "count": "{count} chapters",
-      "expandAll": "Expand all",
-      "collapseAll": "Collapse all"
+      "description": "Description"
     },
     "fields": {
       "authors": "Authors",
-      "latestChapter": "Latest chapter",
-      "updatedAt": "Updated",
-      "year": "Year",
-      "region": "Region",
-      "pages": "Pages",
-      "favorites": "Favorites",
-      "likes": "Likes",
-      "views": "Views",
-      "comments": "Comments",
-      "publishedAt": "Published",
-      "updatedOn": "Updated",
-      "scanlator": "Scanlator",
-      "uploadedAt": "Uploaded"
-    },
-    "tagGroups": {
-      "language": "Languages",
-      "artist": "Artists",
-      "tag": "Tags",
-      "parody": "Parodies",
-      "character": "Characters",
-      "group": "Groups",
-      "category": "Categories",
-      "other": "Other"
+      "pages": "Pages"
     },
     "offline": {
       "tag": "Downloaded",
       "summary": "Downloaded {done} / {total} chapters",
-        "chapters": "Downloaded chapters"
+      "chapters": "Downloaded chapters"
     }
   },
   "reader": {

@@ -131,7 +131,9 @@ pub(crate) async fn get_downloaded_chapter(
     id: String,
     chapter_id: Option<String>,
 ) -> Result<Option<ReaderChapter>> {
-    let chapter_id = if platform.trim() == "nhentai" {
+    let single_chapter = crate::platforms::find_catalog(platform.trim())
+        .is_some_and(|catalog| catalog.single_chapter());
+    let chapter_id = if single_chapter {
         None
     } else {
         chapter_id

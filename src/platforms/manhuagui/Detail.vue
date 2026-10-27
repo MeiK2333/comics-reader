@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import type { ManhuaguiChapterGroup, ManhuaguiDetail } from "../../api/comics";
+import type { ManhuaguiChapterGroup, ManhuaguiDetail } from "./types";
 import { useAppI18n } from "../../i18n";
-import DetailSection from "./DetailSection.vue";
-import DetailShell from "./DetailShell.vue";
-import DetailTagGroup from "./DetailTagGroup.vue";
+import { usePlatformText } from "../../platforms/messages";
+import { manhuaguiMessages } from "./messages";
+import DetailSection from "../../components/comic-detail/DetailSection.vue";
+import DetailShell from "../../components/comic-detail/DetailShell.vue";
+import DetailTagGroup from "../../components/comic-detail/DetailTagGroup.vue";
 
 const props = defineProps<{
   detail: ManhuaguiDetail;
@@ -16,6 +18,7 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useAppI18n();
+const text = usePlatformText(manhuaguiMessages);
 
 const extra = computed(() => props.detail.extra);
 const groups = computed(() =>
@@ -47,12 +50,12 @@ function groupTitle(group: ManhuaguiChapterGroup, index: number) {
     return title;
   }
   if (groups.value.length === 1) {
-    return t("detail.chapterGroups.all");
+    return text("chapterGroupsAll");
   }
   const unlabelledIndex = groups.value
     .slice(0, index + 1)
     .filter((item) => item.title.trim().length === 0).length;
-  return t("detail.chapterGroups.other", { index: unlabelledIndex });
+  return text("chapterGroupsOther", { index: unlabelledIndex });
 }
 
 function expandAll() {
@@ -78,10 +81,10 @@ const subtitle = computed(() => {
 
 const status = computed(() => {
   if (extra.value.status === "连载中") {
-    return t("home.search.statusOngoing");
+    return text("statusOngoing");
   }
   if (extra.value.status === "已完结") {
-    return t("home.search.statusCompleted");
+    return text("statusCompleted");
   }
   return extra.value.status ?? "";
 });
@@ -97,15 +100,15 @@ const infoItems = computed(() =>
       value: extra.value.authors.join(", "),
     },
     {
-      label: t("detail.fields.latestChapter"),
+      label: text("fieldsLatestChapter"),
       value: extra.value.latestChapter ?? "",
     },
     {
-      label: t("detail.fields.updatedAt"),
+      label: text("fieldsUpdatedAt"),
       value: extra.value.updatedAt ?? "",
     },
-    { label: t("detail.fields.year"), value: extra.value.year ?? "" },
-    { label: t("detail.fields.region"), value: extra.value.region ?? "" },
+    { label: text("fieldsYear"), value: extra.value.year ?? "" },
+    { label: text("fieldsRegion"), value: extra.value.region ?? "" },
   ].filter((item) => item.value.trim().length > 0),
 );
 </script>
@@ -140,10 +143,10 @@ const infoItems = computed(() =>
     <DetailSection v-if="groups.length > 0" :title="t('detail.sections.chapters')">
       <div v-if="hasToolbar" class="chapter-toolbar">
         <NButton size="small" quaternary @click="expandAll">
-          {{ t("detail.chapterGroups.expandAll") }}
+          {{ text("chapterGroupsExpandAll") }}
         </NButton>
         <NButton size="small" quaternary @click="collapseAll">
-          {{ t("detail.chapterGroups.collapseAll") }}
+          {{ text("chapterGroupsCollapseAll") }}
         </NButton>
       </div>
 
@@ -162,7 +165,7 @@ const infoItems = computed(() =>
           </template>
           <template #header-extra>
             <NTag size="small" :bordered="false">
-              {{ t("detail.chapterGroups.count", { count: group.chapters.length }) }}
+              {{ text("chapterGroupsCount", { count: group.chapters.length }) }}
             </NTag>
           </template>
 
@@ -191,11 +194,11 @@ const infoItems = computed(() =>
     </DetailSection>
 
     <DetailTagGroup
-      :title="t('detail.sections.categories')"
+      :title="text('sectionsCategories')"
       :tags="extra.categories"
     />
     <DetailTagGroup
-      :title="t('detail.sections.aliases')"
+      :title="text('sectionsAliases')"
       :tags="extra.aliases"
     />
   </DetailShell>

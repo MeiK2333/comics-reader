@@ -256,7 +256,7 @@ async fn nhentai_search_detail_and_image_work_with_ech() {
     let control = http.begin_ech_control().unwrap();
     http.enable_ech_if_current(control, session).unwrap();
 
-    let platform = super::super::platform::find_catalog("nhentai").unwrap();
+    let platform = crate::platforms::find_catalog("nhentai").unwrap();
 
     let spec = platform.search_request("love", 1).unwrap();
     let fetched = fetch_document(&http, platform, &spec).await.unwrap();

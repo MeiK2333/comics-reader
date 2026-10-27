@@ -1,6 +1,6 @@
 import { onScopeDispose, watch } from "vue";
 import type { Ref } from "vue";
-import type { ComicPlatform } from "../api/comics";
+import type { ComicPlatform } from "../platforms";
 import { prefetchCachedImages } from "../api/images";
 import type { ReaderChapter } from "../api/reader";
 import { prefetchReaderChapter } from "../api/reader";

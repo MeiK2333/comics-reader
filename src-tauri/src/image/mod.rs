@@ -1,13 +1,11 @@
 //! Image fetching, platform search/detail and on-disk caching.
 //!
-//! Platform-specific request headers and page parsers live in [`platform`];
-//! this module owns the platform-agnostic pipelines: image download/cache and
-//! search/detail request orchestration.
+//! Platform-specific request headers and page parsers live in
+//! [`crate::platforms`]; this module owns the platform-agnostic pipelines:
+//! image download/cache and search/detail request orchestration.
 
 mod cache;
-mod http;
-mod model;
-mod platform;
+pub(crate) mod http;
 
 use std::path::PathBuf;
 
@@ -16,29 +14,20 @@ use tauri::State;
 
 use crate::error::{AppError, Result};
 use crate::logging;
+use crate::platforms::model::{ComicDetail, ReaderChapter, SearchResponse};
+use crate::platforms::{
+    Catalog, RequestSpec, catalog as resolve_catalog, resolve as resolve_platform,
+};
 
 pub(crate) use cache::ImageCache;
 use cache::ImageFormat;
 pub(crate) use http::HttpClient;
 use http::HttpProxyConfig;
-pub(crate) use model::{ChapterRef, ReaderChapter, ReaderPage};
-use model::{ComicDetail, SearchResponse};
-use platform::{
-    Catalog, ImageDecode, RequestSpec, catalog as resolve_catalog, descramble,
-    resolve as resolve_platform, scramble_id, segment_count,
-};
 
 /// Bump only when the cache layout itself changes. Per-platform header changes
 /// use `ImageProfile::cache_version` instead.
-const CACHE_VERSION: &str = "v2";
+const CACHE_VERSION: &str = "v1";
 const CACHE_SUBDIR: &str = "images";
-/// Bump when a platform's decoded bytes change without a URL change (for
-/// example, a new JM descramble algorithm). The suffix is part of the cache key.
-const IMAGE_DECODE_VERSION: u32 = 1;
-
-fn decode_key_suffix() -> String {
-    format!("?decoded=v{IMAGE_DECODE_VERSION}")
-}
 
 /// Result of fetching an image, with the metadata the frontend needs to load
 /// the cached file through the asset protocol.
@@ -105,12 +94,12 @@ pub(crate) async fn fetch_image_inner(
     let platform = resolve_platform(platform.as_deref(), &url)?;
 
     // Decoded bytes differ from the download, so they get a distinct key. The
-    // suffix is constant, which also lets a cached page load without asking JM
-    // for the scramble id again.
-    let decode = platform.image_decode(&url);
+    // platform owns the suffix, which also lets a cached page load without
+    // asking the platform for decode metadata again.
+    let decode_suffix = platform.decode_key(&url);
     let mut key_url = platform.cache_key_url(&url);
-    if decode.is_some() {
-        key_url.push_str(&decode_key_suffix());
+    if let Some(suffix) = decode_suffix {
+        key_url.push_str(&suffix);
     }
 
     let key = cache::cache_key(platform.id(), platform.cache_version(), &key_url);
@@ -120,10 +109,12 @@ pub(crate) async fn fetch_image_inner(
 
     let mut last_error = None;
     let mut download = None;
+    let mut downloaded_from = None;
 
     for candidate in std::iter::once(url.clone()).chain(platform.image_fallbacks(&url)) {
         match http::download_image(client, platform, &candidate).await {
             Ok(result) => {
+                downloaded_from = Some(candidate);
                 download = Some(result);
                 break;
             }
@@ -147,15 +138,20 @@ pub(crate) async fn fetch_image_inner(
             last_error.unwrap_or_else(|| AppError::Unexpected("image has no URL to try".into()))
         );
     };
+    let Some(source) = downloaded_from else {
+        return Err(AppError::Unexpected("image has no URL to try".into()));
+    };
 
-    if let Some(ImageDecode::JmScramble { photo_id, filename }) = decode {
-        let catalog = resolve_catalog(platform.id(), "reading")?;
-        let scramble_id = scramble_id(client, catalog, &photo_id).await?;
-        let segments = segment_count(scramble_id, &photo_id, &filename);
-        if segments > 0 {
-            download.bytes = descramble(&download.bytes, segments)?;
-            download.format = ImageFormat::Jpeg;
-        }
+    if let Some(decoded) = platform
+        .preprocess(client, &source, &download.bytes)
+        .await?
+    {
+        download.bytes = decoded;
+        download.format =
+            ImageFormat::detect(&download.bytes).ok_or_else(|| AppError::NotImage {
+                url: source.to_string(),
+                content_type: "unknown".into(),
+            })?;
     }
 
     let path = cache
@@ -399,8 +395,8 @@ pub(crate) fn set_http_proxy(
 
 #[cfg(test)]
 mod tests {
-    use super::platform::ImageProfile;
     use super::*;
+    use crate::platforms::ImageProfile;
     use std::sync::atomic::{AtomicBool, Ordering};
 
     use reqwest::RequestBuilder;
@@ -497,10 +493,5 @@ mod tests {
         .unwrap_err();
         assert_eq!(error.code().as_str(), "unexpected");
         assert!(!platform.healthy.load(Ordering::SeqCst));
-    }
-
-    #[test]
-    fn decoded_cache_keys_carry_the_decode_version() {
-        assert_eq!(decode_key_suffix(), "?decoded=v1");
     }
 }

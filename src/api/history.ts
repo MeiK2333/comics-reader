@@ -1,5 +1,5 @@
 import { invokeLocal } from "./client";
-import type { ComicPlatform } from "./comics";
+import type { ComicPlatform } from "../platforms";
 
 /** One reading-history row. Mirrors `history::HistoryEntry`. */
 export interface HistoryEntry {

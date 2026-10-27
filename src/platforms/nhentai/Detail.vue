@@ -1,17 +1,20 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import type { NhentaiDetail } from "../../api/comics";
+import type { NhentaiDetail } from "./types";
 import { useAppI18n } from "../../i18n";
-import type { MessageKey } from "../../i18n";
-import DetailSection from "./DetailSection.vue";
-import DetailShell from "./DetailShell.vue";
-import DetailTagGroup from "./DetailTagGroup.vue";
+import { usePlatformText } from "../../platforms/messages";
+import { nhentaiMessages } from "./messages";
+
+import DetailSection from "../../components/comic-detail/DetailSection.vue";
+import DetailShell from "../../components/comic-detail/DetailShell.vue";
+import DetailTagGroup from "../../components/comic-detail/DetailTagGroup.vue";
 
 const props = defineProps<{
   detail: NhentaiDetail;
 }>();
 
 const { t } = useAppI18n();
+const text = usePlatformText(nhentaiMessages);
 
 const extra = computed(() => props.detail.extra);
 
@@ -50,27 +53,27 @@ const infoItems = computed(() =>
       value: extra.value.numPages?.toString() ?? "",
     },
     {
-      label: t("detail.fields.favorites"),
+      label: text("fieldsFavorites"),
       value: extra.value.numFavorites?.toString() ?? "",
     },
-    { label: t("detail.fields.uploadedAt"), value: uploadDate.value },
+    { label: text("fieldsUploadedAt"), value: uploadDate.value },
     {
-      label: t("detail.fields.scanlator"),
+      label: text("fieldsScanlator"),
       value: extra.value.scanlator ?? "",
     },
   ].filter((item) => item.value.trim().length > 0),
 );
 
 const TAG_GROUP_KEYS = {
-  language: "detail.tagGroups.language",
-  artist: "detail.tagGroups.artist",
-  tag: "detail.tagGroups.tag",
-  parody: "detail.tagGroups.parody",
-  character: "detail.tagGroups.character",
-  group: "detail.tagGroups.group",
-  category: "detail.tagGroups.category",
-  other: "detail.tagGroups.other",
-} as const satisfies Record<string, MessageKey>;
+  language: "tagGroupsLanguage",
+  artist: "tagGroupsArtist",
+  tag: "tagGroupsTag",
+  parody: "tagGroupsParody",
+  character: "tagGroupsCharacter",
+  group: "tagGroupsGroup",
+  category: "tagGroupsCategory",
+  other: "tagGroupsOther",
+} as const;
 
 type TagGroupKey = keyof typeof TAG_GROUP_KEYS;
 
@@ -103,7 +106,7 @@ const tagGroups = computed(() => {
     (key) => (buckets.get(key)?.length ?? 0) > 0,
   ).map((key) => ({
     key,
-    title: t(TAG_GROUP_KEYS[key]),
+    title: text(TAG_GROUP_KEYS[key]),
     tags: buckets.get(key) ?? [],
   }));
 });

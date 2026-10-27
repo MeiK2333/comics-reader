@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import type { JmSearchItem } from "../../api/comics";
-import { useAppI18n } from "../../i18n";
-import ResultCardShell from "./ResultCardShell.vue";
+import type { JmSearchItem } from "./types";
+
+import { usePlatformText } from "../../platforms/messages";
+import ResultCardShell from "../../components/result-cards/ResultCardShell.vue";
+import { jmMessages } from "./messages";
 
 const props = defineProps<{
   item: JmSearchItem;
 }>();
 
-const { t } = useAppI18n();
+const text = usePlatformText(jmMessages);
 
 const maxVisibleTags = 6;
 const visibleTags = computed(() =>
@@ -38,7 +40,7 @@ const metaLine = computed(() =>
     </p>
 
     <p v-else-if="visibleTags.length === 0" class="meta-line">
-      {{ t("home.search.noTags") }}
+      {{ text("noTags") }}
     </p>
 
     <div v-if="visibleTags.length > 0" class="tag-row">
@@ -52,7 +54,7 @@ const metaLine = computed(() =>
         {{ tag }}
       </NTag>
       <NTag v-if="hiddenCount > 0" size="small" :bordered="false">
-        {{ t("home.search.moreTags", { count: hiddenCount }) }}
+        {{ text("moreTags", { count: hiddenCount }) }}
       </NTag>
     </div>
   </ResultCardShell>
