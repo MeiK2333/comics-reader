@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { storeToRefs } from "pinia";
+import { useRouter } from "vue-router";
 import type { ComicPlatform } from "../platforms";
 import ComicSearchBar from "../components/ComicSearchBar.vue";
 import ComicSearchResults from "../components/ComicSearchResults.vue";
@@ -9,6 +10,7 @@ import { useBackNavigation } from "../composables/useBackNavigation";
 import { useAppI18n } from "../i18n";
 import { useSearchStore } from "../stores/search";
 
+const router = useRouter();
 const { goBack } = useBackNavigation();
 const { t } = useAppI18n();
 const search = useSearchStore();
@@ -41,6 +43,14 @@ function selectPlatform(next: ComicPlatform) {
   search.beginSearch(next, text);
 }
 
+function openDirect(id: string) {
+  void router.push({
+    name: "comic-detail",
+    params: { platform: draftPlatform.value, id },
+    state: { from: "search" },
+  });
+}
+
 function goHome() {
   // Search is a child of Home. Pop rather than push so the browser stack does
   // not keep an empty results page under the home screen.
@@ -57,6 +67,7 @@ function goHome() {
         :loading="loading"
         @select-platform="selectPlatform"
         @search="submit"
+        @direct-open="openDirect"
       >
         <template #trailing>
           <span class="home-control">

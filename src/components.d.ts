@@ -21,6 +21,7 @@ declare module 'vue' {
     DetailShell: typeof import('./components/comic-detail/DetailShell.vue')['default']
     DetailTagGroup: typeof import('./components/comic-detail/DetailTagGroup.vue')['default']
     DetailTopbar: typeof import('./components/comic-detail/DetailTopbar.vue')['default']
+    DirectOpenIcon: typeof import('./components/DirectOpenIcon.vue')['default']
     DownloadControlIcon: typeof import('./components/DownloadControlIcon.vue')['default']
     FavoriteGroupPicker: typeof import('./components/favorites/FavoriteGroupPicker.vue')['default']
     FavoriteIcon: typeof import('./components/FavoriteIcon.vue')['default']

@@ -38,6 +38,7 @@
     },
     "search": {
       "submit": "搜索",
+      "directOpen": "直达漫画 {id}",
       "platform": "平台",
       "total": "共 {total} 个结果",
       "empty": "没有找到漫画，换个关键词试试。"

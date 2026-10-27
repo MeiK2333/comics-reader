@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { computed } from "vue";
 import type { ComicPlatform } from "../platforms";
 import { useAppI18n } from "../i18n";
+import DirectOpenIcon from "./DirectOpenIcon.vue";
 import PlatformPicker from "./PlatformPicker.vue";
 import SearchIcon from "./SearchIcon.vue";
 
@@ -14,9 +16,20 @@ const emit = defineEmits<{
   "update:query": [query: string];
   "select-platform": [platform: ComicPlatform];
   search: [];
+  "direct-open": [id: string];
 }>();
 
 const { t } = useAppI18n();
+
+// JM and nhentai both use numeric work ids, so a numeric query can skip the
+// search request and open the detail route directly.
+const directId = computed(() => {
+  if (props.platform !== "jm" && props.platform !== "nhentai") {
+    return "";
+  }
+  const trimmed = props.query.trim();
+  return /^\d+$/.test(trimmed) ? trimmed : "";
+});
 
 function submit() {
   if (!props.query.trim() || props.loading) {
@@ -44,6 +57,21 @@ function submit() {
       autofocus
       @update:value="emit('update:query', $event)"
     />
+    <NButton
+      v-if="directId"
+      attr-type="button"
+      type="primary"
+      quaternary
+      circle
+      size="large"
+      class="direct-action"
+      :aria-label="t('home.search.directOpen', { id: directId })"
+      @click="emit('direct-open', directId)"
+    >
+      <template #icon>
+        <DirectOpenIcon />
+      </template>
+    </NButton>
     <NButton
       attr-type="submit"
       type="primary"
@@ -106,12 +134,17 @@ function submit() {
   text-align: left;
 }
 
+.direct-action {
+  flex: none;
+}
+
+.direct-action :deep(.n-button__icon),
+.search-action :deep(.n-button__icon) {
+  margin-right: 0;
+}
+
 .search-action {
   flex: none;
   view-transition-name: search-action;
-}
-
-.search-action :deep(.n-button__icon) {
-  margin-right: 0;
 }
 </style>

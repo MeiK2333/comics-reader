@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from "vue";
+import { useRouter } from "vue-router";
 import type { ComicPlatform } from "../platforms";
 import ComicSearchBar from "../components/ComicSearchBar.vue";
 import HomeShortcuts from "../components/HomeShortcuts.vue";
@@ -8,6 +9,7 @@ import { useAppI18n } from "../i18n";
 import { useRuntimeStore } from "../stores/runtime";
 import { useSearchStore } from "../stores/search";
 
+const router = useRouter();
 const { navigate } = useRouteTransition();
 const { t } = useAppI18n();
 const search = useSearchStore();
@@ -30,6 +32,14 @@ function submit() {
   search.beginSearch(platform.value, query.value);
   void navigate({ name: "search" });
 }
+
+function openDirect(id: string) {
+  void router.push({
+    name: "comic-detail",
+    params: { platform: platform.value, id },
+    state: { from: "home" },
+  });
+}
 </script>
 
 <template>
@@ -51,6 +61,7 @@ function submit() {
         :loading="false"
         @select-platform="selectPlatform"
         @search="submit"
+        @direct-open="openDirect"
       />
       <HomeShortcuts />
     </section>

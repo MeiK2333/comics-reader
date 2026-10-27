@@ -73,6 +73,7 @@
 
 - 搜索会话由 `search` store 管理；`/search` 不携带 query，刷新/深链会被守卫送回首页。搜索页首页图标用 `useBackNavigation`（优先 pop），不要 push 重复首页。
 - 搜索返回 `{ total, page_size, result: [{ id, title, thumb, platform, extra }] }`，详情 `{ platform, title, thumb, chapters, extra }`；`platform` 判别，`chapters` 是跨平台核心章节（nhentai 合成一个 id/title 均为 null 的章节），`extra` 是平台 typed struct 序列化值。不要退回 `Record<string, unknown>` 或 JSON 兜底。
+- JM/nhentai 搜索框内容为纯数字时，搜索按钮左侧显示直达按钮；点击用 `router.push` 直接进详情，并按来源写 `state.from`（首页/搜索），不要先发搜索请求。
 - 在线详情 `/comic/:platform/:id` 不依赖搜索会话，直接 `get_comic`，刷新/深链可用；失败只显示在线错误态，不用下载索引回退。已下载详情独立为 `/downloads/:platform/:id`，数据来自 `get_download`（摘要 + `chapters` + `detail` 快照；继续阅读/收藏另读 `get_history_entry`/`get_favorite`），用同一套平台组件渲染快照，封面 `coverPath`，开始读首个已完成章节，继续读优先历史章节/页码，失效回退首章第 1 页。
 - 进入详情写显式 `state.from`（收藏/历史/下载/搜索/首页），详情只读它；缺失时回首页，不再用 `previousPath()` 或 `search.active` 推断。返回必须走 `useBackNavigation`：上一页就是目标时 `router.back()`；目标在更早历史时 `router.go(-n)` 一次退到；否则 `router.replace`。不要用 `router.push` 做返回。
 - 首页→搜索结果用 `useRouteTransition()` 的 `startViewTransition`；不要用延迟 `router.push` 等动画。从搜索结果回首页仍走 `goBack`（优先 pop）。

@@ -38,6 +38,7 @@
     },
     "search": {
       "submit": "Search",
+      "directOpen": "Open comic {id} directly",
       "platform": "Platform",
       "total": "Results: {total}",
       "empty": "No comics found. Try another keyword."
