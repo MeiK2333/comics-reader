@@ -63,6 +63,7 @@ declare module 'vue' {
     OfflineDetail: typeof import('./components/comic-detail/OfflineDetail.vue')['default']
     PlatformPicker: typeof import('./components/PlatformPicker.vue')['default']
     ReaderBattery: typeof import('./components/reader/ReaderBattery.vue')['default']
+    ReaderChrome: typeof import('./components/reader/ReaderChrome.vue')['default']
     ReaderPageImage: typeof import('./components/reader/ReaderPageImage.vue')['default']
     ReaderTrack: typeof import('./components/reader/ReaderTrack.vue')['default']
     ResultCardShell: typeof import('./components/result-cards/ResultCardShell.vue')['default']
