@@ -1,6 +1,6 @@
 # 重构与修复计划
 
-> **状态**：P1 + P2-1 已完成；P2-2a（页码/边界纯函数与状态修复）已完成；P2-2 其余与 P2-3~P3 待执行
+> **状态**：P1 + P2-1 已完成；P2-2a/b（页码/边界纯函数与 `usePageTurn`）已完成；P2-2 其余与 P2-3~P3 待执行
 > **基线**：2026-10-27，当前 master 工作区
 > **适用对象**：后续接手本仓库的编码智能体
 > **配套文档**：[AGENTS.md](AGENTS.md)（契约、命令、易错点）、[ROADMAP.md](ROADMAP.md)（功能方向）
@@ -437,7 +437,7 @@ export function resolveDetailState(input: {
 
 #### P2-2 阅读器：单一 owner + 纯函数边界（refactor，BUG-6/7/8/10）
 
-- **状态**：in progress（2026-10-27：P2-2a 纯函数与边界修复已完成；组件/手势拆分待做）
+- **状态**：in progress（2026-10-27：P2-2a 纯函数与边界修复、P2-2b `usePageTurn` 已完成；手势/Chrome/Track 拆分待做）
 - **依赖**：P1 全部；建议独立分支
 - **证据**：`ComicViewer.vue` 1411 行；`trackOffset` 同时被手势和动画写；边界滑动漏 `snapBack`；页码三源；`?page=last` 依赖 watcher 顺序。
 - **目标**：翻页状态只有一个 owner；所有入口（按钮、点击区、滑动、滚轮、方向键）走同一个边界决策；页码/URL/历史同步可测。
@@ -838,3 +838,4 @@ refactor(reader): add pure page-boundary helpers
 - 2026-10-27 / P1-7 / JM 解码缓存键从 `?decoded` 变为 `?decoded=v1`，旧解码缓存自然失效但不删除（目录清扫留给 P3-2）。
 - 2026-10-27 / P2-1 / `ComicDetailView.vue` 从 983 行降到 334 行：新增 `detailState.ts`（纯函数 + 5 个单测）、`useComicDetail`（在线/离线、下载索引、历史、1.5s 回退）、`useFavoriteAction`（短按/长按/分组选择器）、`useDownloadAction`（开始下载、1.5s 轮询、跳下载页）、`useDetailReturnTarget`，以及 `DetailTopbar`/`DetailActions`。验证：`pnpm test` 87 passed、`pnpm build`、`pnpm test:e2e` 4/4 spec（含离线详情与阅读器）。未覆盖：真实在线详情、收藏长按/右键、下载进行中的按钮状态，建议真实窗口手动确认。
 - 2026-10-27 / P2-2a / 新增 `src/lib/reader-navigation.ts`（`resolveReaderPage`/`readerBoundaryAction`，8 个单测）；`ComicReaderView` 统一 `?page=last`、上一章/下一章和边界策略，query watcher 不再把 `last` 提前解析成 1；`ComicViewer.leaveAtBoundary` 先 `cancelTurn()` 清掉边界拖拽的 `trackOffset`，动画期间忽略 pointer move/up/cancel 对轨道的写入。验证：`pnpm test` 95 passed、`pnpm build`、`pnpm test:e2e` 4/4。P2-2 剩余：`usePageTurn`、手势/wheel/keyboard 拆分、`ReaderChrome`/`ReaderTrack`、`viewerPlatform` 假兜底。
+- 2026-10-27 / P2-2b / 新增 `usePageTurn`（7 个单测）：`displayPage`/`trackOffset`/`turnTarget`/动画 token/边界标志只有一个 owner，`ComicViewer` 从 1434 行降到 1282 行；手势、滚轮、键盘、缩放和 3 槽轨道仍留在组件里，但翻页统一走 hook。验证：`pnpm test` 102 passed、`pnpm build`、`pnpm test:e2e` 4/4。P2-2 剩余：手势/wheel/keyboard composable、`ReaderChrome`/`ReaderTrack`、`viewerPlatform` 假兜底。

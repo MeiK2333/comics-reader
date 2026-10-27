@@ -4,6 +4,7 @@ import type { CSSProperties } from "vue";
 import type { ComicPlatform } from "../../api/comics";
 import type { ReaderPage } from "../../api/reader";
 import { useBattery } from "../../composables/useBattery";
+import { usePageTurn, TURN_DURATION_MS } from "../../composables/usePageTurn";
 import { useReaderPreload } from "../../composables/useReaderPreload";
 import { useReaderZoom } from "../../composables/useReaderZoom";
 import type { ReaderImageSize } from "../../composables/useReaderZoom";
@@ -11,9 +12,6 @@ import { useAppI18n } from "../../i18n";
 import type { ReaderDirection } from "../../stores/settings";
 import ReaderBattery from "./ReaderBattery.vue";
 import ReaderPageImage from "./ReaderPageImage.vue";
-
-const TURN_DURATION = 260;
-const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
 
 const NEXT_KEYS: Record<ReaderDirection, readonly string[]> = {
   ltr: ["ArrowRight", "ArrowDown"],
@@ -70,12 +68,51 @@ const isFullscreen = ref(false);
 
 const total = computed(() => props.pages.length);
 const horizontal = computed(() => props.direction !== "ttb");
-const displayPage = ref(1);
-const turnTarget = ref<number | null>(null);
-const trackOffset = ref(0);
-const trackAnimating = ref(false);
-const boundaryLeaving = ref(false);
 const identityStyle: CSSProperties = {};
+
+const {
+  scale,
+  offset,
+  percent,
+  zoomBy,
+  zoomStep,
+  setScale,
+  panBy,
+  reset,
+  reflow,
+} = useReaderZoom(stage, imageSize);
+
+const {
+  displayPage,
+  turnTarget,
+  trackOffset,
+  trackAnimating,
+  boundaryLeaving,
+  turnTo,
+  goToPage,
+  previousPage,
+  nextPage,
+  snapBack,
+  cancelTurn,
+  resetTrack,
+  resetBoundary,
+  stageSpan,
+} = usePageTurn({
+  page: () => props.page,
+  total,
+  direction: () => props.direction,
+  horizontal,
+  stage,
+  onPageChange: (page) => emit("update:page", page),
+  onBoundary: (direction) => emit("page-boundary", direction),
+  onSettled: (page) => {
+    reset();
+    imageSize.value = pageSizes.get(page) ?? null;
+    reflow();
+  },
+  isZoomed: () => scale.value > 1,
+  resetZoom: reset,
+});
 
 const currentPage = computed(
   () => props.pages[displayPage.value - 1] ?? null,
@@ -89,18 +126,6 @@ const canPrevious = computed(
 const canNext = computed(
   () => !trackAnimating.value && !boundaryLeaving.value,
 );
-
-const {
-  scale,
-  offset,
-  percent,
-  zoomBy,
-  zoomStep,
-  setScale,
-  panBy,
-  reset,
-  reflow,
-} = useReaderZoom(stage, imageSize);
 
 const { percent: batteryPercent } = useBattery();
 const batteryLabel = computed(() =>
@@ -120,7 +145,7 @@ const trackStyle = computed<CSSProperties>(() => ({
     ? `translate3d(calc(-33.333333% + ${trackOffset.value}px), 0, 0)`
     : `translate3d(0, calc(-33.333333% + ${trackOffset.value}px), 0)`,
   transition: trackAnimating.value
-    ? `transform ${TURN_DURATION}ms cubic-bezier(0.2, 0.8, 0.2, 1)`
+    ? `transform ${TURN_DURATION_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1)`
     : "none",
 }));
 
@@ -137,165 +162,12 @@ const pageSlots = computed<(PageSlot | null)[]>(() => {
   return slots;
 });
 
-function clampPage(value: number) {
-  const last = Math.max(total.value, 1);
-  return Math.min(Math.max(value, 1), last);
-}
-
-displayPage.value = clampPage(props.page);
-
 useReaderPreload(
   computed(() => props.platform),
   computed(() => props.pages),
   displayPage,
   computed(() => props.preloadCount),
 );
-
-function stageHeight() {
-  return stage.value?.clientHeight ?? 1;
-}
-
-function stageSpan() {
-  return horizontal.value
-    ? (stage.value?.clientWidth ?? 1)
-    : stageHeight();
-}
-
-function prefersReducedMotion() {
-  return window.matchMedia(REDUCED_MOTION_QUERY).matches;
-}
-
-let turnTimer: ReturnType<typeof setTimeout> | undefined;
-let turnToken = 0;
-
-function clearTurnTimer() {
-  if (turnTimer) {
-    clearTimeout(turnTimer);
-    turnTimer = undefined;
-  }
-}
-
-function cancelTurn() {
-  turnToken += 1;
-  clearTurnTimer();
-  trackAnimating.value = false;
-  trackOffset.value = 0;
-  turnTarget.value = null;
-}
-
-function finishTurn(target: number | null) {
-  clearTurnTimer();
-  trackAnimating.value = false;
-  trackOffset.value = 0;
-  turnTarget.value = null;
-
-  if (target !== null && target !== displayPage.value) {
-    displayPage.value = target;
-    emit("update:page", target);
-  }
-}
-
-function animateTrackTo(targetOffset: number, done: () => void) {
-  const token = ++turnToken;
-  clearTurnTimer();
-  trackAnimating.value = true;
-
-  // The transition has to be active before the transform changes, otherwise
-  // drag-release would jump straight to the destination.
-  requestAnimationFrame(() => {
-    if (token !== turnToken) {
-      return;
-    }
-
-    trackOffset.value = targetOffset;
-    if (prefersReducedMotion()) {
-      done();
-      return;
-    }
-
-    turnTimer = setTimeout(() => {
-      if (token === turnToken) {
-        done();
-      }
-    }, TURN_DURATION + 20);
-  });
-}
-
-function snapBack() {
-  if (trackOffset.value === 0) {
-    trackAnimating.value = false;
-    return;
-  }
-  turnTarget.value = null;
-  animateTrackTo(0, () => finishTurn(null));
-}
-
-function turnTo(target: number) {
-  if (trackAnimating.value) {
-    return;
-  }
-
-  const next = clampPage(target);
-  if (next === displayPage.value) {
-    return;
-  }
-
-  // Home/End and chapter jumps skip more than one page; the three-slot track
-  // has no intermediate page to show, so jump without faking a one-page turn.
-  if (Math.abs(next - displayPage.value) > 1) {
-    cancelTurn();
-    displayPage.value = next;
-    emit("update:page", next);
-    return;
-  }
-
-  // A zoomed page is no longer part of the contiguous track; reset before the
-  // turn so the two adjacent pages are shown at the same scale.
-  if (scale.value > 1) {
-    reset();
-  }
-
-  turnTarget.value = next;
-  const forward = next > displayPage.value;
-  const span = stageSpan();
-  const targetOffset =
-    props.direction === "rtl"
-      ? (forward ? span : -span)
-      : (forward ? -span : span);
-  animateTrackTo(targetOffset, () => finishTurn(next));
-}
-
-function goToPage(next: number) {
-  turnTo(next);
-}
-
-function leaveAtBoundary(direction: "previous" | "next") {
-  if (boundaryLeaving.value) {
-    return;
-  }
-  boundaryLeaving.value = true;
-  // A boundary swipe leaves the track offset near the drag limit. Clear it
-  // before the parent swaps chapters so the old page cannot stay misaligned
-  // during the transition.
-  cancelTurn();
-  emit("page-boundary", direction);
-}
-
-function previousPage() {
-  if (displayPage.value <= 1) {
-    leaveAtBoundary("previous");
-    return;
-  }
-  goToPage(displayPage.value - 1);
-}
-
-function nextPage() {
-  if (displayPage.value >= total.value) {
-    leaveAtBoundary("next");
-    return;
-  }
-  goToPage(displayPage.value + 1);
-}
 
 function zoomIn() {
   zoomStep(1);
@@ -318,34 +190,10 @@ function onSlotSize(number: number, size: ReaderImageSize) {
 }
 
 watch(
-  () => props.page,
-  (value) => {
-    boundaryLeaving.value = false;
-    const next = clampPage(value);
-    if (next === displayPage.value) {
-      return;
-    }
-    cancelTurn();
-    displayPage.value = next;
-  },
-);
-
-watch(
-  [displayPage, total],
-  () => {
-    reset();
-    imageSize.value = pageSizes.get(displayPage.value) ?? null;
-    trackOffset.value = 0;
-    reflow();
-  },
-  { immediate: true },
-);
-
-watch(
   () => props.pages,
   () => {
     // Chapter or page-source changes invalidate cached sizes for old pages.
-    boundaryLeaving.value = false;
+    resetBoundary();
     pageSizes.clear();
   },
 );
@@ -855,7 +703,7 @@ function onKeydown(event: KeyboardEvent) {
 
 function onResize() {
   if (!trackAnimating.value) {
-    trackOffset.value = 0;
+    resetTrack();
   }
   reflow();
 }
