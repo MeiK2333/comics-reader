@@ -23,12 +23,12 @@ use http::HttpProxyConfig;
 pub(crate) use model::{ChapterRef, ReaderChapter, ReaderPage};
 use model::{ComicDetail, SearchResponse};
 use platform::{
-    ImageDecode, Platform, RequestSpec, descramble, find as find_platform,
-    resolve as resolve_platform, scramble_id, segment_count, unknown_platform,
+    Catalog, ImageDecode, RequestSpec, catalog as resolve_catalog, descramble,
+    resolve as resolve_platform, scramble_id, segment_count,
 };
 
 /// Bump only when the cache layout itself changes. Per-platform header changes
-/// use `Platform::cache_version` instead.
+/// use `ImageProfile::cache_version` instead.
 const CACHE_VERSION: &str = "v2";
 const CACHE_SUBDIR: &str = "images";
 /// Bump when a platform's decoded bytes change without a URL change (for
@@ -154,7 +154,8 @@ pub(crate) async fn fetch_image_inner(
     };
 
     if let Some(ImageDecode::JmScramble { photo_id, filename }) = decode {
-        let scramble_id = scramble_id(client, platform, &photo_id).await?;
+        let catalog = resolve_catalog(platform.id(), "reading")?;
+        let scramble_id = scramble_id(client, catalog, &photo_id).await?;
         let segments = segment_count(scramble_id, &photo_id, &filename);
         if segments > 0 {
             download.bytes = descramble(&download.bytes, segments)?;
@@ -223,7 +224,7 @@ pub(crate) async fn search_comics(
 /// after startup. Keeping both steps in one helper makes the order explicit.
 async fn prepared_spec(
     client: &HttpClient,
-    platform: &dyn Platform,
+    platform: &dyn Catalog,
     build: impl FnOnce() -> Result<RequestSpec>,
 ) -> Result<RequestSpec> {
     platform.prepare(client).await;
@@ -232,7 +233,7 @@ async fn prepared_spec(
 
 /// Record mirror health only after the platform parser accepts the body.
 fn parse_document<T>(
-    platform: &dyn Platform,
+    platform: &dyn Catalog,
     fetched: &http::FetchedDocument,
     parse: impl FnOnce(&[u8]) -> Result<T>,
 ) -> Result<T> {
@@ -247,7 +248,7 @@ async fn search_comics_inner(
     query: &str,
     page: u32,
 ) -> Result<SearchResponse> {
-    let platform = find_platform(platform).ok_or_else(|| unknown_platform(platform))?;
+    let platform = resolve_catalog(platform, "search")?;
 
     let query = query.trim();
     if query.is_empty() {
@@ -300,7 +301,7 @@ pub(crate) async fn get_comic(
 }
 
 async fn get_comic_inner(client: &HttpClient, platform: &str, id: &str) -> Result<ComicDetail> {
-    let platform = find_platform(platform).ok_or_else(|| unknown_platform(platform))?;
+    let platform = resolve_catalog(platform, "comic detail")?;
 
     let id = id.trim();
     if id.is_empty() {
@@ -355,7 +356,7 @@ pub(crate) async fn get_reader_chapter_inner(
     id: &str,
     chapter_id: Option<&str>,
 ) -> Result<ReaderChapter> {
-    let platform = find_platform(platform).ok_or_else(|| unknown_platform(platform))?;
+    let platform = resolve_catalog(platform, "reading")?;
 
     let id = id.trim();
     if id.is_empty() {
@@ -402,6 +403,7 @@ pub(crate) fn set_http_proxy(
 
 #[cfg(test)]
 mod tests {
+    use super::platform::ImageProfile;
     use super::*;
     use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -412,7 +414,7 @@ mod tests {
         prepared: AtomicBool,
     }
 
-    impl Platform for FakePlatform {
+    impl ImageProfile for FakePlatform {
         fn id(&self) -> &'static str {
             "fake"
         }
@@ -420,7 +422,9 @@ mod tests {
         fn configure(&self, request: RequestBuilder, _url: &Url) -> RequestBuilder {
             request
         }
+    }
 
+    impl Catalog for FakePlatform {
         fn prepare<'a>(
             &'a self,
             _client: &'a HttpClient,
@@ -458,7 +462,7 @@ mod tests {
         healthy: AtomicBool,
     }
 
-    impl Platform for HealthPlatform {
+    impl ImageProfile for HealthPlatform {
         fn id(&self) -> &'static str {
             "health"
         }
@@ -466,7 +470,9 @@ mod tests {
         fn configure(&self, request: RequestBuilder, _url: &Url) -> RequestBuilder {
             request
         }
+    }
 
+    impl Catalog for HealthPlatform {
         fn note_request_outcome(&self, _url: &Url, success: bool) {
             self.healthy.store(success, Ordering::SeqCst);
         }

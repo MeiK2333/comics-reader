@@ -13,7 +13,9 @@ use crate::image::model::{
     ManhuaguiExtra, ReaderChapter, ReaderPage, SearchExtra, SearchItem, SearchResponse,
 };
 
-use super::{Platform, RequestSpec, absolute_url, collapse_whitespace, host_matches, numeric_id};
+use super::{
+    Catalog, ImageProfile, RequestSpec, absolute_url, collapse_whitespace, host_matches, numeric_id,
+};
 
 const BASE_URL: &str = "https://www.manhuagui.com";
 const IMAGE_HOST: &str = "https://i.hamreus.com";
@@ -37,7 +39,7 @@ static WORD_RE: LazyLock<Regex> =
 
 pub(super) struct Manhuagui;
 
-impl Platform for Manhuagui {
+impl ImageProfile for Manhuagui {
     fn id(&self) -> &'static str {
         "manhuagui"
     }
@@ -77,7 +79,9 @@ impl Platform for Manhuagui {
             Vec::new()
         }
     }
+}
 
+impl Catalog for Manhuagui {
     fn search_request(&self, query: &str, page: u32) -> Result<RequestSpec> {
         let filename = if page == 1 {
             format!("{query}.html")

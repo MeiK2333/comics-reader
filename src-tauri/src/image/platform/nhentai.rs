@@ -9,7 +9,7 @@ use crate::image::model::{
     ReaderPage, SearchExtra, SearchItem, SearchResponse,
 };
 
-use super::{Platform, RequestSpec, host_matches, numeric_id};
+use super::{Catalog, ImageProfile, RequestSpec, host_matches, numeric_id};
 
 const BASE_URL: &str = "https://nhentai.net";
 const HOST_SUFFIXES: &[&str] = &["nhentai.net"];
@@ -19,7 +19,7 @@ const FALLBACK_PAGE_SIZE: u32 = 25;
 
 pub(super) struct Nhentai;
 
-impl Platform for Nhentai {
+impl ImageProfile for Nhentai {
     fn id(&self) -> &'static str {
         "nhentai"
     }
@@ -33,7 +33,9 @@ impl Platform for Nhentai {
             .header(REFERER, REFERER_VALUE)
             .header(ACCEPT_LANGUAGE, ACCEPT_LANGUAGE_VALUE)
     }
+}
 
+impl Catalog for Nhentai {
     fn search_request(&self, query: &str, page: u32) -> Result<RequestSpec> {
         let mut url = Url::parse(&format!("{BASE_URL}/api/v2/search")).map_err(|error| {
             crate::error::AppError::Unexpected(format!("invalid nhentai URL: {error}"))

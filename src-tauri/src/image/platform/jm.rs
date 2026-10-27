@@ -23,7 +23,7 @@ use crate::image::model::{
 use crate::logging;
 
 use super::jm_api::{self, Album, Chapter, SearchPage};
-use super::{ImageDecode, Platform, RequestSpec, host_matches, jm_id};
+use super::{Catalog, ImageDecode, ImageProfile, RequestSpec, host_matches, jm_id};
 
 /// Hosts JM serves the APP API, the image CDN and the legacy HTML site from.
 /// Images are fetched with an explicit platform, but keeping every host here
@@ -85,7 +85,7 @@ impl Jm {
     }
 }
 
-impl Platform for Jm {
+impl ImageProfile for Jm {
     fn id(&self) -> &'static str {
         "jm"
     }
@@ -115,6 +115,30 @@ impl Platform for Jm {
             .header("x-requested-with", jm_api::requested_with())
     }
 
+    fn image_fallbacks(&self, url: &Url) -> Vec<Url> {
+        jm_api::image_alternates(url)
+    }
+
+    fn image_decode(&self, url: &Url) -> Option<ImageDecode> {
+        jm_api::page_image(url)
+            .map(|(photo_id, filename)| ImageDecode::JmScramble { photo_id, filename })
+    }
+
+    /// Photo and cover images are served from interchangeable CDNs and the
+    /// HTML site appends a disposable query, so key on the path alone: one
+    /// asset keeps one cache entry no matter which host answered.
+    fn cache_key_url(&self, url: &Url) -> String {
+        if url.path().starts_with("/media/") {
+            return format!("jm{}", url.path());
+        }
+
+        let mut cache_url = url.clone();
+        cache_url.set_query(None);
+        cache_url.to_string()
+    }
+}
+
+impl Catalog for Jm {
     fn note_request_outcome(&self, url: &Url, success: bool) {
         let Some(position) = url.host_str().and_then(|host| {
             jm_api::API_DOMAINS
@@ -135,15 +159,6 @@ impl Platform for Jm {
         }
     }
 
-    fn image_fallbacks(&self, url: &Url) -> Vec<Url> {
-        jm_api::image_alternates(url)
-    }
-
-    fn image_decode(&self, url: &Url) -> Option<ImageDecode> {
-        jm_api::page_image(url)
-            .map(|(photo_id, filename)| ImageDecode::JmScramble { photo_id, filename })
-    }
-
     fn prepare<'a>(
         &'a self,
         client: &'a HttpClient,
@@ -156,20 +171,6 @@ impl Platform for Jm {
             }
         })
     }
-
-    /// Photo and cover images are served from interchangeable CDNs and the
-    /// HTML site appends a disposable query, so key on the path alone: one
-    /// asset keeps one cache entry no matter which host answered.
-    fn cache_key_url(&self, url: &Url) -> String {
-        if url.path().starts_with("/media/") {
-            return format!("jm{}", url.path());
-        }
-
-        let mut cache_url = url.clone();
-        cache_url.set_query(None);
-        cache_url.to_string()
-    }
-
     fn search_request(&self, query: &str, page: u32) -> Result<RequestSpec> {
         self.api_spec(|domain| jm_api::search_url(domain, query, page))
     }
@@ -421,14 +422,14 @@ impl Platform for Jm {
 /// place and is retried by the next command.
 static VERSION_SYNC: tokio::sync::OnceCell<()> = tokio::sync::OnceCell::const_new();
 
-async fn ensure_app_version(client: &HttpClient, platform: &dyn Platform) -> Result<()> {
+async fn ensure_app_version(client: &HttpClient, platform: &dyn Catalog) -> Result<()> {
     VERSION_SYNC
         .get_or_try_init(|| async { sync_app_version(client, platform).await })
         .await
         .map(|_| ())
 }
 
-async fn sync_app_version(client: &HttpClient, platform: &dyn Platform) -> Result<()> {
+async fn sync_app_version(client: &HttpClient, platform: &dyn Catalog) -> Result<()> {
     let ts = jm_api::timestamp();
     let mut urls = jm_api::API_DOMAINS
         .iter()
@@ -475,7 +476,7 @@ async fn sync_app_version(client: &HttpClient, platform: &dyn Platform) -> Resul
 /// extra request per chapter is enough: pages in a chapter share the album.
 pub(crate) async fn scramble_id(
     client: &HttpClient,
-    platform: &dyn Platform,
+    platform: &dyn Catalog,
     photo_id: &str,
 ) -> Result<i64> {
     if let Some(value) = SCRAMBLE_IDS

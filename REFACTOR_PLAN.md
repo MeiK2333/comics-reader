@@ -1,6 +1,6 @@
 # 重构与修复计划
 
-> **状态**：P1 + P2-1 + P2-2 已完成；P2-3 模块拆分完成；P2-4a 镜像健康已修；P2-4b trait 拆分与 P3 待执行
+> **状态**：P1 + P2-1 + P2-2 已完成；P2-3 模块拆分完成；P2-4 完成；P2-5~P3 待执行
 > **基线**：2026-10-27，当前 master 工作区
 > **适用对象**：后续接手本仓库的编码智能体
 > **配套文档**：[AGENTS.md](AGENTS.md)（契约、命令、易错点）、[ROADMAP.md](ROADMAP.md)（功能方向）
@@ -524,7 +524,7 @@ src-tauri/src/downloads/
 
 #### P2-4 Platform 能力拆分 + 镜像健康语义（refactor/fix，BUG-4）
 
-- **状态**：in progress（2026-10-27：P2-4a 镜像健康已改为解析成功；trait 能力拆分待做）
+- **状态**：done（2026-10-27：P2-4a 镜像健康改为解析成功；P2-4b `ImageProfile` + `Catalog` 已拆）
 - **依赖**：P1-5
 - **证据**：`platform/mod.rs:93-185` 有 15 个方法，`generic` 只实现 `id/configure`，其余能力默认返回 `invalidInput`；`note_request_outcome` 在 HTTP 2xx 时就算成功（`http.rs:642-646`）。
 - **目标**：把“图片请求 profile”和“可搜索/详情/阅读的 catalog”分开；镜像健康以“解析成功”为准。
@@ -541,8 +541,8 @@ src-tauri/src/downloads/
   - 假 `ImageProfile`/`Catalog`：能力缺失时返回 `invalidInput`；`prepare` 顺序由 P1-5 的 helper 保证。
   - 镜像：解析失败不应把当前 host 记为 preferred（可用 mock/单元测试策略，或至少把判断逻辑抽成纯函数测试）。
 - **验收**：
-  - [ ] `generic` 不需要实现搜索/详情/阅读的空方法。
-  - [ ] 新增平台只实现 `ImageProfile` 也能抓图；实现 `Catalog` 才具备搜索/详情/阅读。
+  - [x] `generic` 不需要实现搜索/详情/阅读的空方法。
+  - [x] 新增平台只实现 `ImageProfile` 也能抓图；实现 `Catalog` 才具备搜索/详情/阅读。
   - [x] JM 首选镜像不会因 200 挑战页被钉死。
   - [ ] 现有 platform 测试、搜索/详情/阅读手动冒烟通过。
 - **风险**：会触碰所有平台文件；建议放在 P2-3 之后，避免与 downloads 拆分冲突。
@@ -850,3 +850,4 @@ refactor(reader): add pure page-boundary helpers
 - 2026-10-27 / P2-3b / 新增 `model.rs`（245 行）与 `index.rs`（30 行）：DTO/状态/输入/记录/sanitize 与 index+manifest 文档迁出；model 字段提升为 `pub(super)`，index 结构体 `pub(crate)` 由 mod re-export；`mod.rs` 从 1589 行降到 1330 行。纯移动，wire 字段、serde 形状和校验逻辑未变。验证：`cargo test` 158 passed、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`。剩余：store 本体拆分 + `ensure_cover` 与 store 解耦。
 - 2026-10-27 / P2-3c / 新增 `store.rs`（688 行）：`DownloadsStore`/`DownloadsData` 及 impl 从 mod.rs 迁出，方法/字段提升为 `pub(super)`，`DownloadsData` 仅在 test 构建 re-export；`mod.rs` 从 1330 行降到 673 行。最终结构：mod 673 + store 688 + worker 437 + model 246 + commands 159 + local 112 + index 30；`downloads.rs` 已消失，命令签名/索引格式/run id 均未变。`ensure_cover` 现在接收 `&DownloadsStore`，worker 不再通过 `app.state` 反查。验证：`cargo test` 158 passed、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`。
 - 2026-10-27 / P2-4a / 镜像健康改为解析成功：`fetch_document` 返回 `FetchedDocument { url, body }` 且不再记 success；`image/mod.rs` 的 `parse_document` 在 `parse_search/detail/reader_chapter` 后统一 `note_request_outcome(url, result.is_ok())`；JM 的 `/setting` 与 `scramble_id` 请求同样在解析后记录。新增 `mirror_health_waits_for_a_successful_parse` 单测。验证：`cargo test` 159 passed、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`。P2-4 剩余：`Platform` 拆成 `ImageProfile` + `Catalog`。
+- 2026-10-27 / P2-4b / `Platform` 拆为 `ImageProfile`（图片/cache/matches/configure）与 `Catalog: ImageProfile`（prepare/note/search/detail/reader）：`PROFILES`/`CATALOGS`、`find_profile`/`find_catalog`/`catalog`；`generic` 只实现 profile，`manhuagui`/`jm`/`nhentai` 双 impl；`download_image` 用 `ImageProfile`，`fetch_document` 用 `Catalog`；搜索/详情/阅读走 catalog，generic 仍返回原 “does not support” 文案、未知平台仍 `unknown`；JM 图片解码通过 catalog 取 `scramble_id`。验证：`cargo test` 160 passed、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`。

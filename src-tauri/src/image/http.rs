@@ -13,7 +13,7 @@ use crate::error::{AppError, Result};
 use crate::logging;
 
 use super::cache::ImageFormat;
-use super::platform::{Platform, RequestSpec};
+use super::platform::{Catalog, ImageProfile, RequestSpec};
 
 /// Page images are usually a few megabytes; anything past this is treated as a
 /// bad response rather than filling the cache with an accidental download.
@@ -555,7 +555,7 @@ pub(super) struct Download {
 
 pub(super) async fn download_image(
     http: &HttpClient,
-    platform: &dyn Platform,
+    platform: &dyn ImageProfile,
     url: &Url,
 ) -> Result<Download> {
     let mut response = http
@@ -641,7 +641,7 @@ pub(super) struct FetchedDocument {
 /// because the body already arrived from a host that answered.
 pub(super) async fn fetch_document(
     http: &HttpClient,
-    platform: &dyn Platform,
+    platform: &dyn Catalog,
     spec: &RequestSpec,
 ) -> Result<FetchedDocument> {
     let mut last_error = None;
@@ -671,7 +671,7 @@ pub(super) async fn fetch_document(
 
 async fn fetch_document_once(
     http: &HttpClient,
-    platform: &dyn Platform,
+    platform: &dyn Catalog,
     spec: &RequestSpec,
     url: &Url,
 ) -> Result<Vec<u8>> {
@@ -986,7 +986,7 @@ mod tests {
         let control = http.begin_ech_control().unwrap();
         http.enable_ech_if_current(control, session).unwrap();
 
-        let platform = super::super::platform::find("nhentai").unwrap();
+        let platform = super::super::platform::find_catalog("nhentai").unwrap();
 
         let spec = platform.search_request("love", 1).unwrap();
         let fetched = fetch_document(&http, platform, &spec).await.unwrap();

@@ -1,12 +1,12 @@
 use reqwest::RequestBuilder;
 use url::Url;
 
-use super::Platform;
+use super::ImageProfile;
 
 /// Fallback for hosts without a dedicated profile: browser headers only.
 pub(super) struct Generic;
 
-impl Platform for Generic {
+impl ImageProfile for Generic {
     fn id(&self) -> &'static str {
         "generic"
     }

@@ -1,8 +1,9 @@
 //! Per-platform request profiles and page parsers.
 //!
-//! Adding a platform means implementing [`Platform`], registering it in
-//! [`PLATFORMS`] and adding its host suffixes. The shared fetching pipeline in
-//! the parent module stays unchanged; the platform only builds request URLs and
+//! Adding an image-only platform means implementing [`ImageProfile`] and
+//! registering it in [`PROFILES`]. Search/detail/reading additionally require
+//! [`Catalog`], registered in [`CATALOGS`]. The shared fetching pipeline in the
+//! parent module stays unchanged; the platform only builds request URLs and
 //! parses the returned bytes.
 
 mod generic;
@@ -38,7 +39,7 @@ pub(crate) struct RequestSpec {
     pub(crate) url: Url,
     pub(crate) accept: &'static str,
     /// Headers that only this request needs, such as JM's APP token. They are
-    /// applied after [`Platform::configure`], which keeps shared platform
+    /// applied after [`ImageProfile::configure`], which keeps shared platform
     /// headers in one place and per-request signing data here.
     pub(crate) headers: HeaderMap,
     /// Mirrors of the same logical request. The fetch layer tries them in
@@ -89,8 +90,8 @@ pub(crate) enum ImageDecode {
     JmScramble { photo_id: String, filename: String },
 }
 
-/// Everything the request layer needs to know about one platform.
-pub(crate) trait Platform: Send + Sync {
+/// Everything the image pipeline needs to know about one platform.
+pub(crate) trait ImageProfile: Send + Sync {
     /// Stable id used by command arguments, cache namespaces and the UI.
     fn id(&self) -> &'static str;
 
@@ -114,6 +115,22 @@ pub(crate) trait Platform: Send + Sync {
         url.to_string()
     }
 
+    /// Alternative hosts for the same image. The image pipeline tries them in
+    /// order when the current host fails with a retryable error.
+    fn image_fallbacks(&self, _url: &Url) -> Vec<Url> {
+        Vec::new()
+    }
+
+    /// Whether the downloaded bytes need decoding before they are cached.
+    fn image_decode(&self, _url: &Url) -> Option<ImageDecode> {
+        None
+    }
+}
+
+/// Search/detail/reading capabilities layered on top of an image profile.
+/// Platforms without a catalog stay image-only and do not need to implement
+/// empty parser methods.
+pub(crate) trait Catalog: ImageProfile {
     /// Called after the platform parses a document from one mirror, or after
     /// the fetch fails. A platform with interchangeable origins can remember
     /// which one works; single-origin platforms keep the default no-op. HTTP
@@ -129,17 +146,6 @@ pub(crate) trait Platform: Send + Sync {
         _client: &'a HttpClient,
     ) -> Pin<Box<dyn Future<Output = ()> + Send + 'a>> {
         Box::pin(std::future::ready(()))
-    }
-
-    /// Alternative hosts for the same image. The image pipeline tries them in
-    /// order when the current host fails with a retryable error.
-    fn image_fallbacks(&self, _url: &Url) -> Vec<Url> {
-        Vec::new()
-    }
-
-    /// Whether the downloaded bytes need decoding before they are cached.
-    fn image_decode(&self, _url: &Url) -> Option<ImageDecode> {
-        None
     }
 
     /// Build the keyword search request for a 1-based page.
@@ -192,22 +198,46 @@ static MANHUAGUI: Manhuagui = Manhuagui;
 static JM: Jm = Jm::new();
 static NHENTAI: Nhentai = Nhentai;
 
-static PLATFORMS: [&dyn Platform; 4] = [&GENERIC, &MANHUAGUI, &JM, &NHENTAI];
+static PROFILES: [&dyn ImageProfile; 4] = [&GENERIC, &MANHUAGUI, &JM, &NHENTAI];
+static CATALOGS: [&dyn Catalog; 3] = [&MANHUAGUI, &JM, &NHENTAI];
 
-/// Resolve an explicit platform id, or detect one from the image URL.
-pub(crate) fn resolve(explicit: Option<&str>, url: &Url) -> Result<&'static dyn Platform> {
+/// Resolve an explicit image profile id, or detect one from the image URL.
+pub(crate) fn resolve(explicit: Option<&str>, url: &Url) -> Result<&'static dyn ImageProfile> {
     match explicit {
-        Some(id) => find(id).ok_or_else(|| unknown_platform(id)),
+        Some(id) => find_profile(id).ok_or_else(|| unknown_platform(id)),
         None => Ok(detect(url)),
     }
 }
 
-/// Look up a platform by its stable command id.
-pub(crate) fn find(id: &str) -> Option<&'static dyn Platform> {
-    PLATFORMS
+/// Look up an image profile by its stable command id.
+pub(crate) fn find_profile(id: &str) -> Option<&'static dyn ImageProfile> {
+    PROFILES
         .iter()
         .copied()
         .find(|platform| platform.id() == id)
+}
+
+/// Look up a catalog by its stable command id.
+pub(crate) fn find_catalog(id: &str) -> Option<&'static dyn Catalog> {
+    CATALOGS
+        .iter()
+        .copied()
+        .find(|platform| platform.id() == id)
+}
+
+/// Resolve a catalog, preserving the old "platform does not support ..."
+/// error for image-only platforms while unknown ids stay unknown.
+pub(crate) fn catalog(id: &str, operation: &str) -> Result<&'static dyn Catalog> {
+    find_catalog(id).ok_or_else(|| {
+        if find_profile(id).is_some() {
+            AppError::InvalidInput {
+                field: "platform",
+                reason: format!("platform `{id}` does not support {operation}"),
+            }
+        } else {
+            unknown_platform(id)
+        }
+    })
 }
 
 pub(crate) fn unknown_platform(id: &str) -> AppError {
@@ -217,8 +247,8 @@ pub(crate) fn unknown_platform(id: &str) -> AppError {
     }
 }
 
-fn detect(url: &Url) -> &'static dyn Platform {
-    PLATFORMS
+fn detect(url: &Url) -> &'static dyn ImageProfile {
+    PROFILES
         .iter()
         .copied()
         .find(|platform| platform.matches(url))
@@ -293,7 +323,7 @@ mod tests {
 
     fn headers_for(id: &str, raw: &str) -> HeaderMap {
         let url = parse(raw);
-        let platform = find(id).expect("platform should exist");
+        let platform = find_profile(id).expect("platform should exist");
         platform
             .configure(Client::new().get(url.clone()), &url)
             .build()
@@ -362,9 +392,19 @@ mod tests {
 
     #[test]
     fn generic_rejects_search_and_detail() {
-        let generic = find("generic").unwrap();
-        assert!(generic.search_request("test", 1).is_err());
-        assert!(generic.detail_request("1").is_err());
+        assert!(find_catalog("generic").is_none());
+        assert!(catalog("generic", "search").is_err());
+    }
+
+    #[test]
+    fn generic_is_an_image_profile_without_a_catalog() {
+        assert!(find_profile("generic").is_some());
+        assert!(find_catalog("generic").is_none());
+        let error = match catalog("generic", "search") {
+            Ok(_) => panic!("generic must not be a catalog"),
+            Err(error) => error,
+        };
+        assert_eq!(error.code().as_str(), "invalidInput");
     }
 
     #[test]
@@ -380,13 +420,16 @@ mod tests {
     fn manhuagui_and_jm_drop_query_for_cache() {
         let url = parse("https://example.com/a.jpg?v=1");
         assert_eq!(
-            find("manhuagui").unwrap().cache_key_url(&url),
+            find_profile("manhuagui").unwrap().cache_key_url(&url),
             "https://example.com/a.jpg"
         );
         assert_eq!(
-            find("jm").unwrap().cache_key_url(&url),
+            find_profile("jm").unwrap().cache_key_url(&url),
             "https://example.com/a.jpg"
         );
-        assert_eq!(find("nhentai").unwrap().cache_key_url(&url), url.as_str());
+        assert_eq!(
+            find_profile("nhentai").unwrap().cache_key_url(&url),
+            url.as_str()
+        );
     }
 }

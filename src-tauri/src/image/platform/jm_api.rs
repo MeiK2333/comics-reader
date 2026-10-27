@@ -141,7 +141,7 @@ fn md5_hex(input: &str) -> String {
     hex::encode(Md5::digest(input.as_bytes()))
 }
 
-/// Signing headers for one API call. They stay out of [`Platform::configure`]
+/// Signing headers for one API call. They stay out of [`ImageProfile::configure`]
 /// so image requests, which do not need them, keep a minimal header set.
 pub(super) fn document_headers(ts: u64) -> HeaderMap {
     signing_headers(ts, TOKEN_SECRET)
