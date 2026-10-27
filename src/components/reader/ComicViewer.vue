@@ -5,25 +5,15 @@ import type { ComicPlatform } from "../../api/comics";
 import type { ReaderPage } from "../../api/reader";
 import { useBattery } from "../../composables/useBattery";
 import { usePageTurn, TURN_DURATION_MS } from "../../composables/usePageTurn";
+import { useReaderKeyboard } from "../../composables/useReaderKeyboard";
 import { useReaderPreload } from "../../composables/useReaderPreload";
+import { useReaderWheel } from "../../composables/useReaderWheel";
 import { useReaderZoom } from "../../composables/useReaderZoom";
 import type { ReaderImageSize } from "../../composables/useReaderZoom";
 import { useAppI18n } from "../../i18n";
 import type { ReaderDirection } from "../../stores/settings";
 import ReaderBattery from "./ReaderBattery.vue";
 import ReaderPageImage from "./ReaderPageImage.vue";
-
-const NEXT_KEYS: Record<ReaderDirection, readonly string[]> = {
-  ltr: ["ArrowRight", "ArrowDown"],
-  rtl: ["ArrowLeft", "ArrowDown"],
-  ttb: ["ArrowDown", "ArrowRight"],
-};
-
-const PREVIOUS_KEYS: Record<ReaderDirection, readonly string[]> = {
-  ltr: ["ArrowLeft", "ArrowUp"],
-  rtl: ["ArrowRight", "ArrowUp"],
-  ttb: ["ArrowUp", "ArrowLeft"],
-};
 
 const props = withDefaults(
   defineProps<{
@@ -266,6 +256,28 @@ async function toggleFullscreen() {
     // Fullscreen is optional; a rejected request must not break the reader.
   }
 }
+
+const { onWheel } = useReaderWheel({
+  stage,
+  isAnimating: () => trackAnimating.value,
+  nextPage,
+  previousPage,
+  zoomBy,
+});
+
+const { onKeydown } = useReaderKeyboard({
+  direction: () => props.direction,
+  total: () => total.value,
+  isAnimating: () => trackAnimating.value,
+  nextPage,
+  previousPage,
+  goToPage,
+  zoomIn,
+  zoomOut,
+  resetZoom,
+  toggleFullscreen,
+  close: () => emit("close"),
+});
 
 interface DragState {
   id: number;
@@ -573,132 +585,6 @@ function onStagePointerCancel(event: PointerEvent) {
   }
   drag = null;
   snapBack();
-}
-
-let wheelAccumulator = 0;
-let lastWheelAt = 0;
-let lastNavigationAt = 0;
-
-function onWheel(event: WheelEvent) {
-  event.preventDefault();
-
-  if (trackAnimating.value) {
-    wheelAccumulator = 0;
-    return;
-  }
-
-  if (event.ctrlKey) {
-    zoomBy(Math.exp(-event.deltaY * 0.002), event.clientX, event.clientY);
-    wheelAccumulator = 0;
-    return;
-  }
-
-  const modeScale =
-    event.deltaMode === 1
-      ? 16
-      : event.deltaMode === 2
-        ? (stage.value?.clientHeight ?? 600)
-        : 1;
-  const delta = event.deltaY * modeScale;
-  if (delta === 0) {
-    return;
-  }
-
-  const now = performance.now();
-  if (
-    now - lastWheelAt > 220 ||
-    Math.sign(delta) !== Math.sign(wheelAccumulator)
-  ) {
-    wheelAccumulator = 0;
-  }
-  wheelAccumulator += delta;
-  lastWheelAt = now;
-
-  if (Math.abs(wheelAccumulator) >= 60 && now - lastNavigationAt >= 280) {
-    wheelAccumulator = 0;
-    lastNavigationAt = now;
-    if (delta > 0) {
-      nextPage();
-    } else {
-      previousPage();
-    }
-  }
-}
-
-function isEditableTarget(target: EventTarget | null) {
-  return (
-    target instanceof Element &&
-    target.closest(
-      "input, textarea, select, [contenteditable='true']",
-    ) !== null
-  );
-}
-
-function onKeydown(event: KeyboardEvent) {
-  if (
-    event.defaultPrevented ||
-    isEditableTarget(event.target) ||
-    event.ctrlKey ||
-    event.metaKey ||
-    event.altKey
-  ) {
-    return;
-  }
-
-  if (trackAnimating.value && event.key !== "Escape") {
-    return;
-  }
-
-  if (NEXT_KEYS[props.direction].includes(event.key)) {
-    event.preventDefault();
-    nextPage();
-    return;
-  }
-  if (PREVIOUS_KEYS[props.direction].includes(event.key)) {
-    event.preventDefault();
-    previousPage();
-    return;
-  }
-
-  switch (event.key) {
-    case "Home":
-      event.preventDefault();
-      goToPage(1);
-      break;
-    case "End":
-      event.preventDefault();
-      goToPage(total.value);
-      break;
-    case "+":
-    case "=":
-      event.preventDefault();
-      zoomIn();
-      break;
-    case "-":
-    case "_":
-      event.preventDefault();
-      zoomOut();
-      break;
-    case "0":
-      event.preventDefault();
-      resetZoom();
-      break;
-    case "f":
-    case "F":
-      event.preventDefault();
-      void toggleFullscreen();
-      break;
-    case "Escape":
-      // Let the browser leave fullscreen first; the next Escape closes.
-      if (document.fullscreenElement) {
-        return;
-      }
-      event.preventDefault();
-      emit("close");
-      break;
-    default:
-      break;
-  }
 }
 
 function onResize() {
