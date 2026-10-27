@@ -1,6 +1,6 @@
 # 重构与修复计划
 
-> **状态**：P1 + P2-1 已完成；P2-2a/b/c/d/e（页码/边界、`usePageTurn`、滚轮/键盘、`ReaderTrack`、`ReaderChrome`）已完成；P2-2 手势与 P2-3~P3 待执行
+> **状态**：P1 + P2-1 已完成；P2-2a~f（页码/边界、`usePageTurn`、滚轮/键盘、`ReaderTrack`、`ReaderChrome`、平台兜底）已完成；P2-2 手势与 P2-3~P3 待执行
 > **基线**：2026-10-27，当前 master 工作区
 > **适用对象**：后续接手本仓库的编码智能体
 > **配套文档**：[AGENTS.md](AGENTS.md)（契约、命令、易错点）、[ROADMAP.md](ROADMAP.md)（功能方向）
@@ -437,7 +437,7 @@ export function resolveDetailState(input: {
 
 #### P2-2 阅读器：单一 owner + 纯函数边界（refactor，BUG-6/7/8/10）
 
-- **状态**：in progress（2026-10-27：P2-2a 纯函数与边界修复、P2-2b `usePageTurn`、P2-2c 滚轮/键盘、P2-2d `ReaderTrack`、P2-2e `ReaderChrome` 已完成；手势 composable 待做）
+- **状态**：in progress（2026-10-27：P2-2a 纯函数与边界修复、P2-2b `usePageTurn`、P2-2c 滚轮/键盘、P2-2d `ReaderTrack`、P2-2e `ReaderChrome`、P2-2f 平台兜底已完成；手势 composable 待做）
 - **依赖**：P1 全部；建议独立分支
 - **证据**：`ComicViewer.vue` 1411 行；`trackOffset` 同时被手势和动画写；边界滑动漏 `snapBack`；页码三源；`?page=last` 依赖 watcher 顺序。
 - **目标**：翻页状态只有一个 owner；所有入口（按钮、点击区、滑动、滚轮、方向键）走同一个边界决策；页码/URL/历史同步可测。
@@ -842,3 +842,4 @@ refactor(reader): add pure page-boundary helpers
 - 2026-10-27 / P2-2c / 新增 `useReaderWheel`/`useReaderKeyboard`（各 5 个单测）：滚轮阈值/节流、Ctrl+wheel 缩放、方向键映射、Home/End、缩放快捷键、全屏、Escape 和可编辑目标忽略保持原行为；组件只保留监听注册与移除。验证：`pnpm test` 112 passed、`pnpm build`、`pnpm test:e2e` 4/4。P2-2 剩余：手势 composable、`ReaderChrome`/`ReaderTrack`、`viewerPlatform` 假兜底。
 - 2026-10-27 / P2-2d / 新增 `ReaderTrack.vue`（三槽位、方向类、slot 尺寸事件、轨道样式）；`ComicViewer` 从 1168 行降到 1086 行，模板只保留 stage 手势和空态。验证：`pnpm test` 112 passed、`pnpm build`、`pnpm test:e2e` 4/4。P2-2 剩余：手势 composable、`ReaderChrome`、`viewerPlatform` 假兜底。
 - 2026-10-27 / P2-2e / 新增 `ReaderChrome.vue`（顶栏、底栏、HUD、sr-only 页码、电量），chrome 显隐改为组件内的 `viewer__bar--hidden` 类；`ComicViewer` 从 1086 行降到 680 行，累计从 1434 行降到 680 行。验证：`pnpm test` 112 passed、`pnpm build`、`pnpm test:e2e` 4/4。P2-2 剩余：手势 composable、`viewerPlatform` 假兜底。
+- 2026-10-27 / P2-2f / 删除 `viewerPlatform` 的 `"nhentai"` 假兜底：`ComicReaderView` 只在 `chapter`、非空页和 `platform` 同时成立时渲染 `ComicViewer`，并传真实平台。验证：`pnpm test` 112 passed、`pnpm build`、`pnpm test:e2e` 4/4。P2-2 仅剩手势 composable。

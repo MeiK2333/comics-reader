@@ -63,12 +63,6 @@ const chapterId = computed(() => {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 });
 
-// The viewer only renders after a successful load, which guarantees a valid
-// platform; the fallback keeps the prop non-nullable for the child component.
-const viewerPlatform = computed<ComicPlatform>(
-  () => platform.value ?? "nhentai",
-);
-
 useNextChapterPreload(
   chapter,
   page,
@@ -396,10 +390,10 @@ onBeforeUnmount(() => {
     </div>
 
     <ComicViewer
-      v-else-if="chapter && chapter.pages.length > 0"
+      v-else-if="chapter && chapter.pages.length > 0 && platform"
       v-model:page="page"
       :pages="chapter.pages"
-      :platform="viewerPlatform"
+      :platform="platform"
       :direction="settings.readerDirection"
       :title="chapter.title"
       :chapter-title="chapter.chapterTitle ?? undefined"
