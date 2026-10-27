@@ -1,7 +1,7 @@
 # 重构与修复计划（待办）
 
-> **状态**：P1、P2-1~P2-8、P3-2、P3-4、P4-1~P4-6 已完成并从本文件移除（历史见 git log）。剩余：P4-7（主线）、P4-8（低优先）、P4-9（条件项）、P3-1（可选）、P3-3（条件项）。
-> **基线**：2026-10-27，master（P4-1~P4-6 后）；`pnpm test` 32 files / 209 tests、`cargo test` 169 passed / 10 ignored。
+> **状态**：P1、P2-1~P2-8、P3-2、P3-4、P4-1~P4-7 已完成并从本文件移除（历史见 git log）。剩余：P4-8（低优先）、P4-9（条件项）、P3-1（可选）、P3-3（条件项）。
+> **基线**：2026-10-27，master（P4-1~P4-7 后）；`pnpm test` 35 files / 229 tests、`cargo test` 169 passed / 10 ignored。
 > **适用对象**：后续接手本仓库的编码智能体。
 > **配套文档**：[AGENTS.md](AGENTS.md)（契约、命令、易错点，优先于本文件）、[ROADMAP.md](ROADMAP.md)（功能方向）。
 > **定位说明**：任务卡里的行号是基线行号，代码变动后会漂移；定位时按符号名（函数/结构体/常量）搜索，不要机械相信行号。
@@ -12,14 +12,14 @@
 
 主体重构已经结束。当前维护成本集中在：
 
-1. **测试盲区**（P4 主线）：IPC/缓存/搜索守卫还没有直接单测。
-2. **少量叶子重复**：`KNOWN_PLATFORMS` 三处（P4-8）；其余重复已记录为例外，不要强行统一。
-3. **按需项**：P3-1 其余 DTO 契约只在 wire 结构变化时补；P3-3 分页索引只在有 benchmark 时做。
+1. **少量叶子重复**：`KNOWN_PLATFORMS` 三处（P4-8）；其余重复已记录为例外，不要强行统一。
+2. **可选/条件项**：P4-8 去重与格式、P4-9 阅读器编排抽取（先评估）、P3-1 其余 DTO（只在 wire 变化时补）、P3-3 分页索引（只在有 benchmark 时做）。
 
 执行顺序：
 
-1. **P4-7**；P4-8 低优先，P4-9 条件项。
-2. P3-1 随 wire 变化推进；P3-3 有性能证据再做。
+1. P4-8 低优先，可选。
+2. P4-9 先评估收益；不要为了覆盖率强行拆阅读器。
+3. P3-1 / P3-3 按需推进。
 
 一次只做一个任务卡，独立提交；先加失败用例再修缺陷；结构拆分、行为修复、测试补齐不要混在同一提交。
 
@@ -53,21 +53,15 @@
 
 记录在案的例外（不是待办）：`KNOWN_PLATFORMS` 三处；`LogsView`/`NhentaiDetail` 各自构造 `Intl.DateTimeFormat`；`search`/`ComicThumb`/`useCachedImage`/`usePagedResource` 的局部 `requestId`。只有 `KNOWN_PLATFORMS` 由 P4-8 处理。
 
-### 2.2 无前端测试的高风险模块（P4 依据）
+### 2.2 测试覆盖
 
-| 模块 | 行数 | 为什么高风险 |
-| --- | ---: | --- |
-| `src/api/client.ts` | 35 | IPC 单入口与 ECH 等待约定 |
-| `src/composables/useCachedImage.ts` | 102 | 局部 requestId 例外 |
-| `src/stores/search.ts` | 90 | 局部 requestId 例外；URL-free 搜索会话 |
-
-这些模块合计约 230 行。P4 不按覆盖率数字推进，按对应卡片的行为矩阵补测试。
+P4-1~P4-7 已为阅读器手势/缩放、跨章预加载、下载/收藏动作、在线/已下载详情、IPC 入口、图片缓存与搜索守卫补上单测。新增测试沿用现有约定：与源码同级、jsdom、`vi.mock`/`@tauri-apps/api/mocks`、`NMessageProvider` harness、`effectScope`。
 
 ### 2.3 验证基线
 
 ```powershell
 # 仓库根目录
-pnpm test        # 32 files / 209 tests
+pnpm test        # 35 files / 229 tests
 pnpm build       # vue-tsc --noEmit + Vite build
 
 # src-tauri/
@@ -124,34 +118,10 @@ BUG-1~BUG-10、BUG-12、BUG-13 的已修复项不再保留；需要追溯时看 
 - **做法**：store 内维护按 `addedAt/updatedAt` 排序的 `Vec<Key>`，写时增量更新；或记录 benchmark 后接受现状。
 - **验收**：有 benchmark/profiling 数据；分页结果顺序不变。
 
-### P4：测试补强与局部修复（test/fix）
+### P4：剩余可选与条件项
 
-> **范围**：前端为主。目标不是提高覆盖率数字，而是把“只能靠手点、真机或联网”的交互逻辑变成可重复的自动化。
-> **原则**：先抽纯函数、再测组合式；不为可测性改公开 API、IPC 或路由；测试不联网、不启动 Tauri；测试暴露的行为缺陷单独用 `fix` 提交。
-> **非目标**：不改路由/持久化/wire/错误码/i18n；不重做阅读器三槽轨道；不拆大文件；不引入生成器或新依赖；e2e 不在 P4 门禁内。
-
-#### P4-0 测试约定（所有 P4 卡片共用）
-
-- 组件/组合式测试跑在 jsdom：`vitest.config.ts` 已注入 `src/test/setup.ts`；IPC 用 `vi.mock` 或 `@tauri-apps/api/mocks`，禁止真实网络。
-- `useMessage()` 依赖 `NMessageProvider`；测试用 `defineComponent` + `h(NMessageProvider, …)` 包一层 harness，不要为了测试把 message 改成参数。
-- jsdom 有 `PointerEvent` 构造函数，但没有 `setPointerCapture`/`releasePointerCapture`/`hasPointerCapture`；手势测试在 stage 元素上 stub 这三个方法，并用普通对象伪造事件（hook 只读 `pointerId`/`pointerType`/`button`/`clientX`/`clientY`/`target`/`preventDefault`）。
-- 需要布局的测试（手势、缩放）用 `Object.defineProperties` 设置 `clientWidth`/`clientHeight`，并覆盖 `getBoundingClientRect`（jsdom 默认全为 0）。
-- 组合式优先包在 `effectScope()` 里，结束后 `scope.stop()`；否则 `onScopeDispose` 的清理会在测试之间泄漏。
-- Pinia store 测试按 `src/stores/settings.test.ts` 的模式：先 `createApp(...).use(pinia)`，再创建 store，否则持久化插件不会执行。
-- 测试文件与源码同级（`src/**/*.test.ts`），命名沿用现有风格，不新建 `__tests__/` 目录。
-
-#### P4-7 IPC 入口与局部守卫单测（test）
-
-- **状态**：todo
-- **依赖**：无
-- **证据**：`src/api/client.ts`、`src/composables/useCachedImage.ts`、`src/stores/search.ts` 均 0 测试；`client.ts` 是“唯一 IPC 入口”约定，`useCachedImage`/`search` 是记录在案的局部 `requestId` 例外。
-- **用例**：
-  - `invokeCommand` 默认先 `waitForEchStartup()`；`invokeLocal` 不等待；参数原样传给 `invoke`；invoke 错误不被吞掉；`waitForEch: false` 生效。
-  - `useCachedImage`：有 `localPath` 时直接用 `convertFileSrc` 且不请求；已解析路径命中不请求；未命中时 loading → src；过期响应不覆盖；`fail()` 只对远程 URL `forgetCachedImage`；依赖变化 reset。
-  - `search` store：空 query 不搜索；新搜索立即清空旧结果；过期响应丢弃；`changePage` 忽略越界/同页；loading 在 finally 复位。
-- **验收**：
-  - [ ] `pnpm test`、`pnpm build` 通过；不改变现有 `api/*.ts` 导出。
-- **建议提交**：`test(web): cover ipc entry, image cache and search guards`
+> P4 主线（P4-1~P4-7）已完成并从本文件移除；这里只保留低优先去重与条件项。
+> 测试约定沿用现有测试：jsdom + `vi.mock`/`@tauri-apps/api/mocks`、`NMessageProvider` harness、`effectScope`；测试不联网、不启动 Tauri。
 
 #### P4-8 去重与整洁（chore，低优先）
 
@@ -170,7 +140,7 @@ BUG-1~BUG-10、BUG-12、BUG-13 的已修复项不再保留；需要追溯时看 
 
 #### P4-9 阅读器路由编排可测化（conditional）
 
-- **状态**：conditional（未开始；只有 P4-7 完成后才评估）
+- **状态**：conditional（未开始；P4 主线已完成，先评估收益再决定是否抽取）
 - **证据**：`ComicReaderView.vue` 约 463 行，包含缓存/在途页源选择、manhuagui 无章节深链解析首章、`?page=last`、URL query 同步、历史记录去抖 gate、body overflow；这些逻辑没有单测。
 - **做法**：抽出 `useReaderChapterSource`（或等价 composable）负责“路由参数 → 章节数据/页码/URL/历史”的编排，视图只做渲染；用 mock 的 router + api 测。若评估认为抽取会破坏既定阅读器行为，保持现状并在任务卡记录理由，不要强行拆。
 - **验收**：抽取后 `pnpm test`、`pnpm build` 通过；若环境可用，E2E 行为不变。
@@ -206,20 +176,13 @@ P4 只按自动化门禁验收；真实窗口冒烟（`pnpm tauri dev`）建议�
 
 ## 7. 完成定义（DoD）
 
-### P4 完成
-
-- [ ] P4-7 状态为 done（P4-8 低优先、P4-9 条件项）。
-- [ ] `pnpm test` 覆盖新增用例；`pnpm build`、`cargo test`、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings` 全绿。
-- [ ] 新增测试不依赖网络、真实 Tauri runtime、WebDriver 或真机。
-- [ ] 测试暴露的行为缺陷有独立 `fix` 提交和回归用例。
-- [ ] 没有为了可测性改公开 composable/API 签名、IPC、路由、持久化或错误码。
-- [ ] 每个任务独立提交，未混入无关格式化。
-
 ### 整体完成
 
-- [ ] P4 完成。
+- [x] P4-1~P4-7（测试补强主线）完成；`pnpm test` 35 files / 229 tests、`pnpm build` 通过。
+- [x] BUG-13（下载 pending 泄漏）已修复并有回归测试。
+- [ ] P4-8 低优先、P4-9 条件项按需推进。
 - [ ] P3-1 只在 wire 变化时按需推进；P3-3 有 benchmark 证据再做。
-- [ ] 下一次新增列表页/平台/下载能力可以复用现有 composable、trait 和契约测试，不需要再复制三份。
+- [x] 下一次新增列表页/平台/下载能力可以复用现有 composable、trait 和契约测试。
 
 ---
 
