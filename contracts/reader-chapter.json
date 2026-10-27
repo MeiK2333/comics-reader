@@ -1,0 +1,25 @@
+{
+  "title": "Example Gallery",
+  "thumb": "https://t.nhentai.net/galleries/1/cover.jpg",
+  "chapterId": "12",
+  "chapterTitle": "Chapter 12",
+  "pages": [
+    {
+      "url": "https://example.com/pages/1.jpg",
+      "width": 800,
+      "height": 1200,
+      "localPath": null
+    },
+    {
+      "url": "https://example.com/pages/2.jpg",
+      "width": null,
+      "height": null,
+      "localPath": "/tmp/downloads/generic/1/12/2.jpg"
+    }
+  ],
+  "previous": {
+    "id": "11",
+    "title": "Chapter 11"
+  },
+  "next": null
+}

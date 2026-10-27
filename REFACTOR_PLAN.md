@@ -1,6 +1,6 @@
 # 重构与修复计划
 
-> **状态**：P1 + P2-1~P2-7 已完成；P3-2 缓存清扫完成；P3-1/3/4 待执行
+> **状态**：P1 + P2-1~P2-7 已完成；P3-1 ReaderChapter 契约完成、P3-2 缓存清扫完成；P3-1 其余/P3-3/P3-4 待执行
 > **基线**：2026-10-27，当前 master 工作区
 > **适用对象**：后续接手本仓库的编码智能体
 > **配套文档**：[AGENTS.md](AGENTS.md)（契约、命令、易错点）、[ROADMAP.md](ROADMAP.md)（功能方向）
@@ -624,16 +624,15 @@ export async function invokeCommand<T>(
 
 #### P3-1 Rust ↔ TS 类型生成/契约测试（chore）
 
-- **状态**：todo
-- **依赖**：P2-6（IPC 收口后）
+- **状态**：in progress（2026-10-27：ReaderChapter 共享 JSON 契约已落地；其余 DTO 待评估是否需要生成器）
 - **目标**：减少手抄类型漂移（如 `ReaderChapter.thumb`）。
 - **做法**（先 spike，不要直接引入重依赖）：
   - 评估 `ts-rs`（serde 驱动）或 `specta`（Tauri 生态）与当前 Tauri 2/Vite 8 的兼容性。
   - 如果生成器侵入太大：至少加“wire 字段快照”测试（Rust 侧序列化 fixture → JSON；前端侧类型测试/快照对照），并在 AGENTS.md 记录如何更新。
 - **验收**：
-  - [ ] 一条命令可重新生成类型（或一份契约测试可在字段漂移时失败）。
-  - [ ] 生成文件不手改；构建脚本/文档同步。
-  - [ ] 不改变现有 `api/*.ts` 的公开导出（或提供兼容 re-export）。
+  - [x] 一条命令可重新生成类型（或一份契约测试可在字段漂移时失败）。
+  - [x] 生成文件不手改；构建脚本/文档同步。
+  - [x] 不改变现有 `api/*.ts` 的公开导出（或提供兼容 re-export）。
 
 #### P3-2 图片缓存清扫（feat）
 
@@ -854,3 +853,4 @@ refactor(reader): add pure page-boundary helpers
 - 2026-10-27 / P2-6 / IPC 收口：新增 `api/client.ts`（`invokeCommand` 默认等 ECH、`invokeLocal` 不等）与 `api/echStartup.ts`（启动 gate，避免 client↔ech 环）；`ech.ts` 改为 re-export gate + `invokeLocal`；comics/images/reader/downloads/favorites/history/logs/proxy 全部迁移，网络命令默认等 ECH、本地索引/设置命令显式不等；`ComicThumb` 删除本地 `CachedImage` 与直接 `invoke`，改用 `fetchCachedImage` 复用 in-flight/已解析路径缓存。测试 mock 从 `./ech` 改为 `./echStartup`。验证：`pnpm test` 112 passed、`pnpm build`、`pnpm test:e2e` 4/4。
 - 2026-10-27 / P2-7 / 显式返回来源：Favorites/History/Downloads 的详情 RouterLink 与搜索结果分别写 `state: { from: ... }`；`useDetailReturnTarget` 新增 `readDetailOrigin`/`detailOriginFromPath`，优先 `state.from`，其次旧 `previousPath()`（favorites/history/downloads），最后 `search.active` 或首页；`useBackNavigation` 的 pop/replace 语义不变。新增 `useDetailReturnTarget.test.ts` 4 个纯函数用例。验证：`pnpm test` 116 passed、`pnpm build`、`pnpm test:e2e` 4/4。
 - 2026-10-27 / P3-2 / `ImageCache` 新增 `sweep_default`/`sweep(max_bytes,max_age)`：递归扫描 `images/`，先删超过 30 天的文件，再按 mtime 从旧到新删到 512 MiB 以内；最近 1 小时文件不参与容量删除，删除失败只记日志；只清图片缓存，不碰下载目录。`lib.rs` setup 在 `manage` 后异步 spawn。新增 3 个临时目录单测（年龄、容量、最近文件保护）。验证：`cargo test` 164 passed、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`。
+- 2026-10-27 / P3-1a / 无新依赖的 wire 契约第一刀：新增 `contracts/reader-chapter.json`，Rust `image/model.rs` 测试把 `ReaderChapter` 序列化结果与 fixture 精确比较；前端 `src/api/contract.test.ts` 用 `satisfies ReaderChapter` 与运行时字段断言校验同一 fixture。`thumb`/`localPath`/`chapterId` 等字段漂移会在 Rust 或 TS 任一端失败。验证：`cargo test` 165 passed、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`pnpm test` 118 passed、`pnpm build`。

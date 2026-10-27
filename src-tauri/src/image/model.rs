@@ -267,6 +267,39 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn reader_chapter_matches_the_shared_wire_contract() {
+        let chapter = ReaderChapter {
+            title: "Example Gallery".into(),
+            thumb: "https://t.nhentai.net/galleries/1/cover.jpg".into(),
+            chapter_id: Some("12".into()),
+            chapter_title: Some("Chapter 12".into()),
+            pages: vec![
+                ReaderPage {
+                    url: "https://example.com/pages/1.jpg".into(),
+                    width: Some(800),
+                    height: Some(1200),
+                    local_path: None,
+                },
+                ReaderPage {
+                    url: "https://example.com/pages/2.jpg".into(),
+                    width: None,
+                    height: None,
+                    local_path: Some("/tmp/downloads/generic/1/12/2.jpg".into()),
+                },
+            ],
+            previous: Some(ChapterRef {
+                id: "11".into(),
+                title: "Chapter 11".into(),
+            }),
+            next: None,
+        };
+        let actual = serde_json::to_value(&chapter).unwrap();
+        let expected: serde_json::Value =
+            serde_json::from_str(include_str!("../../../contracts/reader-chapter.json")).unwrap();
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
     fn search_response_uses_page_size_on_the_wire() {
         let response = SearchResponse {
             total: 1,
