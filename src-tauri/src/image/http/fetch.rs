@@ -77,7 +77,17 @@ pub(crate) async fn download_image(
 
     // Trust the magic bytes first: a mislabelled `Content-Type` would otherwise
     // give the cached file an extension the webview cannot render.
-    let format = ImageFormat::detect(&bytes)
+    let mut format = ImageFormat::detect(&bytes);
+    if format.is_none()
+        && let Some(decoded) = platform.decode_image(url, &bytes)
+        && let Some(decoded_format) = ImageFormat::detect(&decoded)
+    {
+        // Some CDNs store images encrypted; the platform decrypts them here so
+        // the format check below sees the real payload.
+        bytes = decoded;
+        format = Some(decoded_format);
+    }
+    let format = format
         .or_else(|| {
             content_type
                 .as_deref()

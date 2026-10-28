@@ -11,6 +11,7 @@ import copymangaWire from "../platforms/copymanga/fixtures/wire.json";
 import ehentaiWire from "../platforms/ehentai/fixtures/wire.json";
 import jmWire from "../platforms/jm/fixtures/wire.json";
 import manhuaguiWire from "../platforms/manhuagui/fixtures/wire.json";
+import manwaWire from "../platforms/manwa/fixtures/wire.json";
 import nhentaiWire from "../platforms/nhentai/fixtures/wire.json";
 import pixivWire from "../platforms/pixiv/fixtures/wire.json";
 import type {
@@ -24,6 +25,8 @@ import type {
   JmSearchItem,
   ManhuaguiDetail,
   ManhuaguiSearchItem,
+  ManwaDetail,
+  ManwaSearchItem,
   NhentaiDetail,
   NhentaiSearchItem,
   PixivDetail,
@@ -72,10 +75,11 @@ const logs: LogSnapshot = {
 // The per-platform fixtures live next to the platform code. Rust serializes
 // the same files, so a shape change must be made on both sides at once.
 const search: ComicSearchResult = {
-  total: 6,
+  total: 7,
   page_size: 25,
   result: [
     manhuaguiWire.search as ManhuaguiSearchItem,
+    manwaWire.search as ManwaSearchItem,
     jmWire.search as JmSearchItem,
     nhentaiWire.search as NhentaiSearchItem,
     copymangaWire.search as CopymangaSearchItem,
@@ -85,6 +89,7 @@ const search: ComicSearchResult = {
 };
 const comicDetails: ComicDetail[] = [
   manhuaguiWire.detail as ManhuaguiDetail,
+  manwaWire.detail as ManwaDetail,
   jmWire.detail as JmDetail,
   nhentaiWire.detail as NhentaiDetail,
   copymangaWire.detail as CopymangaDetail,
@@ -194,6 +199,7 @@ describe("SearchPage wire contract", () => {
     expect(Object.keys(search)).toEqual(["total", "page_size", "result"]);
     expect(search.result.map((item) => item.platform)).toEqual([
       "manhuagui",
+      "manwa",
       "jm",
       "nhentai",
       "copymanga",
@@ -208,11 +214,12 @@ describe("SearchPage wire contract", () => {
       "title",
     ]);
     expect(search.result[0].extra).toHaveProperty("chapterGroups");
-    expect(search.result[1].extra).toHaveProperty("author");
-    expect(search.result[2].extra).toHaveProperty("tagIds");
-    expect(search.result[3].extra).toHaveProperty("chapterGroups");
-    expect(search.result[4].extra).toHaveProperty("languages");
-    expect(search.result[5].extra).toHaveProperty("pageCount");
+    expect(search.result[1].extra).toHaveProperty("authors");
+    expect(search.result[2].extra).toHaveProperty("author");
+    expect(search.result[3].extra).toHaveProperty("tagIds");
+    expect(search.result[4].extra).toHaveProperty("chapterGroups");
+    expect(search.result[5].extra).toHaveProperty("languages");
+    expect(search.result[6].extra).toHaveProperty("pageCount");
   });
 });
 
@@ -220,6 +227,7 @@ describe("ComicDetail wire contract", () => {
   it("keeps one typed detail per platform with core chapters", () => {
     expect(comicDetails.map((detail) => detail.platform)).toEqual([
       "manhuagui",
+      "manwa",
       "jm",
       "nhentai",
       "copymanga",
@@ -234,19 +242,23 @@ describe("ComicDetail wire contract", () => {
       "extra",
     ]);
     expect(comicDetails[0].chapters).toEqual([{ id: "ch-1", title: "第1话" }]);
-    expect(comicDetails[1].chapters).toEqual([{ id: "c1", title: "Chapter 1" }]);
-    expect(comicDetails[2].chapters).toEqual([{ id: null, title: null }]);
-    expect(comicDetails[3].chapters).toEqual([
+    expect(comicDetails[1].chapters).toEqual([
+      { id: "497238", title: "第01话" },
+    ]);
+    expect(comicDetails[2].chapters).toEqual([{ id: "c1", title: "Chapter 1" }]);
+    expect(comicDetails[3].chapters).toEqual([{ id: null, title: null }]);
+    expect(comicDetails[4].chapters).toEqual([
       { id: "b9741745-e439-11ed-9b25-024352452ce0", title: "第01話" },
       { id: "a036001e-ef46-11ed-8221-024352452ce0", title: "第02話" },
     ]);
-    expect(comicDetails[4].chapters).toEqual([{ id: null, title: null }]);
     expect(comicDetails[5].chapters).toEqual([{ id: null, title: null }]);
+    expect(comicDetails[6].chapters).toEqual([{ id: null, title: null }]);
     expect(comicDetails[0].extra).toHaveProperty("chapterGroups");
-    expect(comicDetails[1].extra).toHaveProperty("chapters");
-    expect(comicDetails[2].extra).toHaveProperty("tags");
-    expect(comicDetails[3].extra).toHaveProperty("chapterGroups");
-    expect(comicDetails[4].extra).toHaveProperty("token");
-    expect(comicDetails[5].extra).toHaveProperty("pageCount");
+    expect(comicDetails[1].extra).toHaveProperty("authors");
+    expect(comicDetails[2].extra).toHaveProperty("chapters");
+    expect(comicDetails[3].extra).toHaveProperty("tags");
+    expect(comicDetails[4].extra).toHaveProperty("chapterGroups");
+    expect(comicDetails[5].extra).toHaveProperty("token");
+    expect(comicDetails[6].extra).toHaveProperty("pageCount");
   });
 });

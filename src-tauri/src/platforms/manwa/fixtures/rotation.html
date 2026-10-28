@@ -1,0 +1,64 @@
+
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
+    <script src="/jquery.min.js"></script>
+    <title>网址跳转中..请稍候</title>
+
+</head>
+<body>
+<div style="text-align: center;margin-top: 10%">
+        <h1> 网址跳转中..请稍候</h1>
+        <div id="msg"></div>
+        <h3 id="email" style="display: none"> manwa.service@gmail.com</h3>
+    </div>
+ 
+<script>
+    var lks = JSON.parse(atob('WyJodHRwczpcL1wvbWFud2FyZC5jY1wvIiwiaHR0cHM6XC9cL21hbndhcnAuY2NcLyIsImh0dHBzOlwvXC9tYW53YXJvLmNjXC8iLCJodHRwczpcL1wvbWFud2Fycy5jY1wvIl0='));
+    var jumping = false;
+    var try_count = 0;
+    async function checkUrl(i) {
+
+            if(lks[i]!==undefined && lks[i]!==null) {
+                let img= new Image();
+                let link = lks[i] +"/static/upload2/11.png";
+                let check_uri = "/static/upload2/11.png";
+                if(check_uri==''){
+                    location.href=link+'';
+                    return;
+                }
+                link += link.indexOf('?')>-1? ('&t='+Date.now()):('?t='+Date.now())
+                img.src = link;
+                img.id = i;
+                img.onload = function (e,i) {
+
+                    window.location.href = lks[e.target.id]+'';
+                };
+                img.onerror = function () {
+                    $('#msg').append('<p>..</p>');
+                    //checkUrl(i+1)
+                    try_count++;
+
+                    if(try_count===lks.length){
+                        $('#email').show();
+                    }
+                };
+            }
+
+    }
+(async function(){
+ for(var i = 0 ; i < lks.length;i++){
+    await checkUrl(i);
+ }   
+})() 
+ 
+ 
+
+
+
+</script>
+ 
+</body>
+</html>
+

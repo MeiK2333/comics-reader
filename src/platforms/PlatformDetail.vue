@@ -4,6 +4,7 @@ import CopymangaDetail from "./copymanga/Detail.vue";
 import EhentaiDetail from "./ehentai/Detail.vue";
 import JmDetail from "./jm/Detail.vue";
 import ManhuaguiDetail from "./manhuagui/Detail.vue";
+import ManwaDetail from "./manwa/Detail.vue";
 import NhentaiDetail from "./nhentai/Detail.vue";
 import PixivDetail from "./pixiv/Detail.vue";
 
@@ -37,6 +38,21 @@ const emit = defineEmits<{
       <slot name="extra" />
     </template>
   </ManhuaguiDetail>
+  <ManwaDetail
+    v-else-if="detail.platform === 'manwa'"
+    :detail="detail"
+    :resume-chapter-id="resumeChapterId"
+    :hide-chapters="hideChapters"
+    :local-cover-path="localCoverPath"
+    @open-chapter="emit('openChapter', $event)"
+  >
+    <template #summary-extra>
+      <slot name="summary-extra" />
+    </template>
+    <template #extra>
+      <slot name="extra" />
+    </template>
+  </ManwaDetail>
   <JmDetail
     v-else-if="detail.platform === 'jm'"
     :detail="detail"

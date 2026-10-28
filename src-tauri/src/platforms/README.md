@@ -33,6 +33,9 @@ Override only the capability hooks that differ from the defaults:
 - `resolve_image_url()` when a stable page URL must be resolved to a
   short-lived image URL (E-Hentai `/s/...` pages)
 - `decode_key()` / `preprocess()` for bytes that differ from the download (JM)
+- `decode_key()` / `decode_image()` when the image host encrypts bytes at rest
+  (manwa's AES-128-CBC page images); `decode_image()` only runs when the magic
+  bytes are not a recognisable image
 - `cache_key_url()` / `image_fallbacks()` / `configure()` for CDN quirks
   (pixiv normalizes its `i.pixiv.re` fallback host)
 - `RequestSpec::json_post()` for JSON APIs that require POST (E-Hentai `gdata`)

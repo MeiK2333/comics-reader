@@ -13,6 +13,7 @@ mod jm;
 mod jm_api;
 mod jm_image;
 mod manhuagui;
+mod manwa;
 pub(crate) mod model;
 mod nhentai;
 mod pixiv;
@@ -153,6 +154,18 @@ pub(crate) trait ImageProfile: Send + Sync {
         _bytes: &'a [u8],
     ) -> PreprocessFuture<'a> {
         Box::pin(async move { Ok(None) })
+    }
+
+    /// Last-chance transform for image hosts that encrypt bytes at rest.
+    ///
+    /// Called only when [`download_image`](crate::image::http) cannot detect
+    /// an image format from the downloaded bytes. Returning bytes replaces the
+    /// payload and the pipeline re-runs format detection; `None` keeps the
+    /// `notImage` error. Platforms that decode here must also return a suffix
+    /// from [`Self::decode_key`] so decoded cache entries never collide with
+    /// raw downloads.
+    fn decode_image(&self, _url: &Url, _bytes: &[u8]) -> Option<Vec<u8>> {
+        None
     }
 
     /// Resolve a stable page URL into the URL that actually serves image bytes.
@@ -413,6 +426,20 @@ mod tests {
             detect(&parse("https://i.pixiv.re/img-original/img/1_p0.png")).id(),
             "pixiv"
         );
+        assert_eq!(
+            detect(&parse(
+                "https://mwappimgs.cc/static/upload3/book/id/1/2_zb.webp?v=1"
+            ))
+            .id(),
+            "manwa"
+        );
+        assert_eq!(
+            detect(&parse(
+                "https://newmwtuyuan25.cc/static/upload3/book/id/1/2_zb.webp"
+            ))
+            .id(),
+            "manwa"
+        );
         assert_eq!(detect(&parse("https://example.com/a.png")).id(), "generic");
     }
 
@@ -460,6 +487,13 @@ mod tests {
         assert_eq!(pixiv[REFERER].to_str().unwrap(), "https://www.pixiv.net/");
         assert_eq!(
             pixiv[ACCEPT_LANGUAGE].to_str().unwrap(),
+            "zh-CN,zh;q=0.9,en;q=0.8"
+        );
+
+        let manwa = headers_for("manwa", "https://mwappimgs.cc/static/upload3/1.webp");
+        assert_eq!(manwa[REFERER].to_str().unwrap(), "https://manwa.me/");
+        assert_eq!(
+            manwa[ACCEPT_LANGUAGE].to_str().unwrap(),
             "zh-CN,zh;q=0.9,en;q=0.8"
         );
     }

@@ -9,6 +9,8 @@ import { jm } from "./jm";
 import type { JmDetail, JmSearchItem } from "./jm/types";
 import { manhuagui } from "./manhuagui";
 import type { ManhuaguiDetail, ManhuaguiSearchItem } from "./manhuagui/types";
+import { manwa } from "./manwa";
+import type { ManwaDetail, ManwaSearchItem } from "./manwa/types";
 import { nhentai } from "./nhentai";
 import type { NhentaiDetail, NhentaiSearchItem } from "./nhentai/types";
 import { pixiv } from "./pixiv";
@@ -26,6 +28,7 @@ export const platformList = [
   nhentai,
   copymanga,
   manhuagui,
+  manwa,
   ehentai,
   pixiv,
 ] as const;
@@ -34,6 +37,7 @@ export type ComicPlatform = (typeof platformList)[number]["id"];
 
 export type ComicSearchItem =
   | ManhuaguiSearchItem
+  | ManwaSearchItem
   | JmSearchItem
   | NhentaiSearchItem
   | CopymangaSearchItem
@@ -42,6 +46,7 @@ export type ComicSearchItem =
 
 export type ComicDetail =
   | ManhuaguiDetail
+  | ManwaDetail
   | JmDetail
   | NhentaiDetail
   | CopymangaDetail
@@ -88,5 +93,6 @@ export type { CopymangaDetail, CopymangaSearchItem } from "./copymanga/types";
 export type { EhentaiDetail, EhentaiSearchItem } from "./ehentai/types";
 export type { JmDetail, JmSearchItem } from "./jm/types";
 export type { ManhuaguiDetail, ManhuaguiSearchItem } from "./manhuagui/types";
+export type { ManwaDetail, ManwaSearchItem } from "./manwa/types";
 export type { NhentaiDetail, NhentaiSearchItem } from "./nhentai/types";
 export type { PixivDetail, PixivSearchItem } from "./pixiv/types";

@@ -42,10 +42,11 @@ SVG redraw of that favicon is acceptable; do not invent unrelated artwork.
 | `copymanga/icon.png` | <https://s3.mangafunb.fun/static/websitefree/jpg/allIcon.png> | Cropped 68×67 from the site sprite at `-34px -590px` (the header logo) |
 | `ehentai/icon.png` | <https://e-hentai.org/favicon.ico> | 16×16 favicon upscaled 4× with nearest-neighbor to keep the pixel edges crisp |
 | `pixiv/icon.png` | <https://www.pixiv.net/favicon.ico> | 48×48 favicon upscaled 2× with LANCZOS |
+| `manwa/icon.png` | <https://manwa.me/favicon.ico> | 48×48 favicon used as-is (RGBA) |
 
 Prepared on 2026-10-25; the copymanga sprite was cropped on 2026-10-28; the
 E-Hentai favicon was converted on 2026-10-28; the pixiv favicon was converted
-on 2026-10-28.
+on 2026-10-28; the manwa favicon was installed on 2026-10-28.
 Re-download and overwrite these files if a platform changes its branding. The
 icons remain the property of their respective sites and are used only to
 identify the platform.

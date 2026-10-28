@@ -9,6 +9,7 @@ use super::ehentai::Ehentai;
 use super::generic::Generic;
 use super::jm::Jm;
 use super::manhuagui::Manhuagui;
+use super::manwa::Manwa;
 use super::nhentai::Nhentai;
 use super::pixiv::Pixiv;
 use super::{Catalog, ImageProfile};
@@ -36,15 +37,17 @@ impl Registration {
 
 static GENERIC: Generic = Generic;
 static MANHUAGUI: Manhuagui = Manhuagui;
+static MANWA: Manwa = Manwa;
 static JM: Jm = Jm::new();
 static NHENTAI: Nhentai = Nhentai;
 static COPYMANGA: Copymanga = Copymanga;
 static EHENTAI: Ehentai = Ehentai;
 static PIXIV: Pixiv = Pixiv;
 
-static REGISTRY: [Registration; 7] = [
+static REGISTRY: [Registration; 8] = [
     Registration::image_only(&GENERIC),
     Registration::catalog(&MANHUAGUI, &MANHUAGUI),
+    Registration::catalog(&MANWA, &MANWA),
     Registration::catalog(&JM, &JM),
     Registration::catalog(&NHENTAI, &NHENTAI),
     Registration::catalog(&COPYMANGA, &COPYMANGA),
@@ -132,6 +135,7 @@ mod tests {
     fn recognizes_only_persistable_platforms() {
         for platform in [
             "manhuagui",
+            "manwa",
             "jm",
             "nhentai",
             "copymanga",
@@ -160,6 +164,7 @@ mod tests {
         assert!(find_catalog("pixiv").unwrap().single_chapter());
         assert!(!find_catalog("jm").unwrap().single_chapter());
         assert!(!find_catalog("manhuagui").unwrap().single_chapter());
+        assert!(!find_catalog("manwa").unwrap().single_chapter());
         assert!(!find_catalog("copymanga").unwrap().single_chapter());
 
         assert_eq!(
@@ -207,6 +212,19 @@ mod tests {
             find_catalog("pixiv")
                 .unwrap()
                 .normalize_work_id("../150699872")
+                .is_err()
+        );
+        assert_eq!(
+            find_catalog("manwa")
+                .unwrap()
+                .normalize_work_id("17648")
+                .unwrap(),
+            "17648"
+        );
+        assert!(
+            find_catalog("manwa")
+                .unwrap()
+                .normalize_work_id("../17648")
                 .is_err()
         );
     }

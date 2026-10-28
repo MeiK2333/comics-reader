@@ -15,16 +15,16 @@ function mountBar(platform: ComicPlatform, query: string) {
 }
 
 describe("ComicSearchBar direct open", () => {
-  it("declares numeric-id direct open for JM, nhentai and pixiv", () => {
+  it("declares numeric-id direct open for JM, nhentai, manwa and pixiv", () => {
     const numericPlatforms = platformList
       .filter((platform) => platform.numericIdDirectOpen)
       .map((platform) => platform.id);
 
-    expect(numericPlatforms).toEqual(["jm", "nhentai", "pixiv"]);
+    expect(numericPlatforms).toEqual(["jm", "nhentai", "manwa", "pixiv"]);
   });
 
   it("offers a direct-open action for a numeric work id", async () => {
-    for (const platform of ["jm", "nhentai", "pixiv"] as const) {
+    for (const platform of ["jm", "nhentai", "manwa", "pixiv"] as const) {
       const wrapper = mountBar(platform, " 12345 ");
       const action = wrapper.find(".direct-action");
 
