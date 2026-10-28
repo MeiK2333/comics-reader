@@ -92,6 +92,8 @@
     "emptyDescription": "The chapter source returned an empty page list.",
     "retry": "Retry",
     "pageIndicator": "{current} / {total}",
+    "jumpToPage": "Go to page",
+    "jumpToPageLabel": "Page {current} of {total}. Go to page",
     "pageAnnouncement": "Page {current} of {total}",
     "pageAlt": "Page {current} of {total}",
     "imageFailed": "Could not load this page.",

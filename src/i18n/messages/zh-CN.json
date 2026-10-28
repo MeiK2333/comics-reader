@@ -92,6 +92,8 @@
     "emptyDescription": "章节数据源返回了空的页面列表。",
     "retry": "重试",
     "pageIndicator": "{current} / {total}",
+    "jumpToPage": "跳转到指定页",
+    "jumpToPageLabel": "第 {current} 页，共 {total} 页，点击跳转到指定页",
     "pageAnnouncement": "第 {current} 页，共 {total} 页",
     "pageAlt": "第 {current} 页（共 {total} 页）",
     "imageFailed": "图片加载失败。",

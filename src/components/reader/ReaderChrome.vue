@@ -4,6 +4,7 @@ import { useBattery } from "../../composables/useBattery";
 import { isMobileWebView } from "../../device";
 import { useAppI18n } from "../../i18n";
 import ReaderBattery from "./ReaderBattery.vue";
+import ReaderPageJump from "./ReaderPageJump.vue";
 
 defineProps<{
   chromeVisible: boolean;
@@ -16,12 +17,14 @@ defineProps<{
   hasPreviousChapter: boolean;
   hasNextChapter: boolean;
   trackAnimating: boolean;
+  boundaryLeaving: boolean;
   isFullscreen: boolean;
   percent: number;
 }>();
 
 const emit = defineEmits<{
   close: [];
+  goToPage: [page: number];
   previousPage: [];
   nextPage: [];
   previousChapter: [];
@@ -91,7 +94,12 @@ const batteryLabel = computed(() =>
     />
 
     <span class="viewer__counter">
-      {{ t("reader.pageIndicator", { current: counterPage, total }) }}
+      <ReaderPageJump
+        :page="counterPage"
+        :total="total"
+        :disabled="trackAnimating || boundaryLeaving"
+        @submit="emit('goToPage', $event)"
+      />
     </span>
   </header>
 
@@ -131,7 +139,12 @@ const batteryLabel = computed(() =>
       </NButton>
 
       <span class="viewer__counter viewer__counter--bottom">
-        {{ t("reader.pageIndicator", { current: counterPage, total }) }}
+        <ReaderPageJump
+          :page="counterPage"
+          :total="total"
+          :disabled="trackAnimating || boundaryLeaving"
+          @submit="emit('goToPage', $event)"
+        />
       </span>
 
       <NButton
@@ -259,14 +272,19 @@ const batteryLabel = computed(() =>
     </div>
   </footer>
 
-  <div v-show="!chromeVisible" class="viewer__hud" aria-hidden="true">
+  <div v-show="!chromeVisible" class="viewer__hud">
     <ReaderBattery
       v-if="batteryPercent !== null"
       :level="batteryPercent"
       :label="batteryLabel"
     />
-    <span class="viewer__hud-page">
-      {{ t("reader.pageIndicator", { current: counterPage, total }) }}
+    <span class="viewer__hud-page viewer__hud-jump">
+      <ReaderPageJump
+        :page="counterPage"
+        :total="total"
+        :disabled="trackAnimating || boundaryLeaving"
+        @submit="emit('goToPage', $event)"
+      />
     </span>
   </div>
 
@@ -354,10 +372,11 @@ const batteryLabel = computed(() =>
 }
 
 .viewer__counter {
+  display: inline-flex;
   flex: none;
+  align-items: center;
   font-size: 0.85rem;
   font-variant-numeric: tabular-nums;
-  opacity: 0.7;
 }
 
 .viewer__hud {
@@ -380,8 +399,8 @@ const batteryLabel = computed(() =>
   pointer-events: none;
 }
 
-.viewer__hud-page {
-  opacity: 0.82;
+.viewer__hud-jump {
+  pointer-events: auto;
 }
 
 .viewer__nav,
@@ -402,6 +421,7 @@ const batteryLabel = computed(() =>
 }
 
 .viewer__counter--bottom {
+  justify-content: center;
   min-width: 4.5rem;
   text-align: center;
 }

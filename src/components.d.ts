@@ -60,6 +60,7 @@ declare module 'vue' {
     ReaderBattery: typeof import('./components/reader/ReaderBattery.vue')['default']
     ReaderChrome: typeof import('./components/reader/ReaderChrome.vue')['default']
     ReaderPageImage: typeof import('./components/reader/ReaderPageImage.vue')['default']
+    ReaderPageJump: typeof import('./components/reader/ReaderPageJump.vue')['default']
     ReaderTrack: typeof import('./components/reader/ReaderTrack.vue')['default']
     ResultCardShell: typeof import('./components/result-cards/ResultCardShell.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
