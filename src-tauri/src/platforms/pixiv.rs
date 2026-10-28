@@ -9,8 +9,9 @@
 //!
 //! A multi-page artwork is one implicit chapter. The reader page list mirrors
 //! Pixiv's order and uses the `original` image when the page endpoint provides
-//! it. `i.pixiv.re` is a fallback host only; the cache key is normalized back to
-//! `i.pximg.net` so both hosts share one cached file.
+//! it. Image fetches prefer the `i.pixiv.re` proxy and fall back to
+//! `i.pximg.net`; the cache key is normalized to `i.pximg.net` so both hosts
+//! share one cached file.
 
 use std::future::Future;
 use std::pin::Pin;
@@ -113,14 +114,33 @@ impl ImageProfile for Pixiv {
         url.to_string()
     }
 
+    fn resolve_image_url<'a>(
+        &'a self,
+        _client: &'a HttpClient,
+        url: &'a Url,
+    ) -> Pin<Box<dyn Future<Output = Result<Url>> + Send + 'a>> {
+        Box::pin(async move {
+            if url.host_str() == Some(IMAGE_HOST) {
+                let mut proxy = url.clone();
+                if proxy.set_host(Some(IMAGE_PROXY_HOST)).is_ok() {
+                    // The proxy mirrors the origin's paths, and `cache_key_url`
+                    // still normalizes back to the origin so cached files stay
+                    // shared between the two hosts.
+                    return Ok(proxy);
+                }
+            }
+            Ok(url.clone())
+        })
+    }
+
     fn image_fallbacks(&self, url: &Url) -> Vec<Url> {
-        if url.host_str() != Some(IMAGE_HOST) {
+        if url.host_str() != Some(IMAGE_PROXY_HOST) {
             return Vec::new();
         }
 
-        let mut alternate = url.clone();
-        if alternate.set_host(Some(IMAGE_PROXY_HOST)).is_ok() {
-            vec![alternate]
+        let mut origin = url.clone();
+        if origin.set_host(Some(IMAGE_HOST)).is_ok() {
+            vec![origin]
         } else {
             Vec::new()
         }
@@ -755,17 +775,26 @@ mod tests {
         assert_eq!(error.code(), crate::error::ErrorCode::NotFound);
     }
 
-    #[test]
-    fn uses_the_pixiv_image_proxy_only_as_a_fallback() {
-        let primary =
+    #[tokio::test]
+    async fn prefers_the_pixiv_image_proxy_and_falls_back_to_the_origin() {
+        let origin =
             parse("https://i.pximg.net/img-original/img/2026/10/11/00/52/56/150699872_p0.png");
         let proxy =
             parse("https://i.pixiv.re/img-original/img/2026/10/11/00/52/56/150699872_p0.png");
+        let client = HttpClient::default();
 
-        assert_eq!(Pixiv.image_fallbacks(&primary), vec![proxy.clone()]);
-        assert!(Pixiv.image_fallbacks(&proxy).is_empty());
-        assert_eq!(Pixiv.cache_key_url(&proxy), Pixiv.cache_key_url(&primary));
-        assert_eq!(Pixiv.cache_key_url(&proxy), primary.to_string());
+        assert_eq!(
+            Pixiv.resolve_image_url(&client, &origin).await.unwrap(),
+            proxy
+        );
+        assert_eq!(Pixiv.image_fallbacks(&proxy), vec![origin.clone()]);
+        assert_eq!(
+            Pixiv.resolve_image_url(&client, &proxy).await.unwrap(),
+            proxy
+        );
+        assert!(Pixiv.image_fallbacks(&origin).is_empty());
+        assert_eq!(Pixiv.cache_key_url(&proxy), Pixiv.cache_key_url(&origin));
+        assert_eq!(Pixiv.cache_key_url(&proxy), origin.to_string());
     }
 
     #[test]

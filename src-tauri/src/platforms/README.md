@@ -36,8 +36,9 @@ Override only the capability hooks that differ from the defaults:
 - `decode_key()` / `decode_image()` when the image host encrypts bytes at rest
   (manwa's AES-128-CBC page images); `decode_image()` only runs when the magic
   bytes are not a recognisable image
-- `cache_key_url()` / `image_fallbacks()` / `configure()` for CDN quirks
-  (pixiv normalizes its `i.pixiv.re` fallback host)
+- `cache_key_url()` / `image_fallbacks()` / `resolve_image_url()` /
+  `configure()` for CDN quirks (pixiv prefers its `i.pixiv.re` proxy and
+  normalizes the cache key to `i.pximg.net`)
 - `RequestSpec::json_post()` for JSON APIs that require POST (E-Hentai `gdata`)
 
 The shared `image/` pipeline only calls these traits; it must not learn a new

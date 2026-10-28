@@ -173,7 +173,8 @@ pub(crate) trait ImageProfile: Send + Sync {
     /// E-Hentai exposes `/s/...` image pages whose real image link carries a
     /// short-lived `keystamp`; resolving it immediately before the download
     /// keeps the cache key stable while the image URL stays fresh. Platforms
-    /// that serve images directly keep the identity implementation.
+    /// that serve images directly keep the identity implementation, and pixiv
+    /// uses it to prefer its `i.pixiv.re` proxy host.
     fn resolve_image_url<'a>(
         &'a self,
         _client: &'a HttpClient,
