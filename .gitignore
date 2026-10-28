@@ -26,3 +26,5 @@ scripts/
 
 # E2E WebDriver binary (downloaded to match the local WebView2)
 e2e/.drivers/
+
+release/
