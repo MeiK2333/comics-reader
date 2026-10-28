@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useBattery } from "../../composables/useBattery";
+import { isMobileWebView } from "../../device";
 import { useAppI18n } from "../../i18n";
 import ReaderBattery from "./ReaderBattery.vue";
 
@@ -33,6 +34,7 @@ const emit = defineEmits<{
 
 const { t } = useAppI18n();
 const { percent: batteryPercent } = useBattery();
+const showFullscreen = !isMobileWebView();
 const batteryLabel = computed(() =>
   batteryPercent.value === null
     ? ""
@@ -220,6 +222,7 @@ const batteryLabel = computed(() =>
         1:1
       </NButton>
       <NButton
+        v-if="showFullscreen"
         attr-type="button"
         quaternary
         circle

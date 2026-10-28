@@ -87,6 +87,7 @@
 - 阅读器是详情的子路由：在线 `/comic/:platform/:id/read/:chapterId?`，已下载 `/downloads/:platform/:id/read/:chapterId?`。详情作为父路由保持挂载，关闭阅读器只弹出子路由，不重新请求详情；阅读器只从详情进入。`ComicReaderView` 负责页源、`?page=`、返回详情与错误态。
 - 单页视口：三页槽位（横向左/中/右，纵向上/中/下）组成 3 倍轨道，当前页居中，翻页整体滑动，无背景缝；方向决定轴、手势和方向键。缩放后拖拽平移，滚轮翻页。
 - 上下栏绝对定位、默认隐藏、不占 stage；点中间 1/3 显隐，左右 1/3 翻页；滑动/滚轮/翻页不自动唤出。HUD 仅在菜单隐藏时显示页码，避开右侧安全区并点击穿透；移动端电量用 `navigator.getBattery()`，菜单展开时放顶栏、隐藏时放 HUD，桌面或不支持时隐藏。
+- 移动端隐藏全屏按钮：Tauri 原生窗口本身已是全屏且无法切换，按钮只会失败或误导。桌面保留全屏切换与 `F` 快捷键；移动端判定统一走 `src/device.ts` 的 `isMobileWebView()`（与电量 HUD 共用），不要用窗口宽度猜设备。
 - 页码用 `router.replace` 写 `?page=`，不新增历史，越界夹到 `1..pages.length`，空页显示空态。首/尾页继续翻页自动切章：上一章从末页进入（`?page=last`，加载后换真实页码），下一章从第一页进入；没有相邻章时用 `useBackNavigation` 回详情。按钮、点击区、滑动、滚轮、方向键共用这条边界逻辑；底部章节按钮仍从第一页打开。
 - 章内预加载走 `fetchCachedImage`（同 `platform + url` 合并），`useReaderPreload` 200ms 防抖、2 并发；失败静默，切页/切章停止旧队列。末页跨章由 `useNextChapterPreload` 取下一章页源并预热前 N 张，不展示、不写历史。`src/api/reader.ts` 缓存最近 4 个 `ReaderChapter` 并共享 in-flight，`src/api/images.ts` 缓存最近 64 个已解析路径，均只在内存中有界保留。
 - 页图仍走 `fetch_image`，不要直接请求 CDN；本地 `localPath` 必须让预加载跳过。JM/manhuagui/copymanga 的上一/下一章从页源解析，不要前端拼接；JM 省略 `chapterId` 时用 album id，manhuagui 无章节深链先取详情首章并 `router.replace`；E-Hentai 的页图是 `/s/...` 页面，由 `resolve_image_url` 解析，不要前端拼 H@H 地址；空页统一 `notFound`。

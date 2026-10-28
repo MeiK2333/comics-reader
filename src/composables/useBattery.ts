@@ -1,4 +1,5 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { isMobileWebView } from "../device";
 
 interface BatteryManagerLike extends EventTarget {
   readonly level: number;
@@ -7,10 +8,6 @@ interface BatteryManagerLike extends EventTarget {
 
 interface NavigatorWithBattery extends Navigator {
   getBattery?: () => Promise<BatteryManagerLike>;
-}
-
-function isMobileWebView(): boolean {
-  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 }
 
 /**
