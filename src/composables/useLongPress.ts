@@ -14,10 +14,13 @@ interface LongPressOptions {
 /**
  * Long-press handling for a button that still needs a normal click.
  *
- * The picker opens on pointerup rather than while the finger is down, so a
- * modal cannot appear under the pointer. The click that follows a long press is
- * swallowed once, otherwise releasing after a long press would also run the
- * button's normal short-press action.
+ * The action fires as soon as the press threshold is reached instead of
+ * waiting for the release, so a desktop mouse does not have to be let go
+ * first. Because the overlay it opens then sits under the pointer, the click
+ * produced by the eventual release is swallowed once; otherwise releasing
+ * after a long press would also run the button's normal short-press action.
+ * Moving the pointer cancels a press that has not fired yet, but cannot undo
+ * one that already opened the overlay.
  */
 export function useLongPress(options: LongPressOptions) {
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -25,7 +28,7 @@ export function useLongPress(options: LongPressOptions) {
   let startX = 0;
   let startY = 0;
   let activePointer: number | null = null;
-  let longPressReady = false;
+  let fired = false;
   let suppressClick = false;
 
   function clearTimer() {
@@ -45,7 +48,7 @@ export function useLongPress(options: LongPressOptions) {
   function reset() {
     clearTimer();
     activePointer = null;
-    longPressReady = false;
+    fired = false;
   }
 
   function suppressNextClick() {
@@ -55,6 +58,14 @@ export function useLongPress(options: LongPressOptions) {
       suppressClick = false;
       suppressTimer = null;
     }, SUPPRESS_CLICK_MS);
+  }
+
+  function fire() {
+    fired = true;
+    // The pointer is still down, so the release will produce a click. Swallow
+    // it before the overlay that now covers the button can act on it.
+    suppressNextClick();
+    options.onLongPress();
   }
 
   function onPointerDown(event: PointerEvent) {
@@ -73,12 +84,16 @@ export function useLongPress(options: LongPressOptions) {
     activePointer = event.pointerId;
     timer = setTimeout(() => {
       timer = null;
-      longPressReady = true;
+      fire();
     }, options.delay ?? DEFAULT_DELAY_MS);
   }
 
   function onPointerMove(event: PointerEvent) {
     if (activePointer === null || event.pointerId !== activePointer) {
+      return;
+    }
+    // A fired press already opened the overlay; dragging must not close it.
+    if (fired) {
       return;
     }
 
@@ -93,14 +108,8 @@ export function useLongPress(options: LongPressOptions) {
       return;
     }
 
-    const shouldOpen = longPressReady;
+    // Firing is the timer's job; releasing only ends the press.
     reset();
-    if (shouldOpen) {
-      // The release also produces a click; consume it before the button's
-      // normal short-press handler sees it.
-      suppressNextClick();
-      options.onLongPress();
-    }
   }
 
   function onPointerCancel(event: PointerEvent) {

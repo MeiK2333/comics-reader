@@ -70,16 +70,17 @@ afterEach(() => {
 });
 
 describe("useLongPress", () => {
-  it("fires on pointerup after the delay and swallows the next click", async () => {
+  it("fires while the pointer is still down and swallows the next click", async () => {
     const { button, onLongPress, onClick } = mountButton();
 
     button.dispatchEvent(pointer("pointerdown"));
     await vi.advanceTimersByTimeAsync(499);
-    button.dispatchEvent(pointer("pointerup"));
     expect(onLongPress).not.toHaveBeenCalled();
 
-    button.dispatchEvent(pointer("pointerdown"));
-    await vi.advanceTimersByTimeAsync(500);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(onLongPress).toHaveBeenCalledTimes(1);
+
+    // Releasing ends the press without firing a second time.
     button.dispatchEvent(pointer("pointerup"));
     expect(onLongPress).toHaveBeenCalledTimes(1);
 
@@ -88,6 +89,31 @@ describe("useLongPress", () => {
 
     button.dispatchEvent(click());
     expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not fire on release when the press was too short", async () => {
+    const { button, onLongPress } = mountButton();
+
+    button.dispatchEvent(pointer("pointerdown"));
+    await vi.advanceTimersByTimeAsync(200);
+    button.dispatchEvent(pointer("pointerup"));
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(onLongPress).not.toHaveBeenCalled();
+  });
+
+  it("keeps the overlay open when the pointer moves after it fired", async () => {
+    const { button, onLongPress } = mountButton();
+
+    button.dispatchEvent(pointer("pointerdown"));
+    await vi.advanceTimersByTimeAsync(500);
+    expect(onLongPress).toHaveBeenCalledTimes(1);
+
+    button.dispatchEvent(pointer("pointermove", { clientX: 80, clientY: 80 }));
+    button.dispatchEvent(pointer("pointercancel"));
+    button.dispatchEvent(pointer("pointerup"));
+
+    expect(onLongPress).toHaveBeenCalledTimes(1);
   });
 
   it("cancels when the pointer moves past the threshold", async () => {
