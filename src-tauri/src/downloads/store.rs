@@ -1,6 +1,7 @@
 //! Download index state machine and persistence.
 
 use super::*;
+use tokio::sync::SemaphorePermit;
 
 #[derive(Default)]
 pub(crate) struct DownloadsData {
@@ -66,6 +67,17 @@ impl Default for DownloadsStore {
 impl DownloadsStore {
     pub(super) fn next_run_id(&self) -> u64 {
         self.run_seq.fetch_add(1, Ordering::Relaxed) + 1
+    }
+
+    /// Hold the single download slot while cache cleanup runs.
+    ///
+    /// Downloads copy page images out of the image cache, so clearing it while
+    /// a worker holds a page path can make that copy fail. A worker must own
+    /// the slot for its whole run; holding it here also keeps a newly spawned
+    /// worker from starting in the middle of the deletion. `None` means a
+    /// download is queued or running.
+    pub(crate) fn try_reserve_slot(&self) -> Option<SemaphorePermit<'_>> {
+        self.queue.try_acquire().ok()
     }
 
     pub(super) fn with_data<T>(

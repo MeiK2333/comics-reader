@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime};
 
+use serde::Serialize;
 use sha2::{Digest, Sha256};
 use tokio::io::AsyncWriteExt;
 use url::Url;
@@ -19,6 +20,14 @@ const SWEEP_MAX_BYTES: u64 = 512 * 1024 * 1024;
 const SWEEP_MAX_AGE: Duration = Duration::from_secs(30 * 24 * 60 * 60);
 /// Files touched this recently may belong to an in-flight image request.
 const SWEEP_PROTECT: Duration = Duration::from_secs(60 * 60);
+
+/// Size of the disposable image cache, as shown on the settings page.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CacheUsage {
+    pub files: u64,
+    pub bytes: u64,
+}
 
 /// `ImageCache` owns the cache root so the app resolves `app_cache_dir()` once
 /// at startup instead of on every image request.
@@ -58,6 +67,57 @@ impl ImageCache {
 
     pub(crate) async fn sweep_default(&self) -> Result<()> {
         self.sweep(SWEEP_MAX_BYTES, SWEEP_MAX_AGE).await
+    }
+
+    pub(crate) async fn usage(&self) -> Result<CacheUsage> {
+        let mut files = Vec::new();
+        collect_cache_files(&self.base, &mut files).await?;
+
+        Ok(CacheUsage {
+            files: files.len() as u64,
+            bytes: files.iter().map(|(_, size, _)| *size).sum(),
+        })
+    }
+
+    /// Delete every cached image. The directory only holds disposable page and
+    /// thumbnail bytes: downloaded works live under `app_data_dir()/downloads/`
+    /// and are never touched here.
+    ///
+    /// One file that cannot be removed (e.g. still open by another process on
+    /// Windows) is logged and skipped, so a single locked file cannot keep the
+    /// rest of the cache alive. Platform directories are recreated on demand.
+    pub(crate) async fn clear(&self) -> Result<CacheUsage> {
+        let mut files = Vec::new();
+        collect_cache_files(&self.base, &mut files).await?;
+
+        let mut cleared = CacheUsage::default();
+        for (path, size, _) in files {
+            match tokio::fs::remove_file(&path).await {
+                Ok(()) => {
+                    cleared.files += 1;
+                    cleared.bytes += size;
+                }
+                Err(error) if error.kind() == ErrorKind::NotFound => {}
+                Err(error) => logging::warn(
+                    "cache",
+                    format!("failed to remove cache file {}: {error}", path.display()),
+                ),
+            }
+        }
+
+        if let Err(error) = tokio::fs::remove_dir_all(&self.base).await
+            && error.kind() != ErrorKind::NotFound
+        {
+            logging::warn(
+                "cache",
+                format!(
+                    "failed to remove the cache directory {}: {error}",
+                    self.base.display()
+                ),
+            );
+        }
+
+        Ok(cleared)
     }
 
     /// Delete files older than `max_age`, then the oldest files until the
@@ -485,6 +545,72 @@ mod tests {
             Some(path.clone())
         );
         assert_eq!(cache.lookup("generic", "other").await.unwrap(), None);
+
+        let _ = tokio::fs::remove_dir_all(&root).await;
+    }
+
+    #[test]
+    fn cache_usage_serializes_with_stable_field_names() {
+        let expected: serde_json::Value =
+            serde_json::from_str(include_str!("../../../contracts/cache-usage.json")).unwrap();
+        let actual = serde_json::to_value(CacheUsage {
+            files: 3,
+            bytes: 1024,
+        })
+        .unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[tokio::test]
+    async fn usage_counts_every_platform_and_clear_only_touches_the_cache() {
+        let (root, cache) = temp_cache("clear");
+        cache
+            .write("generic", "one", ImageFormat::Png, &[0u8; 10])
+            .await
+            .unwrap();
+        cache
+            .write("jm", "two", ImageFormat::Jpeg, &[1u8; 20])
+            .await
+            .unwrap();
+
+        // Downloads share `app_cache_dir()` but live outside `images/`; clearing
+        // must leave them fully intact.
+        let downloads = root.join("downloads").join("manhuagui").join("42");
+        tokio::fs::create_dir_all(&downloads).await.unwrap();
+        let downloaded = downloads.join("00001.jpg");
+        tokio::fs::write(&downloaded, b"downloaded").await.unwrap();
+
+        assert_eq!(
+            cache.usage().await.unwrap(),
+            CacheUsage {
+                files: 2,
+                bytes: 30
+            }
+        );
+
+        assert_eq!(
+            cache.clear().await.unwrap(),
+            CacheUsage {
+                files: 2,
+                bytes: 30
+            }
+        );
+
+        assert_eq!(cache.usage().await.unwrap(), CacheUsage::default());
+        assert!(cache.lookup("generic", "one").await.unwrap().is_none());
+        assert!(cache.lookup("jm", "two").await.unwrap().is_none());
+        assert_eq!(tokio::fs::read(&downloaded).await.unwrap(), b"downloaded");
+
+        let _ = tokio::fs::remove_dir_all(&root).await;
+    }
+
+    #[tokio::test]
+    async fn clearing_a_missing_cache_is_a_no_op() {
+        let (root, cache) = temp_cache("clear-missing");
+
+        assert_eq!(cache.usage().await.unwrap(), CacheUsage::default());
+        assert_eq!(cache.clear().await.unwrap(), CacheUsage::default());
 
         let _ = tokio::fs::remove_dir_all(&root).await;
     }

@@ -21,6 +21,10 @@ const inFlight = new Map<string, Promise<CachedImage>>();
 const RESOLVED_CACHE_LIMIT = 64;
 const resolvedImages = new Map<string, CachedImage>();
 
+// Bumped when the on-disk cache is cleared. A response that started before the
+// clear must not put its now-deleted path back into the map.
+let generation = 0;
+
 function requestKey(platform: ComicPlatform, url: string): string {
   return `${platform}\u0000${url}`;
 }
@@ -51,6 +55,16 @@ export function forgetCachedImage(platform: ComicPlatform, url: string) {
 }
 
 /**
+ * Drop every resolved path after the on-disk cache was cleared. Requests that
+ * were already in flight settle normally but are not remembered.
+ */
+export function clearResolvedImages() {
+  generation += 1;
+  resolvedImages.clear();
+  inFlight.clear();
+}
+
+/**
  * Resolve one remote image through the Rust cache. The shared promise is only
  * an in-process dedupe layer; Rust still owns headers, caching and storage.
  */
@@ -68,12 +82,15 @@ export function fetchCachedImage(
     return existing;
   }
 
+  const requestedGeneration = generation;
   const request = (async () => {
     const image = await invokeCommand<CachedImage>("fetch_image", {
       url,
       platform,
     });
-    rememberImage(key, image);
+    if (requestedGeneration === generation) {
+      rememberImage(key, image);
+    }
     return image;
   })();
   inFlight.set(key, request);

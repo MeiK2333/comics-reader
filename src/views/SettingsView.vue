@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { useBackNavigation } from "../composables/useBackNavigation";
 import { useMessage } from "naive-ui";
 import type { SelectOption } from "naive-ui";
 import HomeIcon from "../components/HomeIcon.vue";
+import { clearImageCache, getImageCacheUsage, type CacheUsage } from "../api/cache";
 import { beginEchStartup, setEchEnabled } from "../api/ech";
 import { setLoggingEnabled } from "../api/logs";
 import {
@@ -14,6 +15,7 @@ import {
 import { toAppError } from "../errors";
 import { useErrorMessage } from "../composables/useErrorMessage";
 import { useAppI18n, type MessageKey } from "../i18n";
+import { useByteFormatter } from "../i18n/format";
 import {
   READER_PRELOAD_MAX,
   READER_PRELOAD_MIN,
@@ -79,6 +81,38 @@ const proxyDraft = reactive<{
 const savingProxy = ref(false);
 const savingEch = ref(false);
 const savingLogging = ref(false);
+
+const cacheUsage = ref<CacheUsage | null>(null);
+const loadingCache = ref(false);
+const clearingCache = ref(false);
+const { format: formatBytes } = useByteFormatter();
+
+const cacheUsageText = computed(() => {
+  if (loadingCache.value) {
+    return t("settings.cache.loading");
+  }
+
+  const usage = cacheUsage.value;
+  if (!usage) {
+    return t("settings.cache.errors.load");
+  }
+  if (usage.files === 0) {
+    return t("settings.cache.empty");
+  }
+  return t("settings.cache.usage", {
+    size: formatBytes(usage.bytes),
+    count: usage.files,
+  });
+});
+
+// An unknown usage (a failed measurement) still allows clearing: the command
+// itself is harmless when the cache is already empty.
+const canClearCache = computed(
+  () =>
+    !loadingCache.value &&
+    !clearingCache.value &&
+    (cacheUsage.value?.files ?? 1) > 0,
+);
 
 const PROXY_ERROR_KEYS: Record<ProxyValidationError, MessageKey> = {
   hostRequired: "settings.proxy.errors.hostRequired",
@@ -204,6 +238,48 @@ async function onLoggingToggle(enabled: boolean) {
   }
 }
 
+async function loadCacheUsage() {
+  if (loadingCache.value) {
+    return;
+  }
+
+  loadingCache.value = true;
+  try {
+    cacheUsage.value = await getImageCacheUsage();
+  } catch (cause) {
+    cacheUsage.value = null;
+    console.error("failed to measure the image cache", cause);
+  } finally {
+    loadingCache.value = false;
+  }
+}
+
+async function clearCache() {
+  if (clearingCache.value) {
+    return;
+  }
+
+  clearingCache.value = true;
+  try {
+    const freed = await clearImageCache();
+    message.success(
+      t("settings.cache.cleared", { size: formatBytes(freed.bytes) }),
+    );
+    await loadCacheUsage();
+  } catch (cause) {
+    const error = toAppError(cause);
+    // The backend refuses while a download owns the image cache slot.
+    if (error.code === "invalidInput" && error.details.field === "downloads") {
+      message.warning(t("settings.cache.errors.downloading"));
+    } else {
+      message.error(t("settings.cache.errors.clear"));
+    }
+    console.error("failed to clear the image cache", cause);
+  } finally {
+    clearingCache.value = false;
+  }
+}
+
 async function saveProxy() {
   if (savingEch.value) {
     return;
@@ -238,6 +314,10 @@ async function saveProxy() {
 function goHome() {
   goBack({ name: "home" });
 }
+
+onMounted(() => {
+  void loadCacheUsage();
+});
 </script>
 
 <template>
@@ -372,6 +452,33 @@ function goHome() {
       <RouterLink class="setting setting-link" :to="{ name: 'logs' }">
         <span>{{ t("settings.logging.view") }}</span>
       </RouterLink>
+
+      <NDivider class="settings-divider" />
+
+      <h2 class="settings-subtitle">{{ t("settings.cache.title") }}</h2>
+
+      <p class="settings-hint">{{ t("settings.cache.description") }}</p>
+
+      <div class="setting">
+        <span class="cache-usage">{{ cacheUsageText }}</span>
+        <NPopconfirm
+          :positive-text="t('settings.cache.confirm')"
+          :negative-text="t('settings.cache.cancel')"
+          @positive-click="clearCache"
+        >
+          <template #trigger>
+            <NButton
+              attr-type="button"
+              size="small"
+              :loading="clearingCache"
+              :disabled="!canClearCache"
+            >
+              {{ t("settings.cache.clear") }}
+            </NButton>
+          </template>
+          {{ t("settings.cache.confirmMessage") }}
+        </NPopconfirm>
+      </div>
     </NCard>
   </main>
 </template>
@@ -476,6 +583,17 @@ function goHome() {
 
 .ech-setting {
   margin-top: 0.9rem;
+}
+
+.settings-hint {
+  margin: 0 0 0.85rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  opacity: 0.72;
+}
+
+.cache-usage {
+  font-variant-numeric: tabular-nums;
 }
 
 </style>

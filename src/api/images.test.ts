@@ -8,6 +8,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 vi.mock("./echStartup", () => ({ waitForEchStartup: waitMock }));
 
 import {
+  clearResolvedImages,
   fetchCachedImage,
   forgetCachedImage,
   getCachedImage,
@@ -112,6 +113,37 @@ describe("fetchCachedImage", () => {
 
     await fetchCachedImage("nhentai", url);
     expect(invokeMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("forgets every resolved path when the disk cache is cleared", async () => {
+    const url = uniqueUrl("clear");
+    invokeMock.mockResolvedValue(imageFor("nhentai"));
+
+    await fetchCachedImage("nhentai", url);
+    expect(getCachedImage("nhentai", url)).not.toBeNull();
+
+    clearResolvedImages();
+
+    expect(getCachedImage("nhentai", url)).toBeNull();
+  });
+
+  it("does not remember a response that started before the cache was cleared", async () => {
+    const url = uniqueUrl("clear-inflight");
+    let release!: (image: CachedImage) => void;
+    invokeMock.mockReturnValue(
+      new Promise<CachedImage>((resolve) => {
+        release = resolve;
+      }),
+    );
+
+    const pending = fetchCachedImage("nhentai", url);
+    await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledTimes(1));
+
+    clearResolvedImages();
+    release(imageFor("nhentai"));
+    await pending;
+
+    expect(getCachedImage("nhentai", url)).toBeNull();
   });
 
   it("waits for an in-flight ECH bootstrap before invoking", async () => {

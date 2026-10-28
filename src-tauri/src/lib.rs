@@ -46,6 +46,8 @@ pub fn run() {
             image::get_comic,
             image::get_reader_chapter,
             image::set_http_proxy,
+            image::get_image_cache_usage,
+            image::clear_image_cache,
             history::list_history,
             history::record_history,
             history::get_history_entry,

@@ -12,6 +12,7 @@ use std::path::PathBuf;
 use serde::Serialize;
 use tauri::State;
 
+use crate::downloads::DownloadsStore;
 use crate::error::{AppError, Result};
 use crate::logging;
 use crate::platforms::model::{ComicDetail, ReaderChapter, SearchResponse};
@@ -19,8 +20,8 @@ use crate::platforms::{
     Catalog, RequestSpec, catalog as resolve_catalog, resolve as resolve_platform,
 };
 
-pub(crate) use cache::ImageCache;
 use cache::ImageFormat;
+pub(crate) use cache::{CacheUsage, ImageCache};
 pub(crate) use http::HttpClient;
 use http::HttpProxyConfig;
 
@@ -163,6 +164,42 @@ pub(crate) async fn fetch_image_inner(
         .await?;
 
     cached_image(path, platform.id(), false).await
+}
+
+/// Measure the disposable image cache for the settings page.
+#[tauri::command]
+pub(crate) async fn get_image_cache_usage(cache: State<'_, ImageCache>) -> Result<CacheUsage> {
+    cache.usage().await
+}
+
+/// Delete every cached thumbnail and reader page.
+///
+/// Downloaded works live under `app_data_dir()/downloads/` and are not part of
+/// this cache, so they are never touched. Clearing is refused while a download
+/// is queued or running because its worker copies page images out of this
+/// cache; the reserved slot also keeps a new worker from starting halfway
+/// through the deletion.
+#[tauri::command]
+pub(crate) async fn clear_image_cache(
+    downloads: State<'_, DownloadsStore>,
+    cache: State<'_, ImageCache>,
+) -> Result<CacheUsage> {
+    let _slot = downloads
+        .try_reserve_slot()
+        .ok_or_else(|| AppError::InvalidInput {
+            field: "downloads",
+            reason: "pause the active download before clearing the image cache".into(),
+        })?;
+
+    let cleared = cache.clear().await?;
+    logging::info(
+        "cache",
+        format!(
+            "image cache cleared: files={} bytes={}",
+            cleared.files, cleared.bytes
+        ),
+    );
+    Ok(cleared)
 }
 
 async fn cached_image(path: PathBuf, platform: &str, from_cache: bool) -> Result<CachedImage> {

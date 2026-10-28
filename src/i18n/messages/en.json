@@ -168,6 +168,23 @@
       "errors": {
         "update": "Could not update the logging setting."
       }
+    },
+    "cache": {
+      "title": "Cache",
+      "description": "Cached thumbnails and reader pages. Downloaded works are stored separately and are not affected.",
+      "usage": "Using {size} across {count} files",
+      "empty": "No cached images.",
+      "loading": "Measuring…",
+      "clear": "Clear cache",
+      "confirm": "Clear",
+      "cancel": "Cancel",
+      "confirmMessage": "Delete all cached images? They will be downloaded again when opened.",
+      "cleared": "Cache cleared. Freed {size}.",
+      "errors": {
+        "load": "Could not measure the cache.",
+        "clear": "Could not clear the cache.",
+        "downloading": "A download is in progress. Pause it before clearing the cache."
+      }
     }
   },
   "logs": {

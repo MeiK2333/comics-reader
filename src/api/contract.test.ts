@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import cacheUsageFixture from "../../contracts/cache-usage.json";
 import detailFixture from "../../contracts/download-detail.json";
 import favoriteGroupsFixture from "../../contracts/favorite-groups.json";
 import favoritesFixture from "../../contracts/favorites-page.json";
@@ -25,6 +26,7 @@ import type {
   NhentaiDetail,
   NhentaiSearchItem,
 } from "../platforms";
+import type { CacheUsage } from "./cache";
 import type { DownloadDetail } from "./downloads";
 import type { FavoriteGroupList, FavoritePage } from "./favorites";
 import type { HistoryPage } from "./history";
@@ -55,6 +57,7 @@ const favorites: FavoritePage = {
   })),
 };
 const favoriteGroups: FavoriteGroupList = favoriteGroupsFixture;
+const cacheUsage: CacheUsage = cacheUsageFixture;
 const logs: LogSnapshot = {
   ...logsFixture,
   entries: logsFixture.entries.map((entry) => ({
@@ -156,6 +159,14 @@ describe("FavoriteGroupList wire contract", () => {
     ]);
     expect(favoriteGroups.groups[0].name).toBe("");
     expect(favoriteGroups.groups[1].name).toBe("Reading");
+  });
+});
+
+describe("CacheUsage wire contract", () => {
+  it("keeps the cache measurement fields", () => {
+    expect(Object.keys(cacheUsage).sort()).toEqual(["bytes", "files"]);
+    expect(cacheUsage.files).toBe(3);
+    expect(cacheUsage.bytes).toBe(1024);
   });
 });
 

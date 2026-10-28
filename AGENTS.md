@@ -56,6 +56,7 @@
 - 图片全部由 Rust 处理：`ComicThumb` → `fetch_image` → `convertFileSrc` 资产协议。不要直接用远程 URL、blob/object URL 或浏览器 `fetch`。
 - 资产协议三处同时成立：`tauri` 的 `protocol-asset` feature、`tauri.conf.json` 的 `app.security.assetProtocol.enable`、覆盖 `$APPCACHE/images/**` 与 `$APPDATA/downloads/**` 的 scope；缺一为 403/空白。
 - 缓存键 = SHA-256（`CACHE_VERSION` + 平台 id + 平台 `cache_version` + 归一化 URL）；写入 `app_cache_dir()/images/<platform>/<hash>.<ext>`，格式按魔数、扩展名决定 MIME。manhuagui 去 query；JM 去 query，`/media/` 还忽略 host；copymanga 去 query 并把 `mangafuna.xyz` 归一化为 `mangafunb.fun`；E-Hentai 的 `/s/...` 页面去 query，真实 H@H 图片 URL 不参与缓存键。当前 `CACHE_VERSION = v1`、各平台 `cache_version = 1`；发布后改平台请求头/语义要提升平台版本，改 URL 归一化/目录要提升 `CACHE_VERSION`。启动后清扫：超 30 天或超 512 MiB 时删除，最近 1 小时保护；下载不参与。
+- 设置页“存储”区通过 `get_image_cache_usage` / `clear_image_cache` 展示并清空图片缓存：只操作 `app_cache_dir()/images/`，`downloads/` 不参与。下载排队或进行中时 `clear_image_cache` 返回 `invalidInput`（`details.field = "downloads"`），前端提示先暂停；下载 worker 从图片缓存复制页面，所以清除要占用下载队列槽位。清除成功后前端必须调用 `src/api/images.ts` 的 `clearResolvedImages()` 丢弃内存中的旧路径，清除前发出的 in-flight 结果也不得写回。
 - 业务请求统一走 `HttpClient::send`，代理/ECH 才生效；ECH bootstrap/DoH 用自己的 client，不要为业务另建 client。平台可以通过 `ImageProfile::resolve_image_url` 把稳定页面 URL 解析成短时效图片 URL（E-Hentai 的 `/s/...` 页面）。
 
 ### 平台注册与解析

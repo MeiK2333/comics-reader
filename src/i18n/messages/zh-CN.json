@@ -168,6 +168,23 @@
       "errors": {
         "update": "无法更新日志设置。"
       }
+    },
+    "cache": {
+      "title": "缓存",
+      "description": "缩略图与阅读页图片的缓存。下载的作品单独保存，不受影响。",
+      "usage": "已占用 {size}，共 {count} 个文件",
+      "empty": "暂无缓存图片。",
+      "loading": "正在统计…",
+      "clear": "清除缓存",
+      "confirm": "清除",
+      "cancel": "取消",
+      "confirmMessage": "确定删除全部缓存图片吗？再次打开时会重新下载。",
+      "cleared": "缓存已清除，释放 {size}。",
+      "errors": {
+        "load": "无法统计缓存大小。",
+        "clear": "无法清除缓存。",
+        "downloading": "正在下载作品，请先暂停后再清除缓存。"
+      }
     }
   },
   "logs": {

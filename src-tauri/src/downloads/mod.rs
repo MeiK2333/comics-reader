@@ -827,4 +827,21 @@ mod tests {
         cleanup(&path);
         let _ = fs::remove_dir_all(&root);
     }
+
+    #[test]
+    fn cache_cleanup_cannot_reserve_a_busy_download_slot() {
+        let store = DownloadsStore::default();
+        let slot = store
+            .queue
+            .try_acquire()
+            .expect("the download slot should start free");
+
+        assert!(
+            store.try_reserve_slot().is_none(),
+            "a running worker keeps cache cleanup out"
+        );
+
+        drop(slot);
+        assert!(store.try_reserve_slot().is_some());
+    }
 }
