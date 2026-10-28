@@ -11,7 +11,7 @@ use super::super::cache::ImageFormat;
 use super::{HttpClient, MAX_DOCUMENT_BYTES};
 use crate::platforms::{Catalog, ImageProfile, RequestSpec};
 
-const MAX_IMAGE_BYTES: u64 = 32 * 1024 * 1024;
+const MAX_IMAGE_BYTES: u64 = 64 * 1024 * 1024;
 
 pub(crate) struct Download {
     pub(crate) bytes: Vec<u8>,

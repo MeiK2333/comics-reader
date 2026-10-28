@@ -25,7 +25,7 @@ use crate::error::{AppError, Result};
 
 const LOG_FILE_NAME: &str = "app.log";
 const MAX_LOG_BYTES: u64 = 1024 * 1024;
-const DEFAULT_TAIL_ENTRIES: usize = 500;
+const DEFAULT_TAIL_ENTRIES: usize = 5000;
 
 static ENABLED: AtomicBool = AtomicBool::new(false);
 static LOG_PATH: OnceLock<PathBuf> = OnceLock::new();

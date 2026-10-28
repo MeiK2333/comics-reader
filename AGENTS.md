@@ -49,7 +49,7 @@
 - 阅读方向 `readerDirection`：`ltr` / `rtl` / `ttb`，默认 `ltr`，只在前端。`readerPreloadCount` 3–10，默认 3：当前章向后预热的页数，也是末页预热下一章时的图片数；不是磁盘缓存上限，不同步 Rust。`readerPreloadNextChapter` 默认开：末页取下一章页源并预热前 N 张，只预热，不改变翻页/跳章/历史。
 - 代理：无认证 `http://host:port`；启动和保存时 `set_http_proxy` 重建共享 client。关闭开关立即 `set_http_proxy(null)`，无需保存；开启或改地址要保存成功后才写 store。
 - ECH：与代理互斥；开启时自动关代理；ECH 开启时 `set_http_proxy(Some)` 返回 `invalidInput`。启动异步初始化，失败回滚 `settings.ech`；初始化期间首页等待，网络命令经门禁等待；非 Cloudflare 站点 plain TLS 回退是预期。plain TLS 仍失败时再尝试不带 SNI 的 TLS（仅传输层失败时；证书仍按目标域名和 WebPKI 校验，因此只有默认虚拟主机证书匹配时才会成功）；成功同样按 host 缓存 10 分钟。内部细节以 `ech/`、`image/http/` 和测试为准。
-- 日志：默认关；`set_logging_enabled` 同步，失败回滚并提示。日志页 `/settings/logs` 只读最近 500 条（时间倒序），导出走原生保存对话框；`app.log` 超 1 MiB 轮转为 `app.log.1`（只留一份）；清空同时删两个文件、不弹确认、不显示路径。
+- 日志：默认关；`set_logging_enabled` 同步，失败回滚并提示。日志页 `/settings/logs` 只读最近 5000 条（时间倒序），导出走原生保存对话框；`app.log` 超 1 MiB 轮转为 `app.log.1`（只留一份）；清空同时删两个文件、不弹确认、不显示路径。
 
 ### 图片与缓存
 
