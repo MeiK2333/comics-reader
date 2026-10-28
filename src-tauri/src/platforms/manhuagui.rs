@@ -153,6 +153,7 @@ impl Catalog for Manhuagui {
             total: total.max(result.len() as u64),
             page_size: PAGE_SIZE,
             result,
+            has_next: None,
         })
     }
 

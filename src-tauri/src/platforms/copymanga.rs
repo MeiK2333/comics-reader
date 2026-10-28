@@ -1,6 +1,6 @@
 //! Copymanga (拷贝漫画 / mangacopy.com).
 //!
-//! Metadata comes from the official APP API (`api.2024manga.com`): search and
+//! Metadata comes from the official APP API (`api.manga2026.com`): search and
 //! the comic detail payload are plain JSON, while the chapter list is one
 //! request per site group. Reading pages come from the web chapter page, whose
 //! image manifest is encrypted with AES-128-CBC using the `cct` and
@@ -35,7 +35,7 @@ const WEB_BASE: &str = "https://www.mangacopy.com";
 /// The APP API host that currently serves detail and chapter payloads. Search
 /// also answers on `api.mangacopy.com`, but detail there returns a null
 /// `results`, so one host is used for every API request.
-const API_BASE: &str = "https://api.2024manga.com";
+const API_BASE: &str = "https://api.manga2026.com";
 const API_VERSION: &str = "3.0.0";
 const API_PLATFORM: &str = "3";
 const API_SOURCE: &str = "com.manga2020.app";
@@ -214,6 +214,7 @@ impl Catalog for Copymanga {
                 total: 0,
                 page_size: PAGE_SIZE,
                 result: Vec::new(),
+                has_next: None,
             });
         };
 
@@ -256,6 +257,7 @@ impl Catalog for Copymanga {
                 results.limit
             },
             result,
+            has_next: None,
         })
     }
 
@@ -1205,7 +1207,7 @@ var contentKey = '{content_key}';
     fn builds_search_and_detail_urls() {
         let search = Copymanga.search_request("test query", 2).unwrap();
         let url = search.url.as_str();
-        assert!(url.starts_with("https://api.2024manga.com/api/v3/search/comic?"));
+        assert!(url.starts_with("https://api.manga2026.com/api/v3/search/comic?"));
         assert!(url.contains("q=test+query"));
         assert!(url.contains("offset=21"));
         assert!(url.contains("limit=21"));
@@ -1217,7 +1219,7 @@ var contentKey = '{content_key}';
         let detail = detail_spec("lianaidaixing").unwrap();
         assert_eq!(
             detail.url.as_str(),
-            "https://api.2024manga.com/api/v3/comic2/lianaidaixing?platform=3"
+            "https://api.manga2026.com/api/v3/comic2/lianaidaixing?platform=3"
         );
         assert!(work_id("bad/path").is_err());
         assert!(work_id("../x").is_err());

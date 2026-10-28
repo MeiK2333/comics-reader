@@ -1,0 +1,44 @@
+{
+  "search": {
+    "id": "4286553-7752f150d6",
+    "title": "E-Hentai Work",
+    "thumb": "https://ehgt.org/w/1/thumb.webp",
+    "platform": "ehentai",
+    "extra": {
+      "category": "Doujinshi",
+      "languages": ["english", "translated"],
+      "pages": 24
+    }
+  },
+  "detail": {
+    "title": "E-Hentai Work",
+    "thumb": "https://ehgt.org/w/1/cover.webp",
+    "platform": "ehentai",
+    "chapters": [
+      {
+        "id": null,
+        "title": null
+      }
+    ],
+    "extra": {
+      "gid": 4286553,
+      "token": "7752f150d6",
+      "titleJpn": "サンプル",
+      "category": "Doujinshi",
+      "uploader": "uploader",
+      "posted": 1793153501,
+      "pages": 24,
+      "fileSize": 123456,
+      "rating": 4.23,
+      "torrentCount": 1,
+      "expunged": false,
+      "languages": ["english", "translated"],
+      "tags": [
+        {
+          "namespace": "artist",
+          "name": "tooop"
+        }
+      ]
+    }
+  }
+}

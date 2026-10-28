@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ComicDetail } from "./index";
 import CopymangaDetail from "./copymanga/Detail.vue";
+import EhentaiDetail from "./ehentai/Detail.vue";
 import JmDetail from "./jm/Detail.vue";
 import ManhuaguiDetail from "./manhuagui/Detail.vue";
 import NhentaiDetail from "./nhentai/Detail.vue";
@@ -64,6 +65,18 @@ const emit = defineEmits<{
       <slot name="extra" />
     </template>
   </CopymangaDetail>
+  <EhentaiDetail
+    v-else-if="detail.platform === 'ehentai'"
+    :detail="detail"
+    :local-cover-path="localCoverPath"
+  >
+    <template #summary-extra>
+      <slot name="summary-extra" />
+    </template>
+    <template #extra>
+      <slot name="extra" />
+    </template>
+  </EhentaiDetail>
   <NhentaiDetail
     v-else
     :detail="detail"

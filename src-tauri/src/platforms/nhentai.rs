@@ -130,6 +130,7 @@ impl Catalog for Nhentai {
                 response.per_page
             },
             result,
+            has_next: None,
         })
     }
 

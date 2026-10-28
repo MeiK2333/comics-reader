@@ -1,5 +1,6 @@
 //! Image and document fetching, including mirror fallback.
 
+use reqwest::Method;
 use reqwest::header::ACCEPT;
 use url::Url;
 
@@ -147,10 +148,19 @@ where
 {
     let mut response = http
         .send(url, |client| {
-            platform
-                .configure(client.get(url.as_str()), url)
+            let request = if spec.method == Method::POST {
+                client.post(url.as_str())
+            } else {
+                client.get(url.as_str())
+            };
+            let request = platform
+                .configure(request, url)
                 .headers(spec.headers.clone())
-                .header(ACCEPT, spec.accept)
+                .header(ACCEPT, spec.accept);
+            match &spec.body {
+                Some(body) => request.body(body.clone()),
+                None => request,
+            }
         })
         .await?;
 

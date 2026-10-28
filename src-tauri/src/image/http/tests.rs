@@ -314,6 +314,82 @@ async fn nhentai_search_detail_and_image_work_with_ech() {
     assert!(!download.bytes.is_empty());
 }
 
+/// Live E-Hentai chain through the shared client and cache. The proxy is
+/// supplied by the caller because direct access is blocked on many networks:
+/// `EHENTAI_TEST_PROXY=http://127.0.0.1:7890 cargo test ... --ignored`.
+#[tokio::test]
+#[ignore = "performs live E-Hentai requests"]
+async fn ehentai_search_detail_reader_and_image_work_live() {
+    let Ok(proxy_url) = std::env::var("EHENTAI_TEST_PROXY") else {
+        eprintln!("EHENTAI_TEST_PROXY is not set; skipping");
+        return;
+    };
+    let proxy_url = Url::parse(&proxy_url).unwrap();
+    let host = proxy_url.host_str().unwrap();
+    let port = proxy_url.port_or_known_default().unwrap_or(80);
+
+    let http = HttpClient::default();
+    http.set_proxy(Some(proxy(host, port))).unwrap();
+
+    let search = crate::image::search_comics_inner(&http, "ehentai", "test", 1)
+        .await
+        .unwrap();
+    let item = search.result.first().expect("E-Hentai returned no results");
+    assert_eq!(item.platform, "ehentai");
+    assert_eq!(search.has_next, Some(true));
+
+    let second = crate::image::search_comics_inner(&http, "ehentai", "test", 2)
+        .await
+        .unwrap();
+    assert_eq!(second.has_next, Some(true));
+    assert_ne!(
+        second.result.first().map(|item| item.id.as_str()),
+        Some(item.id.as_str())
+    );
+
+    let detail = crate::image::get_comic_inner(&http, "ehentai", &item.id)
+        .await
+        .unwrap();
+    assert!(!detail.title.is_empty());
+    assert_eq!(
+        detail.chapters,
+        vec![crate::platforms::model::DetailChapter {
+            id: None,
+            title: None,
+        }]
+    );
+
+    let chapter = crate::image::get_reader_chapter_inner(&http, "ehentai", &item.id, None)
+        .await
+        .unwrap();
+    assert!(!chapter.pages.is_empty());
+
+    let dir = std::env::temp_dir().join(format!("ehentai-live-{}", std::process::id()));
+    let cache = crate::image::ImageCache::new(dir.clone());
+    let image = crate::image::fetch_image_inner(
+        &http,
+        &cache,
+        chapter.pages[0].url.clone(),
+        Some("ehentai".to_owned()),
+    )
+    .await
+    .unwrap();
+    assert!(image.byte_length > 0);
+    assert!(!image.from_cache);
+
+    let cached = crate::image::fetch_image_inner(
+        &http,
+        &cache,
+        chapter.pages[0].url.clone(),
+        Some("ehentai".to_owned()),
+    )
+    .await
+    .unwrap();
+    assert!(cached.from_cache);
+
+    let _ = tokio::fs::remove_dir_all(dir).await;
+}
+
 #[test]
 fn mirror_errors_are_the_ones_another_host_can_fix() {
     assert!(is_mirror_error(&AppError::Network {

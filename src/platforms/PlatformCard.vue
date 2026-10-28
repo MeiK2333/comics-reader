@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ComicSearchItem } from "./index";
 import CopymangaResultCard from "./copymanga/ResultCard.vue";
+import EhentaiResultCard from "./ehentai/ResultCard.vue";
 import JmResultCard from "./jm/ResultCard.vue";
 import ManhuaguiResultCard from "./manhuagui/ResultCard.vue";
 import NhentaiResultCard from "./nhentai/ResultCard.vue";
@@ -17,5 +18,6 @@ defineProps<{
     v-else-if="item.platform === 'copymanga'"
     :item="item"
   />
+  <EhentaiResultCard v-else-if="item.platform === 'ehentai'" :item="item" />
   <NhentaiResultCard v-else :item="item" />
 </template>

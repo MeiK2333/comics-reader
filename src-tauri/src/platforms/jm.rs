@@ -239,6 +239,7 @@ impl Catalog for Jm {
                 total: 0,
                 page_size: PAGE_SIZE,
                 result: Vec::new(),
+                has_next: None,
             });
         };
 
@@ -280,6 +281,7 @@ impl Catalog for Jm {
             total: total.max(result.len() as u64),
             page_size: PAGE_SIZE,
             result,
+            has_next: None,
         })
     }
 

@@ -107,6 +107,8 @@ export function createDownloadDetailSnapshot(detail: ComicDetail): ComicDetail {
         chapters: [],
         extra: { ...detail.extra, chapterGroups: [] },
       };
+    case "ehentai":
+      return { ...detail, chapters: [] };
   }
 }
 

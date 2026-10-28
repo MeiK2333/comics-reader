@@ -40,8 +40,10 @@ SVG redraw of that favicon is acceptable; do not invent unrelated artwork.
 | `jm/icon.png` | <https://syimg.3dmgame.com/uploadimg/ico/2026/0730/1785403601108808.jpg> | Outer white border removed and cropped to a transparent circle |
 | `nhentai/icon.svg` | <https://nhentai.net/logo.svg> | Official vector logo; its white strokes need the `dark-chip` style in `PlatformPicker` |
 | `copymanga/icon.png` | <https://s3.mangafunb.fun/static/websitefree/jpg/allIcon.png> | Cropped 68×67 from the site sprite at `-34px -590px` (the header logo) |
+| `ehentai/icon.png` | <https://e-hentai.org/favicon.ico> | 16×16 favicon upscaled 4× with nearest-neighbor to keep the pixel edges crisp |
 
-Prepared on 2026-10-25; the copymanga sprite was cropped on 2026-10-28.
+Prepared on 2026-10-25; the copymanga sprite was cropped on 2026-10-28; the
+E-Hentai favicon was converted on 2026-10-28.
 Re-download and overwrite these files if a platform changes its branding. The
 icons remain the property of their respective sites and are used only to
 identify the platform.

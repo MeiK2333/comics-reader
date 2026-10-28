@@ -15,6 +15,11 @@ pub(crate) struct SearchResponse {
     pub total: u64,
     pub page_size: u32,
     pub result: Vec<SearchItem>,
+    /// Cursor-paginated platforms cannot report a real total. Existing
+    /// platforms leave this unset; their pagination continues to use
+    /// `total / page_size`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub has_next: Option<bool>,
 }
 
 /// One search result. `platform` is the discriminant the frontend narrows on.
@@ -149,11 +154,26 @@ mod tests {
             total: 1,
             page_size: 25,
             result: Vec::new(),
+            has_next: None,
         };
 
         let value = serde_json::to_value(response).unwrap();
         assert_eq!(value["page_size"], 25);
         assert!(value.get("pageSize").is_none());
+        assert!(value.get("has_next").is_none());
+    }
+
+    #[test]
+    fn cursor_pagination_adds_has_next_only_when_known() {
+        let response = SearchResponse {
+            total: 25,
+            page_size: 25,
+            result: Vec::new(),
+            has_next: Some(true),
+        };
+
+        let value = serde_json::to_value(response).unwrap();
+        assert_eq!(value["has_next"], true);
     }
 
     #[test]

@@ -107,11 +107,15 @@ pub(crate) async fn fetch_image_inner(
         return cached_image(path, platform.id(), true).await;
     }
 
+    // Resolve after the cache check: platforms such as E-Hentai expose a
+    // stable page URL but sign the real image URL with a short-lived token.
+    let image_url = platform.resolve_image_url(client, &url).await?;
     let mut last_error = None;
     let mut download = None;
     let mut downloaded_from = None;
 
-    for candidate in std::iter::once(url.clone()).chain(platform.image_fallbacks(&url)) {
+    for candidate in std::iter::once(image_url.clone()).chain(platform.image_fallbacks(&image_url))
+    {
         match http::download_image(client, platform, &candidate).await {
             Ok(result) => {
                 downloaded_from = Some(candidate);
@@ -361,14 +365,10 @@ pub(crate) async fn get_reader_chapter_inner(
     }
     let chapter_id = chapter_id.map(str::trim).filter(|value| !value.is_empty());
 
-    let spec = prepared_spec(client, platform, || {
-        platform.reader_chapter_request(id, chapter_id)
-    })
-    .await?;
-    let fetched = http::fetch_document(client, platform, &spec).await?;
-    parse_document(platform, &fetched, |body| {
-        platform.parse_reader_chapter(id, chapter_id, body)
-    })
+    // The default platform implementation fetches one document; platforms
+    // whose page list spans several requests override `reader_chapter`.
+    platform.prepare(client).await;
+    platform.reader_chapter(client, id, chapter_id).await
 }
 
 /// Apply or clear the user's HTTP proxy for every subsequent request.

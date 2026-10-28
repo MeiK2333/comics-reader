@@ -5,6 +5,7 @@ import type { ComicSearchResult } from "../platforms";
 import { useErrorMessage } from "../composables/useErrorMessage";
 import type { AppError } from "../errors";
 import { useAppI18n } from "../i18n";
+import { searchPageCount } from "../lib/search-pagination";
 import PlatformCard from "../platforms/PlatformCard.vue";
 
 const props = defineProps<{
@@ -25,16 +26,9 @@ const errorMessage = computed(() =>
   props.error ? errorText(props.error) : "",
 );
 
-const pageCount = computed(() => {
-  const current = props.response;
-  if (!current) {
-    return 1;
-  }
-  return Math.max(
-    1,
-    Math.ceil(current.total / Math.max(1, current.page_size)),
-  );
-});
+const pageCount = computed(() =>
+  searchPageCount(props.response, props.page),
+);
 
 function changePage(next: number) {
   if (next !== props.page) {

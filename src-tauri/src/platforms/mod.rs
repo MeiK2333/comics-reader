@@ -7,6 +7,7 @@
 //! whose detail needs extra requests overrides [`Catalog::comic_detail`].
 
 mod copymanga;
+mod ehentai;
 mod generic;
 mod jm;
 mod jm_api;
@@ -23,8 +24,8 @@ pub(crate) use registry::{detect, find_profile};
 use std::future::Future;
 use std::pin::Pin;
 
-use reqwest::RequestBuilder;
-use reqwest::header::HeaderMap;
+use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
+use reqwest::{Method, RequestBuilder};
 use url::Url;
 
 use crate::error::{AppError, Result};
@@ -50,6 +51,10 @@ pub(crate) struct RequestSpec {
     /// Mirrors of the same logical request. The fetch layer tries them in
     /// order when the current one fails with a retryable error.
     pub(crate) fallbacks: Vec<Url>,
+    pub(crate) method: Method,
+    /// JSON bodies are tiny; keeping the bytes lets every fallback attempt
+    /// rebuild the same request without re-serializing.
+    pub(crate) body: Option<Vec<u8>>,
 }
 
 impl RequestSpec {
@@ -59,6 +64,8 @@ impl RequestSpec {
             accept: HTML_ACCEPT,
             headers: HeaderMap::new(),
             fallbacks: Vec::new(),
+            method: Method::GET,
+            body: None,
         }
     }
 
@@ -68,7 +75,19 @@ impl RequestSpec {
             accept: "application/json",
             headers: HeaderMap::new(),
             fallbacks: Vec::new(),
+            method: Method::GET,
+            body: None,
         }
+    }
+
+    /// A JSON API request that must use POST, such as E-Hentai's `gdata`.
+    pub(crate) fn json_post(url: Url, body: Vec<u8>) -> Self {
+        let mut spec = Self::json(url);
+        spec.method = Method::POST;
+        spec.body = Some(body);
+        spec.headers
+            .insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        spec
     }
 
     pub(crate) fn with_headers(mut self, headers: HeaderMap) -> Self {
@@ -133,6 +152,20 @@ pub(crate) trait ImageProfile: Send + Sync {
         _bytes: &'a [u8],
     ) -> PreprocessFuture<'a> {
         Box::pin(async move { Ok(None) })
+    }
+
+    /// Resolve a stable page URL into the URL that actually serves image bytes.
+    ///
+    /// E-Hentai exposes `/s/...` image pages whose real image link carries a
+    /// short-lived `keystamp`; resolving it immediately before the download
+    /// keeps the cache key stable while the image URL stays fresh. Platforms
+    /// that serve images directly keep the identity implementation.
+    fn resolve_image_url<'a>(
+        &'a self,
+        _client: &'a HttpClient,
+        url: &'a Url,
+    ) -> Pin<Box<dyn Future<Output = Result<Url>> + Send + 'a>> {
+        Box::pin(async move { Ok(url.clone()) })
     }
 }
 
@@ -229,6 +262,26 @@ pub(crate) trait Catalog: ImageProfile {
         _body: &[u8],
     ) -> Result<ReaderChapter> {
         Err(self.unsupported("reading"))
+    }
+
+    /// Fetch and parse a chapter's page list.
+    ///
+    /// The default implementation is the one-request path. Platforms whose
+    /// page list spans several documents (E-Hentai's paginated gallery pages)
+    /// override this instead of forcing every page into one response.
+    fn reader_chapter<'a>(
+        &'a self,
+        client: &'a HttpClient,
+        id: &'a str,
+        chapter_id: Option<&'a str>,
+    ) -> Pin<Box<dyn Future<Output = Result<ReaderChapter>> + Send + 'a>> {
+        Box::pin(async move {
+            let spec = self.reader_chapter_request(id, chapter_id)?;
+            let fetched = http::fetch_document(client, self, &spec).await?;
+            let result = self.parse_reader_chapter(id, chapter_id, &fetched.body);
+            self.note_request_outcome(&fetched.url, result.is_ok());
+            result
+        })
     }
 
     /// Error used by platforms that only implement image fetching.
@@ -339,6 +392,18 @@ mod tests {
             detect(&parse("https://sl.mangafunb.fun/l/1/1.jpg.c1500x.jpg")).id(),
             "copymanga"
         );
+        assert_eq!(
+            detect(&parse("https://e-hentai.org/s/abc/1-1")).id(),
+            "ehentai"
+        );
+        assert_eq!(
+            detect(&parse("https://x.hath.network:1167/h/a/b.webp")).id(),
+            "ehentai"
+        );
+        assert_eq!(
+            detect(&parse("https://ehgt.org/w/1/thumb.webp")).id(),
+            "ehentai"
+        );
         assert_eq!(detect(&parse("https://example.com/a.png")).id(), "generic");
     }
 
@@ -377,6 +442,10 @@ mod tests {
             copymanga[REFERER].to_str().unwrap(),
             "https://www.mangacopy.com/"
         );
+
+        let ehentai = headers_for("ehentai", "https://e-hentai.org/s/abc/1-1");
+        assert_eq!(ehentai[REFERER].to_str().unwrap(), "https://e-hentai.org/");
+        assert_eq!(ehentai[ACCEPT_LANGUAGE].to_str().unwrap(), "en-US,en;q=0.9");
     }
 
     #[test]
@@ -412,6 +481,30 @@ mod tests {
     }
 
     #[test]
+    fn json_post_keeps_method_body_and_content_type() {
+        let spec = RequestSpec::json_post(parse("https://api.example.test/"), b"{}".to_vec());
+
+        assert_eq!(spec.method, reqwest::Method::POST);
+        assert_eq!(spec.body.as_deref(), Some(&b"{}"[..]));
+        assert_eq!(
+            spec.headers[reqwest::header::CONTENT_TYPE],
+            "application/json"
+        );
+    }
+
+    #[tokio::test]
+    async fn image_resolution_defaults_to_identity() {
+        let url = parse("https://example.com/a.jpg");
+        let resolved = find_profile("generic")
+            .unwrap()
+            .resolve_image_url(&HttpClient::default(), &url)
+            .await
+            .unwrap();
+
+        assert_eq!(resolved, url);
+    }
+
+    #[test]
     fn manhuagui_and_jm_drop_query_for_cache() {
         let url = parse("https://example.com/a.jpg?v=1");
         assert_eq!(
@@ -431,6 +524,12 @@ mod tests {
         assert_eq!(
             find_profile("copymanga").unwrap().cache_key_url(&alternate),
             "https://sl.mangafunb.fun/l/1.jpg"
+        );
+
+        let image_page = parse("https://e-hentai.org/s/abc/1-1?nl=1");
+        assert_eq!(
+            find_profile("ehentai").unwrap().cache_key_url(&image_page),
+            "https://e-hentai.org/s/abc/1-1"
         );
     }
 }

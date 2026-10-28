@@ -5,7 +5,7 @@
 ## 项目状态
 
 - Tauri 2 漫画阅读器：Vue 3.5 + TypeScript + Vite 8，Rust edition 2024；桌面端与 Android 已初始化，iOS 未初始化。
-- 已实现：四平台搜索/详情/阅读、历史、收藏分组、按作品下载与离线阅读、设置与日志。
+- 已实现：五平台搜索/详情/阅读、历史、收藏分组、按作品下载与离线阅读、设置与日志。
 - 未实现：漫画库、独立章节列表页、数据库、按章下载/导出。下载页不是占位页。
 - 尚未正式发布：没有迁移层；持久化字段和文件格式可以直接改，也可以丢弃旧格式；正式发布后必须迁移，不能静默丢数据。
 
@@ -55,24 +55,26 @@
 
 - 图片全部由 Rust 处理：`ComicThumb` → `fetch_image` → `convertFileSrc` 资产协议。不要直接用远程 URL、blob/object URL 或浏览器 `fetch`。
 - 资产协议三处同时成立：`tauri` 的 `protocol-asset` feature、`tauri.conf.json` 的 `app.security.assetProtocol.enable`、覆盖 `$APPCACHE/images/**` 与 `$APPDATA/downloads/**` 的 scope；缺一为 403/空白。
-- 缓存键 = SHA-256（`CACHE_VERSION` + 平台 id + 平台 `cache_version` + 归一化 URL）；写入 `app_cache_dir()/images/<platform>/<hash>.<ext>`，格式按魔数、扩展名决定 MIME。manhuagui 去 query；JM 去 query，`/media/` 还忽略 host；copymanga 去 query 并把 `mangafuna.xyz` 归一化为 `mangafunb.fun`。当前 `CACHE_VERSION = v1`、各平台 `cache_version = 1`；发布后改平台请求头/语义要提升平台版本，改 URL 归一化/目录要提升 `CACHE_VERSION`。启动后清扫：超 30 天或超 512 MiB 时删除，最近 1 小时保护；下载不参与。
-- 业务请求统一走 `HttpClient::send`，代理/ECH 才生效；ECH bootstrap/DoH 用自己的 client，不要为业务另建 client。
+- 缓存键 = SHA-256（`CACHE_VERSION` + 平台 id + 平台 `cache_version` + 归一化 URL）；写入 `app_cache_dir()/images/<platform>/<hash>.<ext>`，格式按魔数、扩展名决定 MIME。manhuagui 去 query；JM 去 query，`/media/` 还忽略 host；copymanga 去 query 并把 `mangafuna.xyz` 归一化为 `mangafunb.fun`；E-Hentai 的 `/s/...` 页面去 query，真实 H@H 图片 URL 不参与缓存键。当前 `CACHE_VERSION = v1`、各平台 `cache_version = 1`；发布后改平台请求头/语义要提升平台版本，改 URL 归一化/目录要提升 `CACHE_VERSION`。启动后清扫：超 30 天或超 512 MiB 时删除，最近 1 小时保护；下载不参与。
+- 业务请求统一走 `HttpClient::send`，代理/ECH 才生效；ECH bootstrap/DoH 用自己的 client，不要为业务另建 client。平台可以通过 `ImageProfile::resolve_image_url` 把稳定页面 URL 解析成短时效图片 URL（E-Hentai 的 `/s/...` 页面）。
 
 ### 平台注册与解析
 
-- 平台集中在 `src-tauri/src/platforms/`，由 `registry.rs` 单一注册表提供 id、profile、catalog 查找。`ImageProfile` 管图片抓取/缓存钩子，`Catalog: ImageProfile` 另加搜索/详情/阅读能力；`generic` 只有 profile，`manhuagui` / `jm` / `nhentai` / `copymanga` 是 catalog，只有 catalog 能写历史、收藏和下载。
+- 平台集中在 `src-tauri/src/platforms/`，由 `registry.rs` 单一注册表提供 id、profile、catalog 查找。`ImageProfile` 管图片抓取/缓存钩子，`Catalog: ImageProfile` 另加搜索/详情/阅读能力；`generic` 只有 profile，`manhuagui` / `jm` / `nhentai` / `copymanga` / `ehentai` 是 catalog，只有 catalog 能写历史、收藏和下载。
+- `RequestSpec` 默认 GET；需要 JSON POST 的平台用 `json_post`。`Catalog::reader_chapter` 允许平台覆盖多文档页列表，`ImageProfile::resolve_image_url` 默认恒等。
 - 只有 `fetch_image` 的 `platform` 参数可省略（按 host 识别，未知 host 落到 generic）；搜索/详情/阅读必须显式传平台。JM 尤其要传 `platform: "jm"`。
 - JM 在首个搜索/详情/阅读命令前用 `prepare` 请求 `/setting` 同步 `jm3_version`（成功一次即缓存，失败下次重试），`tokenparam` 用运行时版本。镜像健康只在平台解析成功后记为成功；HTTP 2xx 的挑战页不算。
 - JM 走移动端 APP API（`jm_api.rs`）：HTML 站点在部分网络对搜索/专辑都 403；搜索/详情需要 token 签名与 AES 解密，封面由 album id 推导，不需要 Cookie 或 TLS 指纹。页图由 `preprocess` 按 `scramble_id` 还原，需要还原时重新编码为 JPEG，缓存键带 `?decoded=v1`；算法变更要提升 `platforms/jm.rs` 的 `IMAGE_DECODE_VERSION`，`scramble_id` 每章节请求一次并缓存。
 - manhuagui 详情优先解 `#__VIEWSTATE`（R18/隐藏列表），失败再读 `.chapter-list`；`h4` 与列表配对为 `chapterGroups`，`ul` 内 `li` 逆序；空标题由前端本地化。阅读页 `/comic/{id}/{chapterId}.html`，`chapterId` 必需；页图 `https://i.hamreus.com{path}{file}`，去 `.webp`/query（`cf` 备用），章节优先 `nextId`/`prevId`，缺失才解析 HTML；不要前端拼地址。`cache_version = 1`，发布后改 URL 归一化要提升。
-- copymanga 搜索/详情/章节列表走 APP API `api.2024manga.com`（`/api/v3/...`，`platform: 3`、`version: 3.0.0`），阅读页走 `www.mangacopy.com` 的 `/comic/{path_word}/chapter/{uuid}` HTML，并用页面里的 `cct`/`contentKey` 做 AES-128-CBC 解密取图。详情按 `groups` 分多次请求（`comic_detail` 覆盖默认单请求路径），核心 `chapters` 按分组顺序拍平，`extra.chapterGroups` 保留分组；作品 id 是 `path_word`，章节 id 是 UUID，不能用 `numeric_id`，下载/离线章节键走 `normalize_chapter_id`。阅读页不提供封面，`ReaderChapter.thumb` 为空，历史列表显示首字占位；上一/下一章从页脚解析。图片 CDN 在 `mangafunb.fun` 与 `mangafuna.xyz` 之间互为备用。
+- copymanga 搜索/详情/章节列表走 APP API `api.manga2026.com`（`/api/v3/...`，`platform: 3`、`version: 3.0.0`），阅读页走 `www.mangacopy.com` 的 `/comic/{path_word}/chapter/{uuid}` HTML，并用页面里的 `cct`/`contentKey` 做 AES-128-CBC 解密取图。详情按 `groups` 分多次请求（`comic_detail` 覆盖默认单请求路径），核心 `chapters` 按分组顺序拍平，`extra.chapterGroups` 保留分组；作品 id 是 `path_word`，章节 id 是 UUID，不能用 `numeric_id`，下载/离线章节键走 `normalize_chapter_id`。阅读页不提供封面，`ReaderChapter.thumb` 为空，历史列表显示首字占位；上一/下一章从页脚解析。图片 CDN 在 `mangafunb.fun` 与 `mangafuna.xyz` 之间互为备用。
+- E-Hentai 用 `e-hentai.org` 的 HTML 搜索与 gallery 页，加 `api.e-hentai.org/api.php` 的 `gdata` POST。作品 id 是 `gid-token`（后端再拆 `gid/token`），`single_chapter = true`。搜索是 `next=` 游标分页，每页 25 条且没有总数；游标保存在进程内，`SearchResponse.has_next` 驱动 UI 只露出下一页，`total` 只是已看到的结果数。阅读页列表由 gdata 的 `filecount` 和 `/g/{gid}/{token}/?p=N`（每页 20 个 `/s/` 链接）组成；`ReaderPage.url` 是稳定的 `/s/...` 页面，`resolve_image_url` 在取图时解析出带短时效 `keystamp` 的 H@H URL，缓存键仍用页面 URL。只支持匿名 E-Hentai，不支持 ExHentai/Cookie，也不使用需要登录的 `fullimg` 原图。
 - manhuagui 章节用 `NCollapse` 按分组展示，默认展开继续阅读所在组、否则首组，并提供展开/收起全部；copymanga 同样按分组展示，只有一组时直接铺开；JM 多章时列出章节，单章直接进第一章；详情加载态统一用 `ComicDetailSkeleton`，不要退回 `NSpin`。
 - 解析依赖上游结构：改 selector/字段就补 fixture，保持 `extra` 字段名稳定。新增平台见“常见改动入口”。
 
 ### 搜索、详情与返回
 
 - 搜索会话由 `search` store 管理；`/search` 不携带 query，刷新/深链会被守卫送回首页。搜索页首页图标用 `useBackNavigation`（优先 pop），不要 push 重复首页。
-- 搜索返回 `{ total, page_size, result: [{ id, title, thumb, platform, extra }] }`，详情 `{ platform, title, thumb, chapters, extra }`；`platform` 判别，`chapters` 是跨平台核心章节（nhentai 合成一个 id/title 均为 null 的章节），`extra` 是平台 typed struct 序列化值。不要退回 `Record<string, unknown>` 或 JSON 兜底。
+- 搜索返回 `{ total, page_size, result: [{ id, title, thumb, platform, extra }] }`，详情 `{ platform, title, thumb, chapters, extra }`；`platform` 判别，`chapters` 是跨平台核心章节（nhentai/E-Hentai 合成一个 id/title 均为 null 的章节），`extra` 是平台 typed struct 序列化值。不要退回 `Record<string, unknown>` 或 JSON 兜底。游标分页平台额外返回可选 `has_next`，前端用它计算下一页，不要用 `total` 硬凑。
 - JM/nhentai 搜索框内容为纯数字时，搜索按钮左侧显示直达按钮；点击用 `router.push` 直接进详情，并按来源写 `state.from`（首页/搜索），不要先发搜索请求。
 - 在线详情 `/comic/:platform/:id` 不依赖搜索会话，直接 `get_comic`，刷新/深链可用；失败只显示在线错误态，不用下载索引回退。已下载详情独立为 `/downloads/:platform/:id`，数据来自 `get_download`（摘要 + `chapters` + `detail` 快照；继续阅读/收藏另读 `get_history_entry`/`get_favorite`），用同一套平台组件渲染快照，封面 `coverPath`，开始读首个已完成章节，继续读优先历史章节/页码，失效回退首章第 1 页。
 - 进入详情写显式 `state.from`（收藏/历史/下载/搜索/首页），详情只读它；缺失时回首页，不再用 `previousPath()` 或 `search.active` 推断。返回必须走 `useBackNavigation`：上一页就是目标时 `router.back()`；目标在更早历史时 `router.go(-n)` 一次退到；否则 `router.replace`。不要用 `router.push` 做返回。
@@ -85,7 +87,7 @@
 - 上下栏绝对定位、默认隐藏、不占 stage；点中间 1/3 显隐，左右 1/3 翻页；滑动/滚轮/翻页不自动唤出。HUD 仅在菜单隐藏时显示页码，避开右侧安全区并点击穿透；移动端电量用 `navigator.getBattery()`，菜单展开时放顶栏、隐藏时放 HUD，桌面或不支持时隐藏。
 - 页码用 `router.replace` 写 `?page=`，不新增历史，越界夹到 `1..pages.length`，空页显示空态。首/尾页继续翻页自动切章：上一章从末页进入（`?page=last`，加载后换真实页码），下一章从第一页进入；没有相邻章时用 `useBackNavigation` 回详情。按钮、点击区、滑动、滚轮、方向键共用这条边界逻辑；底部章节按钮仍从第一页打开。
 - 章内预加载走 `fetchCachedImage`（同 `platform + url` 合并），`useReaderPreload` 200ms 防抖、2 并发；失败静默，切页/切章停止旧队列。末页跨章由 `useNextChapterPreload` 取下一章页源并预热前 N 张，不展示、不写历史。`src/api/reader.ts` 缓存最近 4 个 `ReaderChapter` 并共享 in-flight，`src/api/images.ts` 缓存最近 64 个已解析路径，均只在内存中有界保留。
-- 页图仍走 `fetch_image`，不要直接请求 CDN；本地 `localPath` 必须让预加载跳过。JM/manhuagui/copymanga 的上一/下一章从页源解析，不要前端拼接；JM 省略 `chapterId` 时用 album id，manhuagui 无章节深链先取详情首章并 `router.replace`；空页统一 `notFound`。
+- 页图仍走 `fetch_image`，不要直接请求 CDN；本地 `localPath` 必须让预加载跳过。JM/manhuagui/copymanga 的上一/下一章从页源解析，不要前端拼接；JM 省略 `chapterId` 时用 album id，manhuagui 无章节深链先取详情首章并 `router.replace`；E-Hentai 的页图是 `/s/...` 页面，由 `resolve_image_url` 解析，不要前端拼 H@H 地址；空页统一 `notFound`。
 - 移动端双指缩放只处理两个触摸指针，1x–4x，围绕两指中点平移；松开一指转单指平移，且不得触发 tap 翻页。桌面鼠标/触控板行为不变；缩放、全屏、`Home`/`End` 等现有行为不要破坏。
 
 ### 阅读历史
@@ -160,7 +162,7 @@
 
 - 前端改动：`pnpm test` + `pnpm build`；Rust 改动：`cargo test`、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`；E2E（本地 Windows）：`pnpm test:e2e`，只用 `e2e/` 预置的离线数据，不访问上游。没有 CI，本地检查是唯一门禁。
 - 契约：改 Rust wire 结构或 TS 类型时同步 `src/platforms/<id>/fixtures/wire.json` 与 `contracts/*.json`。
-- 手动冒烟（按改动选做）：搜索→详情→返回；设置持久化/代理/ECH/日志；阅读器四平台、手势/缩放、首尾切章；历史/收藏/下载的返回、继续阅读、分组、暂停/续传/删除与离线详情；移动端安全区与电量。
+- 手动冒烟（按改动选做）：搜索→详情→返回；设置持久化/代理/ECH/日志；阅读器五平台、手势/缩放、首尾切章；历史/收藏/下载的返回、继续阅读、分组、暂停/续传/删除与离线详情；移动端安全区与电量。
 - 前端测试跑在 jsdom，不启动 Tauri；Pinia 4 把插件排队到 `app.use(pinia)` 之后，测试里创建 store 前要 `createApp(...).use(pinia)`，否则持久化不生效。
 
 ## 尚未实现
