@@ -22,18 +22,19 @@ To add a platform:
 
 Override only the capability hooks that differ from the defaults:
 
-- `single_chapter()` for one implicit chapter (nhentai, E-Hentai)
+- `single_chapter()` for one implicit chapter (nhentai, E-Hentai, pixiv)
 - `normalize_work_id()` for non-numeric ids (JM prefix, copymanga path words,
   E-Hentai `gid-token`)
 - `normalize_chapter_id()` for non-numeric chapter ids (copymanga UUIDs)
 - `comic_detail()` when detail needs more than one request (copymanga fetches
   one chapter list per site group)
 - `reader_chapter()` when the page list spans several documents (E-Hentai
-  reads paginated gallery pages)
+  reads paginated gallery pages, pixiv fetches metadata and pages together)
 - `resolve_image_url()` when a stable page URL must be resolved to a
   short-lived image URL (E-Hentai `/s/...` pages)
 - `decode_key()` / `preprocess()` for bytes that differ from the download (JM)
 - `cache_key_url()` / `image_fallbacks()` / `configure()` for CDN quirks
+  (pixiv normalizes its `i.pixiv.re` fallback host)
 - `RequestSpec::json_post()` for JSON APIs that require POST (E-Hentai `gdata`)
 
 The shared `image/` pipeline only calls these traits; it must not learn a new

@@ -28,6 +28,11 @@ export interface PlatformDefinition<Id extends string> {
   iconStyle: "plain" | "dark-chip";
   /** Single-chapter galleries ignore the chapter id in downloads and the reader. */
   singleChapter: boolean;
+  /**
+   * A bare numeric query is this platform's work id, so the search bar can
+   * offer a direct-open action instead of running a keyword search.
+   */
+  numericIdDirectOpen: boolean;
 }
 
 export function definePlatform<Id extends string>(

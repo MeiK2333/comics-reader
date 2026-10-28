@@ -77,7 +77,7 @@ export function useDownloadedComicDetail(
       return 1;
     }
     if (!entry.chapterId) {
-      // nhentai stores a single implicit chapter; its page is still valid.
+      // Single-chapter platforms store an implicit chapter; its page is valid.
       return entry.page;
     }
     if (!completedChapterIds.value.includes(entry.chapterId)) {

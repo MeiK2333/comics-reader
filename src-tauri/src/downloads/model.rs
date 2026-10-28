@@ -218,7 +218,8 @@ pub(crate) struct DownloadSummary {
     pub(super) failed_chapters: usize,
     pub(super) downloaded_pages: u32,
     pub(super) total_bytes: u64,
-    /// First completed chapter; `null` for nhentai's implicit chapter.
+    /// First completed chapter; `null` for a single-chapter platform's
+    /// implicit chapter.
     pub(super) read_chapter_id: Option<String>,
     pub(super) added_at: u64,
     pub(super) updated_at: u64,

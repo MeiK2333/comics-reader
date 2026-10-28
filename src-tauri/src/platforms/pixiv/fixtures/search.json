@@ -1,0 +1,130 @@
+{
+  "error": false,
+  "message": "",
+  "body": {
+    "illustManga": {
+      "data": [
+        {
+          "id": "150699872",
+          "title": "オーズワン",
+          "illustType": 0,
+          "xRestrict": 0,
+          "restrict": 0,
+          "sl": 2,
+          "url": "https://i.pximg.net/c/250x250_80_a2/img-master/img/2026/10/11/00/52/56/150699872_p0_square1200.jpg",
+          "description": "",
+          "tags": [
+            "女子",
+            "少女",
+            "VOCALOID",
+            "ミク",
+            "初音",
+            "テト"
+          ],
+          "userId": "83601061",
+          "userName": "Ray",
+          "width": 1254,
+          "height": 1254,
+          "pageCount": 15,
+          "isBookmarkable": true,
+          "bookmarkData": null,
+          "alt": "#女子 オーズワン - Ray的插画",
+          "titleCaptionTranslation": {
+            "workTitle": null,
+            "workCaption": null
+          },
+          "createDate": "2026-10-11T00:52:56+09:00",
+          "updateDate": "2026-10-11T00:52:56+09:00",
+          "isUnlisted": false,
+          "isMasked": false,
+          "aiType": 2,
+          "visibilityScope": 0,
+          "profileImageUrl": "https://s.pximg.net/common/images/no_profile_s.png",
+          "isOriginal": false,
+          "is_howto": false
+        },
+        {
+          "id": "150507655",
+          "title": "Stop…..Laios. We don’t eat this",
+          "illustType": 1,
+          "xRestrict": 0,
+          "restrict": 0,
+          "sl": 2,
+          "url": "https://i.pximg.net/c/250x250_80_a2/img-master/img/2026/10/06/01/12/21/150507655_p0_square1200.jpg",
+          "description": "",
+          "tags": [
+            "迷宮飯",
+            "二創",
+            "初音",
+            "Miku"
+          ],
+          "userId": "127017454",
+          "userName": "Miiichael",
+          "width": 1666,
+          "height": 2388,
+          "pageCount": 1,
+          "isBookmarkable": true,
+          "bookmarkData": null,
+          "alt": "#迷宮飯 Stop…..Laios. We don’t eat this - Miiichael的漫画 #二創 #初音 #Miku",
+          "titleCaptionTranslation": {
+            "workTitle": null,
+            "workCaption": null
+          },
+          "createDate": "2026-10-06T01:12:21+09:00",
+          "updateDate": "2026-10-06T01:12:21+09:00",
+          "isUnlisted": false,
+          "isMasked": false,
+          "aiType": 1,
+          "visibilityScope": 0,
+          "profileImageUrl": "https://i.pximg.net/user-profile/img/2026/10/06/01/13/28/29420231_23842295ce103bf02dece16550ab5a80_50.jpg",
+          "isOriginal": false,
+          "is_howto": false
+        },
+        {
+          "id": "134453174",
+          "title": "テストで作ったウゴイラです。",
+          "illustType": 2,
+          "xRestrict": 0,
+          "restrict": 0,
+          "sl": 2,
+          "url": "https://i.pximg.net/c/250x250_80_a2/img-master/img/2025/08/29/11/31/06/134453174_square1200.jpg",
+          "description": "",
+          "tags": [
+            "ウゴイラ",
+            "ショタ",
+            "男の子",
+            "shota",
+            "スーパーサンズ",
+            "JonKent",
+            "ジョナサン・ケント",
+            "Supersons",
+            "JonathanKent"
+          ],
+          "userId": "14727642",
+          "userName": "Elio",
+          "width": 372,
+          "height": 618,
+          "pageCount": 1,
+          "isBookmarkable": true,
+          "bookmarkData": null,
+          "alt": "#ウゴイラ テストで作ったウゴイラです。 - Elio的动图",
+          "titleCaptionTranslation": {
+            "workTitle": null,
+            "workCaption": null
+          },
+          "createDate": "2025-08-29T11:31:06+09:00",
+          "updateDate": "2025-08-29T11:31:06+09:00",
+          "isUnlisted": false,
+          "isMasked": false,
+          "aiType": 2,
+          "visibilityScope": 0,
+          "profileImageUrl": "https://i.pximg.net/user-profile/img/2026/05/11/21/22/34/28857141_5a5af0c17d731a856d430d2f190da1ca_50.png",
+          "isOriginal": false,
+          "is_howto": false
+        }
+      ],
+      "total": 14023,
+      "lastPage": 10
+    }
+  }
+}

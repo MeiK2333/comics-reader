@@ -12,6 +12,7 @@ import ehentaiWire from "../platforms/ehentai/fixtures/wire.json";
 import jmWire from "../platforms/jm/fixtures/wire.json";
 import manhuaguiWire from "../platforms/manhuagui/fixtures/wire.json";
 import nhentaiWire from "../platforms/nhentai/fixtures/wire.json";
+import pixivWire from "../platforms/pixiv/fixtures/wire.json";
 import type {
   ComicDetail,
   ComicSearchResult,
@@ -25,6 +26,8 @@ import type {
   ManhuaguiSearchItem,
   NhentaiDetail,
   NhentaiSearchItem,
+  PixivDetail,
+  PixivSearchItem,
 } from "../platforms";
 import type { CacheUsage } from "./cache";
 import type { DownloadDetail } from "./downloads";
@@ -69,7 +72,7 @@ const logs: LogSnapshot = {
 // The per-platform fixtures live next to the platform code. Rust serializes
 // the same files, so a shape change must be made on both sides at once.
 const search: ComicSearchResult = {
-  total: 5,
+  total: 6,
   page_size: 25,
   result: [
     manhuaguiWire.search as ManhuaguiSearchItem,
@@ -77,6 +80,7 @@ const search: ComicSearchResult = {
     nhentaiWire.search as NhentaiSearchItem,
     copymangaWire.search as CopymangaSearchItem,
     ehentaiWire.search as EhentaiSearchItem,
+    pixivWire.search as PixivSearchItem,
   ],
 };
 const comicDetails: ComicDetail[] = [
@@ -85,6 +89,7 @@ const comicDetails: ComicDetail[] = [
   nhentaiWire.detail as NhentaiDetail,
   copymangaWire.detail as CopymangaDetail,
   ehentaiWire.detail as EhentaiDetail,
+  pixivWire.detail as PixivDetail,
 ];
 
 describe("ReaderChapter wire contract", () => {
@@ -193,6 +198,7 @@ describe("SearchPage wire contract", () => {
       "nhentai",
       "copymanga",
       "ehentai",
+      "pixiv",
     ]);
     expect(Object.keys(search.result[0]).sort()).toEqual([
       "extra",
@@ -206,6 +212,7 @@ describe("SearchPage wire contract", () => {
     expect(search.result[2].extra).toHaveProperty("tagIds");
     expect(search.result[3].extra).toHaveProperty("chapterGroups");
     expect(search.result[4].extra).toHaveProperty("languages");
+    expect(search.result[5].extra).toHaveProperty("pageCount");
   });
 });
 
@@ -217,6 +224,7 @@ describe("ComicDetail wire contract", () => {
       "nhentai",
       "copymanga",
       "ehentai",
+      "pixiv",
     ]);
     expect(Object.keys(comicDetails[0])).toEqual([
       "title",
@@ -233,10 +241,12 @@ describe("ComicDetail wire contract", () => {
       { id: "a036001e-ef46-11ed-8221-024352452ce0", title: "第02話" },
     ]);
     expect(comicDetails[4].chapters).toEqual([{ id: null, title: null }]);
+    expect(comicDetails[5].chapters).toEqual([{ id: null, title: null }]);
     expect(comicDetails[0].extra).toHaveProperty("chapterGroups");
     expect(comicDetails[1].extra).toHaveProperty("chapters");
     expect(comicDetails[2].extra).toHaveProperty("tags");
     expect(comicDetails[3].extra).toHaveProperty("chapterGroups");
     expect(comicDetails[4].extra).toHaveProperty("token");
+    expect(comicDetails[5].extra).toHaveProperty("pageCount");
   });
 });

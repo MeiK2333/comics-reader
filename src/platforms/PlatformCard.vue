@@ -5,6 +5,7 @@ import EhentaiResultCard from "./ehentai/ResultCard.vue";
 import JmResultCard from "./jm/ResultCard.vue";
 import ManhuaguiResultCard from "./manhuagui/ResultCard.vue";
 import NhentaiResultCard from "./nhentai/ResultCard.vue";
+import PixivResultCard from "./pixiv/ResultCard.vue";
 
 defineProps<{
   item: ComicSearchItem;
@@ -19,5 +20,6 @@ defineProps<{
     :item="item"
   />
   <EhentaiResultCard v-else-if="item.platform === 'ehentai'" :item="item" />
-  <NhentaiResultCard v-else :item="item" />
+  <NhentaiResultCard v-else-if="item.platform === 'nhentai'" :item="item" />
+  <PixivResultCard v-else :item="item" />
 </template>

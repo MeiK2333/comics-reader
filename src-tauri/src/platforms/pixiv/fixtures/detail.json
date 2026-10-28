@@ -1,0 +1,103 @@
+{
+  "error": false,
+  "message": "",
+  "body": {
+    "illustId": "150699872",
+    "illustTitle": "オーズワン",
+    "illustComment": "<a href=\"/jump.php?https%3A%2F%2Fyoutube.com%2Fshorts%2FlFZDW8evpMs%3Ffeature%3Dshare\" target=\"_blank\">https://youtube.com/shorts/lFZDW8evpMs?feature=share</a>",
+    "id": "150699872",
+    "title": "オーズワン",
+    "description": "<a href=\"/jump.php?https%3A%2F%2Fyoutube.com%2Fshorts%2FlFZDW8evpMs%3Ffeature%3Dshare\" target=\"_blank\">https://youtube.com/shorts/lFZDW8evpMs?feature=share</a>",
+    "illustType": 0,
+    "createDate": "2026-10-10T15:52:00+00:00",
+    "uploadDate": "2026-10-10T15:52:00+00:00",
+    "restrict": 0,
+    "xRestrict": 0,
+    "sl": 2,
+    "urls": {
+      "mini": "https://i.pximg.net/c/48x48/img-master/img/2026/10/11/00/52/56/150699872_p0_square1200.jpg",
+      "thumb": "https://i.pximg.net/c/250x250_80_a2/img-master/img/2026/10/11/00/52/56/150699872_p0_square1200.jpg",
+      "small": "https://i.pximg.net/c/540x540_70/img-master/img/2026/10/11/00/52/56/150699872_p0_master1200.jpg",
+      "regular": "https://i.pximg.net/img-master/img/2026/10/11/00/52/56/150699872_p0_master1200.jpg",
+      "original": "https://i.pximg.net/img-original/img/2026/10/11/00/52/56/150699872_p0.png"
+    },
+    "tags": {
+      "authorId": "83601061",
+      "isLocked": false,
+      "tags": [
+        {
+          "tag": "女子",
+          "locked": true,
+          "deletable": false,
+          "userId": "83601061",
+          "translation": {
+            "en": "woman"
+          },
+          "userName": "Ray"
+        },
+        {
+          "tag": "少女",
+          "locked": true,
+          "deletable": false,
+          "userId": "83601061",
+          "translation": {
+            "en": "Young Girl"
+          },
+          "userName": "Ray"
+        },
+        {
+          "tag": "VOCALOID",
+          "locked": true,
+          "deletable": false,
+          "userId": "83601061",
+          "userName": "Ray"
+        },
+        {
+          "tag": "ミク",
+          "locked": true,
+          "deletable": false,
+          "userId": "83601061",
+          "translation": {
+            "en": "miku"
+          },
+          "userName": "Ray"
+        },
+        {
+          "tag": "初音",
+          "locked": true,
+          "deletable": false,
+          "userId": "83601061",
+          "translation": {
+            "en": "hatsune"
+          },
+          "userName": "Ray"
+        },
+        {
+          "tag": "テト",
+          "locked": true,
+          "deletable": false,
+          "userId": "83601061",
+          "translation": {
+            "en": "Teto"
+          },
+          "userName": "Ray"
+        }
+      ],
+      "writable": false
+    },
+    "userId": "83601061",
+    "userName": "Ray",
+    "userAccount": "user_vnaf3524",
+    "width": 1254,
+    "height": 1254,
+    "pageCount": 15,
+    "bookmarkCount": 3,
+    "likeCount": 3,
+    "viewCount": 92,
+    "commentCount": 0,
+    "seriesNavData": null,
+    "isOriginal": false,
+    "aiType": 2,
+    "isLoginOnly": false
+  }
+}

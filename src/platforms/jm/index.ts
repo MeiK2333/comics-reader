@@ -8,4 +8,5 @@ export const jm = definePlatform<"jm">({
   icon,
   iconStyle: "plain",
   singleChapter: false,
+  numericIdDirectOpen: true,
 });

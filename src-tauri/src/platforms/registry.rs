@@ -10,6 +10,7 @@ use super::generic::Generic;
 use super::jm::Jm;
 use super::manhuagui::Manhuagui;
 use super::nhentai::Nhentai;
+use super::pixiv::Pixiv;
 use super::{Catalog, ImageProfile};
 
 struct Registration {
@@ -39,14 +40,16 @@ static JM: Jm = Jm::new();
 static NHENTAI: Nhentai = Nhentai;
 static COPYMANGA: Copymanga = Copymanga;
 static EHENTAI: Ehentai = Ehentai;
+static PIXIV: Pixiv = Pixiv;
 
-static REGISTRY: [Registration; 6] = [
+static REGISTRY: [Registration; 7] = [
     Registration::image_only(&GENERIC),
     Registration::catalog(&MANHUAGUI, &MANHUAGUI),
     Registration::catalog(&JM, &JM),
     Registration::catalog(&NHENTAI, &NHENTAI),
     Registration::catalog(&COPYMANGA, &COPYMANGA),
     Registration::catalog(&EHENTAI, &EHENTAI),
+    Registration::catalog(&PIXIV, &PIXIV),
 ];
 
 /// Resolve an explicit image profile id, or detect one from the image URL.
@@ -127,7 +130,14 @@ mod tests {
 
     #[test]
     fn recognizes_only_persistable_platforms() {
-        for platform in ["manhuagui", "jm", "nhentai", "copymanga", "ehentai"] {
+        for platform in [
+            "manhuagui",
+            "jm",
+            "nhentai",
+            "copymanga",
+            "ehentai",
+            "pixiv",
+        ] {
             assert!(is_known_platform(platform));
         }
 
@@ -147,6 +157,7 @@ mod tests {
     fn exposes_platform_capabilities() {
         assert!(find_catalog("nhentai").unwrap().single_chapter());
         assert!(find_catalog("ehentai").unwrap().single_chapter());
+        assert!(find_catalog("pixiv").unwrap().single_chapter());
         assert!(!find_catalog("jm").unwrap().single_chapter());
         assert!(!find_catalog("manhuagui").unwrap().single_chapter());
         assert!(!find_catalog("copymanga").unwrap().single_chapter());
@@ -183,6 +194,19 @@ mod tests {
             find_catalog("copymanga")
                 .unwrap()
                 .normalize_work_id("../bad")
+                .is_err()
+        );
+        assert_eq!(
+            find_catalog("pixiv")
+                .unwrap()
+                .normalize_work_id("150699872")
+                .unwrap(),
+            "150699872"
+        );
+        assert!(
+            find_catalog("pixiv")
+                .unwrap()
+                .normalize_work_id("../150699872")
                 .is_err()
         );
     }

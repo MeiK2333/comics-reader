@@ -1,0 +1,54 @@
+{
+  "search": {
+    "id": "150699872",
+    "title": "オーズワン",
+    "thumb": "https://i.pximg.net/c/250x250_80_a2/img-master/img/2026/10/11/00/52/56/150699872_p0_square1200.jpg",
+    "platform": "pixiv",
+    "extra": {
+      "userId": "83601061",
+      "userName": "Ray",
+      "illustType": 0,
+      "xRestrict": 0,
+      "pageCount": 15,
+      "width": 1254,
+      "height": 1254,
+      "tags": ["女子", "少女", "VOCALOID", "ミク", "初音", "テト"],
+      "createDate": "2026-10-11T00:52:56+09:00"
+    }
+  },
+  "detail": {
+    "title": "オーズワン",
+    "thumb": "https://i.pximg.net/c/540x540_70/img-master/img/2026/10/11/00/52/56/150699872_p0_master1200.jpg",
+    "platform": "pixiv",
+    "chapters": [
+      {
+        "id": null,
+        "title": null
+      }
+    ],
+    "extra": {
+      "userId": "83601061",
+      "userName": "Ray",
+      "userAccount": "user_vnaf3524",
+      "illustType": 0,
+      "xRestrict": 0,
+      "pageCount": 15,
+      "width": 1254,
+      "height": 1254,
+      "bookmarkCount": 3,
+      "likeCount": 3,
+      "viewCount": 92,
+      "createDate": "2026-10-10T15:52:00+00:00",
+      "description": "https://youtube.com/shorts/lFZDW8evpMs?feature=share",
+      "seriesTitle": null,
+      "tags": [
+        { "name": "女子", "translated": "woman" },
+        { "name": "少女", "translated": "Young Girl" },
+        { "name": "VOCALOID", "translated": null },
+        { "name": "ミク", "translated": "miku" },
+        { "name": "初音", "translated": "hatsune" },
+        { "name": "テト", "translated": "Teto" }
+      ]
+    }
+  }
+}

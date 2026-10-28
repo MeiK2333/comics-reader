@@ -4,12 +4,14 @@ import copymangaWire from "../platforms/copymanga/fixtures/wire.json";
 import jmWire from "../platforms/jm/fixtures/wire.json";
 import manhuaguiWire from "../platforms/manhuagui/fixtures/wire.json";
 import nhentaiWire from "../platforms/nhentai/fixtures/wire.json";
+import pixivWire from "../platforms/pixiv/fixtures/wire.json";
 import type {
   ComicDetail,
   CopymangaDetail,
   JmDetail,
   ManhuaguiDetail,
   NhentaiDetail,
+  PixivDetail,
 } from "../platforms";
 import { createDownloadDetailSnapshot } from "./downloads";
 
@@ -54,6 +56,13 @@ describe("createDownloadDetailSnapshot", () => {
     if (copymanga.platform === "copymanga") {
       expect(copymanga.extra.chapterGroups).toEqual([]);
       expect(copymanga.extra.authors.length).toBeGreaterThan(0);
+    }
+
+    const pixiv = createDownloadDetailSnapshot(pixivWire.detail as PixivDetail);
+    expectNoChapters(pixiv);
+    expect(pixiv.platform).toBe("pixiv");
+    if (pixiv.platform === "pixiv") {
+      expect(pixiv.extra.tags.length).toBeGreaterThan(0);
     }
   });
 });

@@ -8,4 +8,5 @@ export const copymanga = definePlatform<"copymanga">({
   icon,
   iconStyle: "plain",
   singleChapter: false,
+  numericIdDirectOpen: false,
 });

@@ -15,6 +15,7 @@ mod jm_image;
 mod manhuagui;
 pub(crate) mod model;
 mod nhentai;
+mod pixiv;
 mod registry;
 
 pub(crate) use registry::{catalog, find_catalog, is_known_platform, resolve};
@@ -173,8 +174,8 @@ pub(crate) trait ImageProfile: Send + Sync {
 /// Platforms without a catalog stay image-only and do not need to implement
 /// empty parser methods.
 pub(crate) trait Catalog: ImageProfile {
-    /// Whether the work has one implicit chapter (nhentai). Downloads and the
-    /// reader ignore chapter ids for such a platform.
+    /// Whether the work has one implicit chapter (nhentai, E-Hentai, pixiv).
+    /// Downloads and the reader ignore chapter ids for such a platform.
     fn single_chapter(&self) -> bool {
         false
     }
@@ -404,6 +405,14 @@ mod tests {
             detect(&parse("https://ehgt.org/w/1/thumb.webp")).id(),
             "ehentai"
         );
+        assert_eq!(
+            detect(&parse("https://i.pximg.net/img-original/img/1_p0.png")).id(),
+            "pixiv"
+        );
+        assert_eq!(
+            detect(&parse("https://i.pixiv.re/img-original/img/1_p0.png")).id(),
+            "pixiv"
+        );
         assert_eq!(detect(&parse("https://example.com/a.png")).id(), "generic");
     }
 
@@ -446,6 +455,13 @@ mod tests {
         let ehentai = headers_for("ehentai", "https://e-hentai.org/s/abc/1-1");
         assert_eq!(ehentai[REFERER].to_str().unwrap(), "https://e-hentai.org/");
         assert_eq!(ehentai[ACCEPT_LANGUAGE].to_str().unwrap(), "en-US,en;q=0.9");
+
+        let pixiv = headers_for("pixiv", "https://i.pximg.net/img-original/img/1_p0.png");
+        assert_eq!(pixiv[REFERER].to_str().unwrap(), "https://www.pixiv.net/");
+        assert_eq!(
+            pixiv[ACCEPT_LANGUAGE].to_str().unwrap(),
+            "zh-CN,zh;q=0.9,en;q=0.8"
+        );
     }
 
     #[test]
@@ -530,6 +546,12 @@ mod tests {
         assert_eq!(
             find_profile("ehentai").unwrap().cache_key_url(&image_page),
             "https://e-hentai.org/s/abc/1-1"
+        );
+
+        let pixiv_proxy = parse("https://i.pixiv.re/img-original/img/1_p0.png");
+        assert_eq!(
+            find_profile("pixiv").unwrap().cache_key_url(&pixiv_proxy),
+            "https://i.pximg.net/img-original/img/1_p0.png"
         );
     }
 }

@@ -8,4 +8,5 @@ export const nhentai = definePlatform<"nhentai">({
   icon,
   iconStyle: "dark-chip",
   singleChapter: true,
+  numericIdDirectOpen: true,
 });

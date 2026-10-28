@@ -7,6 +7,7 @@
 - manhuagui
 - [拷贝漫画](https://www.mangacopy.com/)
 - [E-Hentai](https://e-hentai.org/)
+- [pixiv](https://www.pixiv.net/)：匿名搜索/详情/阅读，使用 pixiv 网页 AJAX 接口与原图 CDN
 
 ## 计划支持
 

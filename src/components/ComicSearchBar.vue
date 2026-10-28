@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { ComicPlatform } from "../platforms";
+import { platformFor } from "../platforms";
 import { useAppI18n } from "../i18n";
 import DirectOpenIcon from "./DirectOpenIcon.vue";
 import PlatformPicker from "./PlatformPicker.vue";
@@ -21,10 +22,10 @@ const emit = defineEmits<{
 
 const { t } = useAppI18n();
 
-// JM and nhentai both use numeric work ids, so a numeric query can skip the
-// search request and open the detail route directly.
+// A platform whose work ids are plain numbers can open the detail route from
+// the query itself instead of spending a search request.
 const directId = computed(() => {
-  if (props.platform !== "jm" && props.platform !== "nhentai") {
+  if (!platformFor(props.platform).numericIdDirectOpen) {
     return "";
   }
   const trimmed = props.query.trim();

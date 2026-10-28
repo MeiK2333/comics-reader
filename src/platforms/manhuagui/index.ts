@@ -8,4 +8,5 @@ export const manhuagui = definePlatform<"manhuagui">({
   icon,
   iconStyle: "plain",
   singleChapter: false,
+  numericIdDirectOpen: false,
 });

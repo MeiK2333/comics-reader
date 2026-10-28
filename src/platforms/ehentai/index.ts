@@ -8,4 +8,5 @@ export const ehentai = definePlatform<"ehentai">({
   icon,
   iconStyle: "plain",
   singleChapter: true,
+  numericIdDirectOpen: false,
 });

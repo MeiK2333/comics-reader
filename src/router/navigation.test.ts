@@ -47,4 +47,16 @@ describe("detail/reader route hierarchy", () => {
       }).fullPath,
     ).toBe("/downloads/jm/9");
   });
+
+  it("resolves a numeric pixiv artwork id as the online detail route", () => {
+    const resolved = router.resolve({
+      name: "comic-detail",
+      params: { platform: "pixiv", id: "150699872" },
+    });
+
+    expect(resolved.fullPath).toBe("/comic/pixiv/150699872");
+    expect(resolved.matched.map((record) => record.name)).toEqual([
+      "comic-detail",
+    ]);
+  });
 });

@@ -35,7 +35,7 @@ export interface DownloadSummary {
   failedChapters: number;
   downloadedPages: number;
   totalBytes: number;
-  /** First completed chapter; `null` for nhentai's implicit chapter. */
+  /** First completed chapter; `null` for a single-chapter platform's implicit chapter. */
   readChapterId: string | null;
   addedAt: number;
   updatedAt: number;
@@ -108,6 +108,7 @@ export function createDownloadDetailSnapshot(detail: ComicDetail): ComicDetail {
         extra: { ...detail.extra, chapterGroups: [] },
       };
     case "ehentai":
+    case "pixiv":
       return { ...detail, chapters: [] };
   }
 }

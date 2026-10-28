@@ -5,6 +5,7 @@ import EhentaiDetail from "./ehentai/Detail.vue";
 import JmDetail from "./jm/Detail.vue";
 import ManhuaguiDetail from "./manhuagui/Detail.vue";
 import NhentaiDetail from "./nhentai/Detail.vue";
+import PixivDetail from "./pixiv/Detail.vue";
 
 defineProps<{
   detail: ComicDetail;
@@ -78,7 +79,7 @@ const emit = defineEmits<{
     </template>
   </EhentaiDetail>
   <NhentaiDetail
-    v-else
+    v-else-if="detail.platform === 'nhentai'"
     :detail="detail"
     :local-cover-path="localCoverPath"
   >
@@ -89,4 +90,16 @@ const emit = defineEmits<{
       <slot name="extra" />
     </template>
   </NhentaiDetail>
+  <PixivDetail
+    v-else
+    :detail="detail"
+    :local-cover-path="localCoverPath"
+  >
+    <template #summary-extra>
+      <slot name="summary-extra" />
+    </template>
+    <template #extra>
+      <slot name="extra" />
+    </template>
+  </PixivDetail>
 </template>
