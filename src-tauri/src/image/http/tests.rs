@@ -127,32 +127,43 @@ fn ech_fallback_key_is_scoped_to_the_https_origin() {
 }
 
 #[test]
-fn caches_and_expires_ech_fallbacks() {
+fn caches_and_expires_the_selected_tls_fallback() {
     let client = HttpClient::default();
     let key = "example.com:443";
 
-    assert!(!client.ech_fallback_is_active(key).unwrap());
-    client.remember_ech_fallback(key).unwrap();
-    assert!(client.ech_fallback_is_active(key).unwrap());
+    assert_eq!(client.tls_fallback_mode(key).unwrap(), None);
+    client.cache_tls_fallback(key, TlsFallback::Plain).unwrap();
+    assert_eq!(
+        client.tls_fallback_mode(key).unwrap(),
+        Some(TlsFallback::Plain)
+    );
 
-    client
-        .lock()
-        .unwrap()
-        .ech_fallback_until
-        .insert(key.into(), Instant::now() - Duration::from_secs(1));
-    assert!(!client.ech_fallback_is_active(key).unwrap());
-    assert!(client.lock().unwrap().ech_fallback_until.is_empty());
+    client.cache_tls_fallback(key, TlsFallback::NoSni).unwrap();
+    assert_eq!(
+        client.tls_fallback_mode(key).unwrap(),
+        Some(TlsFallback::NoSni)
+    );
+
+    client.lock().unwrap().tls_fallback_until.insert(
+        key.into(),
+        CachedFallback {
+            mode: TlsFallback::NoSni,
+            until: Instant::now() - Duration::from_secs(1),
+        },
+    );
+    assert_eq!(client.tls_fallback_mode(key).unwrap(), None);
+    assert!(client.lock().unwrap().tls_fallback_until.is_empty());
 }
 
 #[test]
 fn disabling_ech_clears_cached_fallbacks() {
     let client = HttpClient::default();
     let key = "example.com:443";
-    client.remember_ech_fallback(key).unwrap();
+    client.cache_tls_fallback(key, TlsFallback::NoSni).unwrap();
 
     client.disable_ech().unwrap();
 
-    assert!(!client.ech_fallback_is_active(key).unwrap());
+    assert_eq!(client.tls_fallback_mode(key).unwrap(), None);
 }
 
 #[test]
@@ -207,7 +218,10 @@ async fn ech_client_fetches_and_falls_back() {
         .await
         .unwrap();
     assert_eq!(response.status(), reqwest::StatusCode::OK);
-    assert!(http.ech_fallback_is_active("www.qq.com:443").unwrap());
+    assert_eq!(
+        http.tls_fallback_mode("www.qq.com:443").unwrap(),
+        Some(TlsFallback::Plain)
+    );
 
     // Force the deadline so the next HTTPS request re-runs the bootstrap
     // and swaps in a fresh runtime.
@@ -223,7 +237,10 @@ async fn ech_client_fetches_and_falls_back() {
     assert_eq!(response.status(), reqwest::StatusCode::OK);
     assert!(http.lock().unwrap().ech_generation > generation);
     // The fallback decision belongs to the origin, not the ECH runtime.
-    assert!(http.ech_fallback_is_active("www.qq.com:443").unwrap());
+    assert_eq!(
+        http.tls_fallback_mode("www.qq.com:443").unwrap(),
+        Some(TlsFallback::Plain)
+    );
     let response = http
         .send(&qq, |client| client.get(qq.as_str()))
         .await
@@ -238,8 +255,32 @@ async fn ech_client_fetches_and_falls_back() {
 
     http.disable_ech().unwrap();
     assert!(!http.ech_status().unwrap().enabled);
-    assert!(!http.ech_fallback_is_active("www.qq.com:443").unwrap());
+    assert_eq!(http.tls_fallback_mode("www.qq.com:443").unwrap(), None);
     http.set_proxy(Some(proxy("127.0.0.1", 7890))).unwrap();
+}
+
+/// The no-SNI client must still verify the presented certificate. This host
+/// serves an untrusted Cloudflare Origin certificate to SNI-less clients, so a
+/// successful response would mean SNI was not actually omitted or verification
+/// was weakened.
+#[tokio::test]
+#[ignore = "performs a live no-SNI request"]
+async fn no_sni_client_keeps_certificate_verification() {
+    let session = Arc::new(
+        crate::ech::EchSession::bootstrap("https://dns.alidns.com/dns-query")
+            .await
+            .unwrap(),
+    );
+    let client = super::client::build_no_sni_client(&session, session.resolver()).unwrap();
+    let url = Url::parse("https://api.2024manga.com/api/v3/search/comic?q=test").unwrap();
+
+    let error = client
+        .get(url)
+        .send()
+        .await
+        .expect_err("the SNI-less certificate is not valid for the API host");
+
+    assert!(error.is_connect(), "unexpected error: {error}");
 }
 
 /// Full business path through ECH: nhentai search, detail, and the detail

@@ -19,9 +19,25 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const ECH_CONFIG_TTL: Duration = Duration::from_secs(10 * 60);
 /// After a failed refresh, wait this long before trying the bootstrap again.
 const ECH_REFRESH_RETRY: Duration = Duration::from_secs(60);
-/// A host that rejected ECH but accepted plain TLS is retried with ECH after
+/// A host that rejected ECH but accepted a fallback is retried with ECH after
 /// this long, so a server or config change cannot disable ECH indefinitely.
-const ECH_FALLBACK_TTL: Duration = Duration::from_secs(10 * 60);
+const TLS_FALLBACK_TTL: Duration = Duration::from_secs(10 * 60);
+
+/// Transport that a host accepted after ECH was unavailable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum TlsFallback {
+    /// Ordinary TLS with the target SNI.
+    Plain,
+    /// TLS without an SNI extension. Certificate verification is unchanged.
+    NoSni,
+}
+
+/// A host's last successful fallback and when it should try ECH again.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct CachedFallback {
+    pub(super) mode: TlsFallback,
+    pub(super) until: Instant,
+}
 
 /// Shared HTTP client and the proxy currently applied to it. Building the
 /// client lazily keeps startup infallible while still reusing pooled
@@ -46,9 +62,10 @@ struct ClientState {
     /// Incremented when a command starts changing the ECH state. A bootstrap
     /// that finishes after a newer command must be discarded.
     ech_control_generation: u64,
-    /// `https://host:port` keys that rejected ECH but accepted plain TLS. The
-    /// cache survives an ECH config refresh but is cleared when ECH is toggled.
-    ech_fallback_until: HashMap<String, Instant>,
+    /// `https://host:port` keys that rejected ECH but accepted plain TLS or a
+    /// no-SNI handshake. The cache survives an ECH config refresh but is
+    /// cleared when ECH is toggled.
+    tls_fallback_until: HashMap<String, CachedFallback>,
 }
 
 impl HttpClient {

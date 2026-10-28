@@ -2,7 +2,11 @@
 //!
 //! Every target first gets an ECH attempt with the shared
 //! `cloudflare-ech.com` config. If ECH fails, the same target IPs are retried
-//! with ordinary TLS so non-Cloudflare sites remain reachable.
+//! with ordinary TLS so non-Cloudflare sites remain reachable. The probe stops
+//! there; the shared HTTP client additionally has a no-SNI attempt for business
+//! requests. Certificate verification still targets the request host, so the
+//! server must serve a matching certificate without SNI (normally a default
+//! virtual host).
 
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
@@ -164,6 +168,18 @@ pub(crate) fn build_plain_tls_config_with_alpn(alpn: &[&[u8]]) -> Result<rustls:
     Ok(config)
 }
 
+/// Plain-TLS config whose ClientHello omits the SNI extension.
+///
+/// Certificate verification is deliberately unchanged: rustls still checks the
+/// presented certificate against the request host. This only succeeds when the
+/// origin serves a matching certificate without SNI, which is why it is a
+/// last-resort fallback rather than a replacement for plain TLS.
+pub(crate) fn build_no_sni_tls_config_with_alpn(alpn: &[&[u8]]) -> Result<rustls::ClientConfig> {
+    let mut config = build_plain_tls_config_with_alpn(alpn)?;
+    config.enable_sni = false;
+    Ok(config)
+}
+
 fn root_store() -> rustls::RootCertStore {
     rustls::RootCertStore {
         roots: webpki_roots::TLS_SERVER_ROOTS.to_vec(),
@@ -317,6 +333,17 @@ mod tests {
     #[test]
     fn builds_a_plain_tls_fallback_config() {
         build_plain_tls_config().unwrap();
+    }
+
+    #[test]
+    fn no_sni_config_keeps_verification_and_alpn_but_omits_sni() {
+        let config = build_no_sni_tls_config_with_alpn(&[b"h2", b"http/1.1"]).unwrap();
+
+        assert!(!config.enable_sni);
+        assert_eq!(
+            config.alpn_protocols,
+            vec![b"h2".to_vec(), b"http/1.1".to_vec()]
+        );
     }
 
     #[test]

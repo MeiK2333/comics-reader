@@ -69,6 +69,13 @@ impl EchSession {
         tls::build_plain_tls_config_with_alpn(REQWEST_ALPN)
     }
 
+    /// Last-resort fallback config for reqwest: plain TLS without an SNI
+    /// extension. DNS still goes through Cloudflare and the certificate is
+    /// still verified against the request host.
+    pub(crate) fn reqwest_no_sni_tls(&self) -> Result<rustls::ClientConfig> {
+        tls::build_no_sni_tls_config_with_alpn(REQWEST_ALPN)
+    }
+
     /// Resolver for the ECH and fallback clients.
     pub(crate) fn resolver(self: &Arc<Self>) -> Arc<CloudflareResolver> {
         Arc::new(CloudflareResolver::new(self.clone()))
