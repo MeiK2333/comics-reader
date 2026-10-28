@@ -139,9 +139,9 @@ const { t } = useAppI18n();
      loading spinner) remains centered. */
   .favorite-button,
   .download-button {
-    width: 34px;
-    min-width: 34px;
-    height: 34px;
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
     padding: 0;
     justify-content: center;
   }

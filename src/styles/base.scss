@@ -51,6 +51,19 @@ body {
   left: var(--app-safe-area-left) !important;
 }
 
+/* Mobile sheet dialogs (AppSheet) size themselves from their content, so the
+   drawer must not force the default full-height wrapper: the panel caps the
+   height and scrolls its body instead. */
+.app-sheet .n-drawer-content-wrapper {
+  height: auto;
+  overflow: visible;
+}
+
+.app-sheet .app-sheet__footer .n-button {
+  flex: 1 1 0;
+  min-height: 44px;
+}
+
 /* The search button and home control keep their view-transition-name across
    the home and results routes, so the browser animates them between layouts
    while the route changes immediately. */

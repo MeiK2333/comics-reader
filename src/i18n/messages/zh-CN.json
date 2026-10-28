@@ -2,6 +2,9 @@
   "app": {
     "name": "Comics Reader"
   },
+  "common": {
+    "close": "关闭"
+  },
   "meta": {
     "search": "搜索 · {app}",
     "comic": "漫画详情 · {app}",

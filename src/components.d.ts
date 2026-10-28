@@ -11,6 +11,7 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    AppSheet: typeof import('./components/AppSheet.vue')['default']
     ComicDetailSkeleton: typeof import('./components/comic-detail/ComicDetailSkeleton.vue')['default']
     ComicSearchBar: typeof import('./components/ComicSearchBar.vue')['default']
     ComicSearchResults: typeof import('./components/ComicSearchResults.vue')['default']
@@ -23,6 +24,7 @@ declare module 'vue' {
     DetailTopbar: typeof import('./components/comic-detail/DetailTopbar.vue')['default']
     DirectOpenIcon: typeof import('./components/DirectOpenIcon.vue')['default']
     DownloadControlIcon: typeof import('./components/DownloadControlIcon.vue')['default']
+    FavoriteGroupBar: typeof import('./components/favorites/FavoriteGroupBar.vue')['default']
     FavoriteGroupPicker: typeof import('./components/favorites/FavoriteGroupPicker.vue')['default']
     FavoriteIcon: typeof import('./components/FavoriteIcon.vue')['default']
     HomeIcon: typeof import('./components/HomeIcon.vue')['default']
@@ -37,6 +39,7 @@ declare module 'vue' {
     NDescriptions: typeof import('naive-ui')['NDescriptions']
     NDescriptionsItem: typeof import('naive-ui')['NDescriptionsItem']
     NDivider: typeof import('naive-ui')['NDivider']
+    NDrawer: typeof import('naive-ui')['NDrawer']
     NDropdown: typeof import('naive-ui')['NDropdown']
     NEmpty: typeof import('naive-ui')['NEmpty']
     NInput: typeof import('naive-ui')['NInput']

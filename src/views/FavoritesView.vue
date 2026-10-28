@@ -1,10 +1,5 @@
 <script setup lang="ts">
-import {
-  computed,
-  onMounted,
-  ref,
-  watch,
-} from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import type { RouteLocationRaw } from "vue-router";
 import { RouterLink } from "vue-router";
 import { useMessage } from "naive-ui";
@@ -19,8 +14,15 @@ import {
   type FavoriteEntry,
   type FavoriteGroup,
 } from "../api/favorites";
+import AppSheet from "../components/AppSheet.vue";
 import ComicThumb from "../components/ComicThumb.vue";
 import TrashIcon from "../components/TrashIcon.vue";
+import FavoriteGroupBar from "../components/favorites/FavoriteGroupBar.vue";
+import {
+  GROUP_NAME_ISSUE_KEYS,
+  GROUP_NAME_MAX_LENGTH,
+  groupNameIssue,
+} from "../components/favorites/favorite-group-name";
 import { useBackNavigation } from "../composables/useBackNavigation";
 import { useErrorMessage } from "../composables/useErrorMessage";
 import { useLatestRequest } from "../composables/useLatestRequest";
@@ -105,12 +107,6 @@ function detailTarget(entry: FavoriteEntry): RouteLocationRaw {
   };
 }
 
-function groupLabel(group: FavoriteGroup): string {
-  return group.id === DEFAULT_GROUP_ID
-    ? t("favorites.defaultGroup")
-    : group.name;
-}
-
 function groupLabelById(groupId: string): string {
   if (groupId === DEFAULT_GROUP_ID) {
     return t("favorites.defaultGroup");
@@ -158,7 +154,9 @@ function selectGroup(groupId: string | null) {
   }
   selectedGroupId.value = groupId;
   // Pagination sits below a long list; start the filtered list from the top.
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  if (window.scrollY > 0) {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
   void resetPage();
 }
 
@@ -216,25 +214,13 @@ function openRenameGroup(group: FavoriteGroup) {
 }
 
 function validateGroupName(name: string): string {
-  if (!name) {
-    return t("favorites.group.nameRequired");
-  }
-  if (name.length > 40) {
-    return t("favorites.group.nameTooLong");
-  }
-
-  const lowered = name.toLocaleLowerCase();
-  if (lowered === t("favorites.defaultGroup").toLocaleLowerCase()) {
-    return t("favorites.group.nameTaken");
-  }
-
-  const taken = groups.value.some(
-    (group) =>
-      group.id !== DEFAULT_GROUP_ID &&
-      group.id !== groupDialogGroupId.value &&
-      group.name.toLocaleLowerCase() === lowered,
+  const issue = groupNameIssue(
+    name,
+    groups.value,
+    groupDialogGroupId.value,
+    t("favorites.defaultGroup"),
   );
-  return taken ? t("favorites.group.nameTaken") : "";
+  return issue ? t(GROUP_NAME_ISSUE_KEYS[issue]) : "";
 }
 
 async function saveGroup() {
@@ -351,56 +337,17 @@ onMounted(() => {
       <h1>{{ t("favorites.title") }}</h1>
     </header>
 
+    <FavoriteGroupBar
+      :groups="groups"
+      :total="groupsTotal"
+      :selected-group-id="selectedGroupId"
+      :loading="groupsLoading"
+      @select="selectGroup"
+      @create="openCreateGroup"
+      @manage="showGroupManager = true"
+    />
+
     <NCard class="favorites-card" size="small">
-      <div
-        class="favorites-groups"
-        role="group"
-        :aria-label="t('favorites.groupsLabel')"
-      >
-        <NButton
-          size="small"
-          secondary
-          :type="selectedGroupId === null ? 'primary' : 'default'"
-          :aria-pressed="selectedGroupId === null"
-          :disabled="groupsLoading"
-          @click="selectGroup(null)"
-        >
-          {{ t("favorites.allGroups") }}
-          <span class="favorites-group-count">{{ groupsTotal }}</span>
-        </NButton>
-
-        <NButton
-          v-for="group in groups"
-          :key="group.id"
-          size="small"
-          secondary
-          :type="selectedGroupId === group.id ? 'primary' : 'default'"
-          :aria-pressed="selectedGroupId === group.id"
-          :disabled="groupsLoading"
-          @click="selectGroup(group.id)"
-        >
-          {{ groupLabel(group) }}
-          <span class="favorites-group-count">{{ group.count }}</span>
-        </NButton>
-
-        <NButton
-          size="small"
-          quaternary
-          :disabled="groupsLoading"
-          @click="openCreateGroup"
-        >
-          + {{ t("favorites.group.create") }}
-        </NButton>
-        <NButton
-          size="small"
-          quaternary
-          :disabled="groupsLoading"
-          @click="showGroupManager = true"
-        >
-          {{ t("favorites.group.manage") }}
-        </NButton>
-      </div>
-
       <NAlert
         v-if="groupsError"
         class="favorites-group-alert"
@@ -514,27 +461,24 @@ onMounted(() => {
         <NPagination
           :page="page"
           :page-count="pageCount"
-          :page-slot="7"
+          :page-slot="5"
           :disabled="loading || removingKey !== null"
           @update:page="changePage"
         />
       </div>
     </NCard>
 
-    <NModal
+    <AppSheet
       v-model:show="groupDialogShow"
-      preset="card"
       :title="groupDialogTitle"
-      :style="{ width: 'min(420px, calc(100vw - var(--app-safe-area-left) - var(--app-safe-area-right) - 2rem))' }"
-      :closable="!groupDialogSaving"
-      :mask-closable="!groupDialogSaving"
-      :close-on-esc="!groupDialogSaving"
+      :width="420"
+      :busy="groupDialogSaving"
     >
       <div class="group-dialog">
         <NInput
           v-model:value="groupDialogName"
           :placeholder="t('favorites.group.namePlaceholder')"
-          :maxlength="40"
+          :maxlength="GROUP_NAME_MAX_LENGTH"
           :status="groupDialogError ? 'error' : undefined"
           @keyup.enter="saveGroup"
         />
@@ -543,29 +487,19 @@ onMounted(() => {
         </p>
       </div>
       <template #footer>
-        <div class="group-dialog__footer">
-          <NButton
-            :disabled="groupDialogSaving"
-            @click="groupDialogShow = false"
-          >
-            {{ t("favorites.cancel") }}
-          </NButton>
-          <NButton
-            type="primary"
-            :loading="groupDialogSaving"
-            @click="saveGroup"
-          >
-            {{ t("favorites.group.save") }}
-          </NButton>
-        </div>
+        <NButton :disabled="groupDialogSaving" @click="groupDialogShow = false">
+          {{ t("favorites.cancel") }}
+        </NButton>
+        <NButton type="primary" :loading="groupDialogSaving" @click="saveGroup">
+          {{ t("favorites.group.save") }}
+        </NButton>
       </template>
-    </NModal>
+    </AppSheet>
 
-    <NModal
+    <AppSheet
       v-model:show="showGroupManager"
-      preset="card"
       :title="t('favorites.group.manage')"
-      :style="{ width: 'min(520px, calc(100vw - var(--app-safe-area-left) - var(--app-safe-area-right) - 2rem))' }"
+      :width="520"
     >
       <div class="group-manager">
         <div class="group-manager__row group-manager__row--default">
@@ -580,6 +514,7 @@ onMounted(() => {
 
         <NEmpty
           v-if="!customGroups.length"
+          class="group-manager__empty"
           :description="t('favorites.group.noCustomGroups')"
         />
 
@@ -590,41 +525,44 @@ onMounted(() => {
         >
           <span class="group-manager__name">{{ group.name }}</span>
           <span class="group-manager__count">{{ group.count }}</span>
-          <NButton
-            size="small"
-            quaternary
-            :disabled="deletingGroupId !== null"
-            @click="openRenameGroup(group)"
-          >
-            {{ t("favorites.group.rename") }}
-          </NButton>
-          <NPopconfirm
-            :positive-text="t('favorites.group.delete')"
-            :negative-text="t('favorites.cancel')"
-            @positive-click="deleteGroup(group)"
-          >
-            <template #trigger>
-              <NButton
-                size="small"
-                type="error"
-                quaternary
-                :loading="deletingGroupId === group.id"
-                :disabled="deletingGroupId !== null"
-              >
-                {{ t("favorites.group.delete") }}
-              </NButton>
-            </template>
-            {{ t("favorites.group.deleteConfirm") }}
-          </NPopconfirm>
-        </div>
-
-        <div class="group-manager__footer">
-          <NButton size="small" @click="openCreateGroupFromManager">
-            + {{ t("favorites.group.create") }}
-          </NButton>
+          <div class="group-manager__actions">
+            <NButton
+              size="small"
+              quaternary
+              :disabled="deletingGroupId !== null"
+              @click="openRenameGroup(group)"
+            >
+              {{ t("favorites.group.rename") }}
+            </NButton>
+            <NPopconfirm
+              placement="left"
+              :positive-text="t('favorites.group.delete')"
+              :negative-text="t('favorites.cancel')"
+              @positive-click="deleteGroup(group)"
+            >
+              <template #trigger>
+                <NButton
+                  size="small"
+                  type="error"
+                  quaternary
+                  :loading="deletingGroupId === group.id"
+                  :disabled="deletingGroupId !== null"
+                >
+                  {{ t("favorites.group.delete") }}
+                </NButton>
+              </template>
+              {{ t("favorites.group.deleteConfirm") }}
+            </NPopconfirm>
+          </div>
         </div>
       </div>
-    </NModal>
+
+      <template #footer>
+        <NButton type="primary" @click="openCreateGroupFromManager">
+          + {{ t("favorites.group.create") }}
+        </NButton>
+      </template>
+    </AppSheet>
   </main>
 </template>
 
@@ -639,7 +577,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 0.35rem;
-  margin-bottom: 1rem;
+  margin-bottom: 0.75rem;
 }
 
 .favorites-back {
@@ -664,33 +602,8 @@ onMounted(() => {
   text-align: left;
 }
 
-.favorites-groups {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  overflow-x: auto;
-  padding-bottom: 0.35rem;
-  margin-bottom: 0.25rem;
-  scrollbar-width: none;
-}
-
-.favorites-groups::-webkit-scrollbar {
-  display: none;
-}
-
-.favorites-groups :deep(.n-button) {
-  flex: none;
-}
-
-.favorites-group-count {
-  margin-left: 0.3rem;
-  font-size: 0.72rem;
-  opacity: 0.6;
-  font-variant-numeric: tabular-nums;
-}
-
 .favorites-group-alert {
-  margin: 0.5rem 0;
+  margin-bottom: 0.5rem;
 }
 
 .favorites-toolbar {
@@ -848,12 +761,6 @@ onMounted(() => {
   color: #d03050;
 }
 
-.group-dialog__footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.5rem;
-}
-
 .group-manager {
   display: flex;
   flex-direction: column;
@@ -877,6 +784,10 @@ onMounted(() => {
   opacity: 0.75;
 }
 
+.group-manager__empty {
+  padding: 1.5rem 0;
+}
+
 .group-manager__name {
   flex: 1;
   min-width: 0;
@@ -894,15 +805,29 @@ onMounted(() => {
   font-variant-numeric: tabular-nums;
 }
 
-.group-manager__footer {
+.group-manager__actions {
   display: flex;
-  justify-content: flex-start;
-  padding-top: 0.35rem;
+  flex: none;
+  align-items: center;
+  gap: 0.25rem;
 }
 
 @media (max-width: 560px) {
   .favorites-page {
-    padding-top: 0.75rem;
+    /* `width: 100%` would overflow by the page padding: there is no global
+       box-sizing reset, so let the block size itself instead. */
+    width: auto;
+    padding: 0.5rem 0.75rem 3rem;
+  }
+
+  .favorites-header {
+    margin-bottom: 0.25rem;
+  }
+
+  /* Reclaim the double inset: page padding plus Naive's card padding left
+     only ~288px of content on a 360px screen. */
+  .favorites-card :deep(.n-card__content) {
+    padding: 10px;
   }
 
   .favorite-entry__main {
@@ -916,6 +841,30 @@ onMounted(() => {
 
   .favorite-entry__meta time {
     width: 100%;
+  }
+
+  .favorite-entry__remove {
+    width: 40px;
+    height: 40px;
+  }
+
+  .favorites-loading {
+    padding: 2rem 0;
+  }
+
+  .favorites-empty {
+    padding: 2rem 0;
+  }
+
+  /* Four items per row do not fit on a phone; move the actions to their own
+     right-aligned line. */
+  .group-manager__row {
+    flex-wrap: wrap;
+  }
+
+  .group-manager__actions {
+    width: 100%;
+    justify-content: flex-end;
   }
 }
 </style>

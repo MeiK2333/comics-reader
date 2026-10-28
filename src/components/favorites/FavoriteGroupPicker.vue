@@ -13,6 +13,12 @@ import {
 import { useErrorMessage } from "../../composables/useErrorMessage";
 import { toAppError, type AppError } from "../../errors";
 import { useAppI18n } from "../../i18n";
+import AppSheet from "../AppSheet.vue";
+import {
+  GROUP_NAME_ISSUE_KEYS,
+  GROUP_NAME_MAX_LENGTH,
+  groupNameIssue,
+} from "./favorite-group-name";
 
 const props = defineProps<{
   show: boolean;
@@ -101,25 +107,14 @@ async function createGroup() {
   }
 
   const name = newGroupName.value.trim();
-  if (!name) {
-    nameError.value = t("favorites.group.nameRequired");
-    return;
-  }
-  if (name.length > 40) {
-    nameError.value = t("favorites.group.nameTooLong");
-    return;
-  }
-
-  const lowered = name.toLocaleLowerCase();
-  if (
-    lowered === t("favorites.defaultGroup").toLocaleLowerCase() ||
-    groups.value.some(
-      (group) =>
-        group.id !== DEFAULT_GROUP_ID &&
-        group.name.toLocaleLowerCase() === lowered,
-    )
-  ) {
-    nameError.value = t("favorites.group.nameTaken");
+  const issue = groupNameIssue(
+    name,
+    groups.value,
+    null,
+    t("favorites.defaultGroup"),
+  );
+  if (issue) {
+    nameError.value = t(GROUP_NAME_ISSUE_KEYS[issue]);
     return;
   }
 
@@ -196,19 +191,14 @@ watch(newGroupName, () => {
 </script>
 
 <template>
-  <NModal
+  <AppSheet
     :show="show"
-    preset="card"
     :title="pickerTitle"
-    :style="{ width: 'min(440px, calc(100vw - 2rem))' }"
-    :closable="!saving"
-    :mask-closable="!saving"
-    :close-on-esc="!saving"
+    :width="440"
+    :busy="saving"
     @update:show="emit('update:show', $event)"
   >
     <div class="group-picker">
-      <p class="group-picker__hint">{{ t("favorites.longPressHint") }}</p>
-
       <div v-if="loading" class="group-picker__loading" aria-busy="true">
         <NSpin size="medium" />
       </div>
@@ -223,7 +213,11 @@ watch(newGroupName, () => {
       </NAlert>
 
       <template v-else>
-        <NRadioGroup v-model:value="selectedGroupId" class="group-picker__list">
+        <NRadioGroup
+          v-model:value="selectedGroupId"
+          class="group-picker__list"
+          :aria-label="pickerTitle"
+        >
           <NRadio
             v-for="group in groups"
             :key="group.id"
@@ -231,7 +225,7 @@ watch(newGroupName, () => {
             class="group-picker__option"
           >
             <span class="group-picker__label">
-              <span>{{ groupLabel(group) }}</span>
+              <span class="group-picker__name">{{ groupLabel(group) }}</span>
               <span class="group-picker__count">{{ group.count }}</span>
             </span>
           </NRadio>
@@ -241,7 +235,7 @@ watch(newGroupName, () => {
           <NInput
             v-model:value="newGroupName"
             :placeholder="t('favorites.group.namePlaceholder')"
-            :maxlength="40"
+            :maxlength="GROUP_NAME_MAX_LENGTH"
             :status="nameError ? 'error' : undefined"
             @keyup.enter="createGroup"
           />
@@ -258,21 +252,19 @@ watch(newGroupName, () => {
     </div>
 
     <template #footer>
-      <div class="group-picker__footer">
-        <NButton :disabled="saving" @click="close">
-          {{ t("favorites.cancel") }}
-        </NButton>
-        <NButton
-          type="primary"
-          :loading="saving"
-          :disabled="!canConfirm"
-          @click="confirm"
-        >
-          {{ t("favorites.group.confirm") }}
-        </NButton>
-      </div>
+      <NButton :disabled="saving" @click="close">
+        {{ t("favorites.cancel") }}
+      </NButton>
+      <NButton
+        type="primary"
+        :loading="saving"
+        :disabled="!canConfirm"
+        @click="confirm"
+      >
+        {{ t("favorites.group.confirm") }}
+      </NButton>
     </template>
-  </NModal>
+  </AppSheet>
 </template>
 
 <style scoped>
@@ -280,13 +272,6 @@ watch(newGroupName, () => {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-}
-
-.group-picker__hint {
-  margin: 0;
-  font-size: 0.8rem;
-  line-height: 1.5;
-  opacity: 0.65;
 }
 
 .group-picker__loading {
@@ -303,18 +288,19 @@ watch(newGroupName, () => {
   flex-wrap: wrap;
 }
 
+/* The sheet body already scrolls, so the list grows and the panel caps the
+   height instead of trapping touch gestures in a nested scroll area. */
 .group-picker__list {
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
-  max-height: min(46vh, 280px);
-  overflow-y: auto;
+  gap: 0.1rem;
 }
 
 .group-picker__option {
   width: 100%;
-  padding: 0.4rem 0.25rem;
-  border-radius: 6px;
+  min-height: 44px;
+  padding: 0.5rem 0.25rem;
+  border-radius: 8px;
 }
 
 .group-picker__option:hover {
@@ -335,6 +321,10 @@ watch(newGroupName, () => {
   overflow-wrap: anywhere;
 }
 
+.group-picker__name {
+  min-width: 0;
+}
+
 .group-picker__count {
   flex: none;
   font-size: 0.75rem;
@@ -344,12 +334,13 @@ watch(newGroupName, () => {
 
 .group-picker__create {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
 }
 
 .group-picker__create :deep(.n-input) {
-  flex: 1;
+  flex: 1 1 10rem;
   min-width: 0;
 }
 
@@ -357,11 +348,5 @@ watch(newGroupName, () => {
   margin: -0.25rem 0 0;
   font-size: 0.78rem;
   color: #d03050;
-}
-
-.group-picker__footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.5rem;
 }
 </style>

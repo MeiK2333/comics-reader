@@ -2,6 +2,9 @@
   "app": {
     "name": "Comics Reader"
   },
+  "common": {
+    "close": "Close"
+  },
   "meta": {
     "search": "Search · {app}",
     "comic": "Comic · {app}",

@@ -109,7 +109,9 @@
 - 一个作品只属于一个分组；移动分组只改 `groupId`；默认分组 id 固定 `default`，名称空字符串由前端本地化，不可改名/删除。
 - `add` 幂等：无 `groupId` 的新条目进默认分组，已有条目保留原分组，显式 `groupId` 则移动；保留 `addedAt` 并刷新标题/封面；删除分组把收藏移到默认分组。
 - 收藏页支持全部/默认/自定义筛选、计数、创建/重命名/删除；按 `addedAt` 倒序；点击进详情；取消收藏不弹确认；缩略图走 `ComicThumb`，不要逐条请求远程详情。
-- 详情页收藏按钮：短按 toggle（未收藏进默认分组，已收藏取消），长按/右键/`Shift+Enter` 打开分组选择器；长按 500ms，移动/取消/离开要取消，长按后的 click 必须抑制。先 `get_favorite` 取分组；查询失败按未收藏处理；请求带 token，切换作品丢弃旧结果。
+- 收藏页分组栏是吸顶的独立组件（`FavoriteGroupBar`）：只有分组 chips 横向滚动并带边缘渐隐，新建/管理固定在右侧，不能放进滚动区；选中分组变化后要把它滚进视野。
+- 详情页收藏按钮：短按 toggle（未收藏进默认分组，已收藏取消），长按/右键/`Shift+Enter` 打开分组选择器；长按 500ms，**到点立即打开**（不等 pointerup），触发前移动/取消/离开才取消，松开与随后的 click 必须抑制。先 `get_favorite` 取分组；查询失败按未收藏处理；请求带 token，切换作品丢弃旧结果。
+- 分组的新建/重命名、管理、长按选择器统一走 `AppSheet`：移动端（`isMobileWebView()`）是底部抽屉，桌面仍是居中卡片；不要在移动端再写定宽 NModal。
 - 损坏文件按空列表处理，并在下一次写入前备份 `.bak`；更高 version 返回 `unexpected` 且拒绝写入；复用 `invalidInput` / `io` / `json` / `tauri` / `unexpected`。
 
 ### 下载
@@ -147,7 +149,7 @@
 - 全局 reset 在 `src/styles/base.scss`；组件样式放 `<style scoped>`。优先 Naive UI；自动导入已配置，不要手改 `components.d.ts`。
 - `useMessage()` 必须在 `NMessageProvider` 下；没有 `NDialogProvider`，删除确认用 `NPopconfirm` / `NModal`，不要引入 `useDialog()`。详情加载态用 `ComicDetailSkeleton` 并保持 hero/body 布局，不要退回通用 `NSpin`。
 - 顶部安全区由 `App.vue` 的 `.safe-area-top` 统一负责（sticky、`--app-safe-area-top`、`--app-background`）；页面不要用 `env(safe-area-inset-top)` 的 margin/padding 或 `max-width` / `pointer: coarse` 模拟。`index.html` 的 viewport 必须带 `viewport-fit=cover`。
-- 四边安全区统一暴露为 `--app-safe-area-top/right/bottom/left`；`NMessageProvider` 的 teleport container 用 `container-style` 避开顶部/左右，Modal 的 `.n-modal-body-wrapper` 用它约束四边。新增 toast/Modal/Popover 等浮层必须接入安全区。
+- 四边安全区统一暴露为 `--app-safe-area-top/right/bottom/left`；`NMessageProvider` 的 teleport container 用 `container-style` 避开顶部/左右，Modal 的 `.n-modal-body-wrapper` 用它约束四边。新增 toast/Modal/Popover 等浮层必须接入安全区；移动端底部抽屉（`AppSheet`/`NDrawer`）的 footer 用 `padding-bottom: calc(... + var(--app-safe-area-bottom))`。
 - 阅读器底部覆盖栏用 `padding-bottom: env(safe-area-inset-bottom)`，不要加独立占位条。
 
 ## 常见改动入口
